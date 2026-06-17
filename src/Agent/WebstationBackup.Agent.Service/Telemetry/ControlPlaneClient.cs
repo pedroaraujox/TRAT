@@ -30,6 +30,7 @@ internal sealed class ControlPlaneClient
     public Task StartJobAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/start", payload, ct);
     public Task ReportProgressAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/progress", payload, ct);
     public Task ReportFinalAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/final", payload, ct);
+    public Task ReportConfigurationAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/configuration/report", payload, ct);
 
     private async Task PostJsonAsync(string path, object payload, CancellationToken ct)
     {

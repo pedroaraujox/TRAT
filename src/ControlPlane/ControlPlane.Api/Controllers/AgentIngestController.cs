@@ -4,6 +4,8 @@ using ControlPlane.Api.Dtos;
 using ControlPlane.Api.Email;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 using System.Linq;
 
 namespace ControlPlane.Api.Controllers;
@@ -169,6 +171,72 @@ public sealed class AgentIngestController(AppDbContext db, SmtpEmailSender email
         return Ok();
     }
 
+    [HttpPost("configuration/report")]
+    public async Task<IActionResult> ConfigurationReport([FromBody] AgentConfigurationReportRequest report, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(report.CustomerId) || string.IsNullOrWhiteSpace(report.HostId))
+        {
+            return BadRequest("CustomerId e HostId são obrigatórios.");
+        }
+
+        var customerId = report.CustomerId.Trim();
+        var hostId = report.HostId.Trim();
+
+        var configId = BuildStableConfigurationId(customerId, hostId);
+        var existing = await db.AgentConfigurations.FirstOrDefaultAsync(c => c.Id == configId, ct);
+        if (existing is null)
+        {
+            existing = new AgentConfiguration
+            {
+                Id = configId,
+                CustomerId = customerId,
+                HostId = hostId,
+                PolicyId = null,
+                AgentVersion = TrimToMaxLength(report.AgentVersion, 64, defaultValue: "unknown"),
+                ServiceStatus = TrimToMaxLength(report.ServiceStatus, 32, defaultValue: "Unknown"),
+                TlsMode = TrimToMaxLength(report.TlsMode, 64, defaultValue: "unknown"),
+                PrecheckTlsOk = report.PrecheckTlsOk,
+                PrecheckDiskOk = report.PrecheckDiskOk,
+                PrecheckCredentialOk = report.PrecheckCredentialOk,
+                StagingPath = TrimToMaxLength(report.StagingPath, 1024, defaultValue: "N/A"),
+                CredentialTargetName = TrimToMaxLength(report.CredentialTargetName, 128, defaultValue: "N/A"),
+                UploadMode = TrimToMaxLength(report.UploadMode, 32, defaultValue: "unknown"),
+                LastConfigSyncAtUtc = report.TimestampUtc,
+                LastPrecheckAtUtc = report.PrecheckAtUtc,
+                LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000),
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+            db.AgentConfigurations.Add(existing);
+        }
+        else
+        {
+            existing.AgentVersion = TrimToMaxLength(report.AgentVersion, 64, defaultValue: existing.AgentVersion);
+            existing.ServiceStatus = TrimToMaxLength(report.ServiceStatus, 32, defaultValue: existing.ServiceStatus);
+            existing.TlsMode = TrimToMaxLength(report.TlsMode, 64, defaultValue: existing.TlsMode);
+            existing.PrecheckTlsOk = report.PrecheckTlsOk;
+            existing.PrecheckDiskOk = report.PrecheckDiskOk;
+            existing.PrecheckCredentialOk = report.PrecheckCredentialOk;
+            existing.StagingPath = TrimToMaxLength(report.StagingPath, 1024, defaultValue: existing.StagingPath);
+            existing.CredentialTargetName = TrimToMaxLength(report.CredentialTargetName, 128, defaultValue: existing.CredentialTargetName);
+            existing.UploadMode = TrimToMaxLength(report.UploadMode, 32, defaultValue: existing.UploadMode);
+            existing.LastConfigSyncAtUtc = report.TimestampUtc;
+            existing.LastPrecheckAtUtc = report.PrecheckAtUtc;
+            existing.LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000);
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Configuration report recebido: customer={CustomerId} host={HostId} service={ServiceStatus} tlsOk={TlsOk} diskOk={DiskOk} credOk={CredOk}",
+            customerId,
+            hostId,
+            existing.ServiceStatus,
+            existing.PrecheckTlsOk,
+            existing.PrecheckDiskOk,
+            existing.PrecheckCredentialOk);
+
+        return Ok(new { configurationId = configId });
+    }
+
     private static IReadOnlyList<string> ParseEmails(string? csv)
     {
         if (string.IsNullOrWhiteSpace(csv))
@@ -182,5 +250,37 @@ public sealed class AgentIngestController(AppDbContext db, SmtpEmailSender email
             .Where(x => x.Contains("@") && x.Length <= 320)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static string BuildStableConfigurationId(string customerId, string hostId)
+    {
+        var input = $"{customerId}\n{hostId}";
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = SHA256.HashData(bytes);
+        var hex = Convert.ToHexString(hash).ToLowerInvariant();
+        var shortHex = hex.Length > 56 ? hex.Substring(0, 56) : hex;
+        return "cfg-" + shortHex;
+    }
+
+    private static string TrimToMaxLength(string value, int maxLen, string defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return defaultValue;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLen ? trimmed : trimmed.Substring(0, maxLen);
+    }
+
+    private static string? TrimToMaxLengthOrNull(string? value, int maxLen)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= maxLen ? trimmed : trimmed.Substring(0, maxLen);
     }
 }

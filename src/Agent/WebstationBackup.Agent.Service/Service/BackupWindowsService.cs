@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.ServiceProcess;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,6 +61,7 @@ internal static class AgentWorker
             try
             {
                 await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
+                await ReportConfigurationIfDueAsync(runtime, options.DryRun, ct);
 
                 var eval = runtime.Schedule.Evaluate(runtime.Rules, DateTimeOffset.UtcNow);
                 if (!eval.ShouldRunNow)
@@ -103,6 +105,7 @@ internal static class AgentWorker
     {
         var runtime = BootstrapOrThrow(options);
         await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
+        await ReportConfigurationAsync(runtime, options.DryRun, ct);
         await ExecuteOneJobAsync(runtime, options.DryRun, ct);
     }
 
@@ -224,6 +227,117 @@ internal static class AgentWorker
             osVersion = Environment.OSVersion.VersionString,
             timestampUtc = DateTimeOffset.UtcNow
         }, ct);
+    }
+
+    private static async Task ReportConfigurationIfDueAsync(Runtime runtime, bool dryRun, CancellationToken ct)
+    {
+        var state = runtime.StateStore.Load();
+        if (state.LastConfigReportAtUtc.HasValue && DateTimeOffset.UtcNow - state.LastConfigReportAtUtc.Value < TimeSpan.FromMinutes(15))
+        {
+            return;
+        }
+
+        await ReportConfigurationAsync(runtime, dryRun, ct);
+        state.LastConfigReportAtUtc = DateTimeOffset.UtcNow;
+        runtime.StateStore.Save(state);
+    }
+
+    private static async Task ReportConfigurationAsync(Runtime runtime, bool dryRun, CancellationToken ct)
+    {
+        var rules = runtime.Rules;
+        var settings = runtime.Settings;
+        var logger = runtime.Logger;
+        var controlPlane = runtime.ControlPlane;
+
+        var agentVersion = GetAgentVersion();
+        var serviceStatus = dryRun ? "DryRun" : "Running";
+        var tlsMode = "TLS1.2";
+
+        var now = DateTimeOffset.UtcNow;
+
+        var precheckOk = true;
+        var precheckMessages = new List<string>(capacity: 4);
+
+        if (!Uri.TryCreate(settings.ControlPlaneBaseUrl, UriKind.Absolute, out _))
+        {
+            precheckOk = false;
+            precheckMessages.Add("ControlPlaneBaseUrl inválida.");
+        }
+
+        var tlsOk = true;
+        try
+        {
+            if (rules.Defaults.Compatibility.Tls.PrecheckMustFailIfNotSupported)
+            {
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            }
+        }
+        catch (Exception ex)
+        {
+            tlsOk = false;
+            precheckOk = false;
+            precheckMessages.Add("Falha ao habilitar TLS 1.2: " + ex.GetType().Name);
+        }
+
+        var stagingPath = "N/A";
+        var diskOk = true;
+
+        var credOk = true;
+        if (!dryRun)
+        {
+            try
+            {
+                _ = WindowsCredentialManager.ReadAwsKeysOrThrow(settings.AwsCredentialTargetName);
+            }
+            catch (Exception ex)
+            {
+                credOk = false;
+                precheckOk = false;
+                precheckMessages.Add("Falha ao ler credenciais AWS: " + ex.GetType().Name);
+            }
+        }
+
+        var message = precheckMessages.Count == 0 ? (precheckOk ? "Prechecks OK." : "Prechecks falharam.") : string.Join(" ", precheckMessages);
+
+        await controlPlane.ReportConfigurationAsync(new
+        {
+            customerId = settings.CustomerId,
+            hostId = settings.HostId,
+            agentVersion,
+            serviceStatus,
+            tlsMode,
+            precheckTlsOk = tlsOk,
+            precheckDiskOk = diskOk,
+            precheckCredentialOk = credOk,
+            stagingPath,
+            credentialTargetName = settings.AwsCredentialTargetName,
+            uploadMode = dryRun ? "dry-run" : "direct-s3",
+            timestampUtc = now,
+            precheckAtUtc = now,
+            precheckMessage = message
+        }, ct);
+
+        logger.Info("Config report enviado", new Dictionary<string, object?>
+        {
+            ["serviceStatus"] = serviceStatus,
+            ["tlsOk"] = tlsOk,
+            ["diskOk"] = diskOk,
+            ["credOk"] = credOk,
+            ["stagingPath"] = stagingPath
+        });
+    }
+
+    private static string GetAgentVersion()
+    {
+        try
+        {
+            var v = Assembly.GetExecutingAssembly().GetName().Version;
+            return v is null ? "unknown" : v.ToString();
+        }
+        catch
+        {
+            return "unknown";
+        }
     }
 
     private static void PrecheckOrThrow(ProjectRules rules, AgentSettings settings)

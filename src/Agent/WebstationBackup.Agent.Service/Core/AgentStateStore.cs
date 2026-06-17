@@ -10,6 +10,7 @@ internal sealed class AgentState
     public DateTimeOffset? LastAttemptAtUtc { get; set; }
     public string? LastJobId { get; set; }
     public string? LastFinalState { get; set; }
+    public DateTimeOffset? LastConfigReportAtUtc { get; set; }
 }
 
 internal sealed class AgentStateStore
@@ -57,4 +58,3 @@ internal sealed class AgentStateStore
         }
     }
 }
-

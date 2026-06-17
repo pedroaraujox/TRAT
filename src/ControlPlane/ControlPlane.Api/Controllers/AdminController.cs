@@ -116,4 +116,36 @@ public sealed class AdminController(AppDbContext db) : ControllerBase
             .ToList();
         return Ok(alerts);
     }
+
+    [HttpGet("configurations")]
+    public async Task<IActionResult> Configurations(
+        [FromQuery] string? customerId = null,
+        [FromQuery] string? hostId = null,
+        [FromQuery] string? serviceStatus = null,
+        [FromQuery] int take = 200,
+        CancellationToken ct = default)
+    {
+        take = Math.Clamp(take, 1, 1000);
+        var q = db.AgentConfigurations.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(customerId))
+        {
+            q = q.Where(c => c.CustomerId == customerId);
+        }
+        if (!string.IsNullOrWhiteSpace(hostId))
+        {
+            q = q.Where(c => c.HostId == hostId);
+        }
+        if (!string.IsNullOrWhiteSpace(serviceStatus))
+        {
+            q = q.Where(c => c.ServiceStatus == serviceStatus);
+        }
+
+        var configs = (await q.ToListAsync(ct))
+            .OrderByDescending(c => c.LastConfigSyncAtUtc ?? DateTimeOffset.MinValue)
+            .ThenByDescending(c => c.CreatedAtUtc)
+            .Take(take)
+            .ToList();
+
+        return Ok(configs);
+    }
 }

@@ -46,3 +46,20 @@ public sealed record JobArtifactDto(
     string Type,
     string Location
 );
+
+public sealed record AgentConfigurationReportRequest(
+    string CustomerId,
+    string HostId,
+    string AgentVersion,
+    string ServiceStatus,
+    string TlsMode,
+    bool PrecheckTlsOk,
+    bool PrecheckDiskOk,
+    bool PrecheckCredentialOk,
+    string StagingPath,
+    string CredentialTargetName,
+    string UploadMode,
+    DateTimeOffset TimestampUtc,
+    DateTimeOffset? PrecheckAtUtc,
+    string? PrecheckMessage
+);
