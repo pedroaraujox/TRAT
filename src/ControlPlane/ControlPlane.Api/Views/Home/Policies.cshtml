@@ -1,0 +1,67 @@
+@model PoliciesPageViewModel
+@{
+    ViewData["Title"] = "Politicas";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Politicas de Backup</h1>
+        <p>Defina escopo, agenda e limites operacionais por cliente ou host.</p>
+    </div>
+    <a class="primary-button" href="/admin/policies/new">Nova politica</a>
+</div>
+
+<section class="panel">
+    <form method="get" action="/admin/policies" class="filters">
+        <input type="text" name="customerId" value="@Model.CustomerId" placeholder="Cliente" />
+        <select name="scopeType">
+            <option value="">Todos os escopos</option>
+            <option value="customer" selected="@(Model.ScopeType == "customer")">Cliente</option>
+            <option value="host" selected="@(Model.ScopeType == "host")">Host</option>
+        </select>
+        <button type="submit" class="button primary">Filtrar</button>
+    </form>
+    <div class="table-wrap">
+        <table class="table responsive-table rt-policies">
+            <thead>
+                <tr>
+                    <th>Politica</th>
+                    <th>Cliente</th>
+                    <th>Escopo</th>
+                    <th>Paths</th>
+                    <th>Agenda</th>
+                    <th>Limites</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Policies.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">Nenhuma politica encontrada.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var policy in Model.Policies)
+                    {
+                        <tr>
+                            <td>@policy.Name</td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(policy.CustomerId)">@(policy.CustomerName ?? policy.CustomerId)</a></td>
+                            <td>@(policy.ScopeType == "host" ? $"Host: {policy.Hostname ?? policy.HostId}" : "Cliente")</td>
+                            <td>
+                                <div><strong>IN:</strong> @policy.IncludePathsCsv</div>
+                                <div><strong>OUT:</strong> @(policy.ExcludePathsCsv ?? "-")</div>
+                            </td>
+                            <td>@policy.ScheduleDaysCsv @policy.StartTimeLocal</td>
+                            <td>CPU @policy.CpuLimitPercent% / Rede @policy.NetworkLimitMbit Mbps / Janela @policy.MaxRuntimeMinutes min</td>
+                            <td><span class="badge @(policy.Enabled ? "succeeded" : "offline")">@(policy.Enabled ? "Ativa" : "Desativada")</span></td>
+                            <td><a href="/admin/policies/@Uri.EscapeDataString(policy.Id)/edit">Editar</a></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

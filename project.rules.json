@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "name": "Webstation Backup",
+    "component": "Agent + Control Plane",
+    "supportPolicy": {
+      "windowsServer": {
+        "minimumSupportedMajor": 2012,
+        "supportedMajors": [2012, 2016, 2019, 2022, 2025],
+        "unsupportedMajors": [2008],
+        "notes": [
+          "Windows Server 2012 e 2012 R2 fazem parte do suporte estendido. O ambiente deve atender requisitos mínimos de TLS/cripto e conectividade.",
+          "Windows Server 2008/2008 R2 não faz parte do suporte do produto. Exceções devem ser tratadas como projeto (ex.: Relay) e fora do SLA padrão."
+        ]
+      }
+    }
+  },
+  "securityAndSafety": {
+    "aws": {
+      "neverDeleteFromS3": true,
+      "allowedS3Operations": [
+        "PutObject",
+        "CreateMultipartUpload",
+        "UploadPart",
+        "CompleteMultipartUpload",
+        "AbortMultipartUpload",
+        "ListBucket",
+        "GetBucketLocation",
+        "HeadObject"
+      ],
+      "requiredBucketControls": {
+        "blockPublicAccess": true,
+        "versioningEnabled": true,
+        "objectLockEnabled": true,
+        "denyDeleteBucketPolicy": true,
+        "encryptionRequired": true
+      }
+    },
+    "credentials": {
+      "mode": "local",
+      "storage": "WindowsCredentialManagerOrDPAPI",
+      "rotation": {
+        "enabled": false,
+        "recommendedMaxAgeDays": 90
+      },
+      "principleOfLeastPrivilege": true
+    },
+    "ransomware": {
+      "anomalyDetection": {
+        "enabled": true,
+        "changeRateAlertThresholdPercent": 40,
+        "largeVolumeSpikeThresholdMultiplier": 3,
+        "actionOnAnomaly": "alert_only"
+      },
+      "immutableBackupsOnS3": true
+    },
+    "dataHandling": {
+      "agentMustNotExfiltrateSecretsInLogs": true,
+      "logsMustAvoidPIIWherePossible": true
+    }
+  },
+  "jobDefinition": {
+    "okCriteria": {
+      "manifestRequired": true,
+      "mustUploadAllManifestItems": true,
+      "bytesPlannedMustEqualBytesConfirmedOnS3": true,
+      "countPlannedMustEqualCountConfirmedOnS3": true,
+      "mustPublishFinalReportToControlPlane": true,
+      "integrity": {
+        "requireChecksumWhenAvailable": true,
+        "preferredChecksum": "SHA256",
+        "allowEtagAsFallbackForMultipart": true
+      }
+    },
+    "states": [
+      "QUEUED",
+      "PRECHECK",
+      "SCANNING",
+      "UPLOADING",
+      "VERIFYING",
+      "FINALIZING",
+      "SUCCEEDED",
+      "FAILED",
+      "CANCELED"
+    ]
+  },
+  "policyModel": {
+    "entities": {
+      "customer": {
+        "id": "string",
+        "name": "string",
+        "awsAccountId": "string",
+        "contacts": { "emails": ["string"] }
+      },
+      "host": {
+        "id": "string",
+        "customerId": "string",
+        "hostname": "string",
+        "osVersion": "string",
+        "tags": ["string"]
+      },
+      "policy": {
+        "id": "string",
+        "name": "string",
+        "scope": "customer_or_host",
+        "schedule": "Schedule",
+        "include": ["PathRule"],
+        "exclude": ["PathRule"],
+        "throttling": "Throttling",
+        "upload": "Upload",
+        "logging": "Logging",
+        "alerts": "Alerts"
+      }
+    }
+  },
+  "defaults": {
+    "schedule": {
+      "enabled": true,
+      "timezone": "America/Sao_Paulo",
+      "daysOfWeek": ["TUE", "FRI"],
+      "startTimeLocal": "22:00",
+      "maxRuntimeMinutes": 720
+    },
+    "scan": {
+      "followJunctions": false,
+      "detectRenamesAsNewObjects": true,
+      "useFileTimestampAndSizeForChangeDetection": true,
+      "useHashes": {
+        "enabled": true,
+        "hashSmallFilesUpToBytes": 104857600
+      }
+    },
+    "upload": {
+      "multipart": {
+        "enabled": true,
+        "partSizeMiB": 64,
+        "maxConcurrentParts": 4
+      },
+      "maxConcurrentFiles": 2,
+      "retry": {
+        "maxAttempts": 8,
+        "backoff": "exponential",
+        "initialDelaySeconds": 2,
+        "maxDelaySeconds": 60
+      },
+      "staging": {
+        "enabled": true,
+        "maxLocalCacheGiB": 20,
+        "pathPreference": ["D:\\\\BackupStaging", "C:\\\\BackupStaging"]
+      }
+    },
+    "throttling": {
+      "cpuMaxPercent": 35,
+      "networkMaxMbit": 80
+    },
+    "logging": {
+      "local": {
+        "enabled": true,
+        "level": "INFO",
+        "maxFileSizeMiB": 50,
+        "maxFiles": 10
+      },
+      "remote": {
+        "enabled": true,
+        "minLevelToSend": "INFO",
+        "sendHeartbeatSeconds": 60
+      }
+    },
+    "alerts": {
+      "notifyOn": ["JOB_FAILED", "JOB_LATE", "HOST_NO_HEARTBEAT", "ANOMALY_DETECTED"],
+      "jobLateMinutes": 90,
+      "hostNoHeartbeatMinutes": 10
+    },
+    "compatibility": {
+      "tls": {
+        "minimumVersion": "1.2",
+        "precheckMustFailIfNotSupported": true
+      },
+      "ntfs": {
+        "maxPathHandling": "long_paths_best_effort"
+      }
+    }
+  }
+}

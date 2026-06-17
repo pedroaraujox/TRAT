@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] - Webstation Backup</title>
+    <link rel="stylesheet" href="~/css/site.css" />
+    <script src="~/js/app.js" defer></script>
+</head>
+<body class="app-body">
+    <div class="shell">
+        <aside class="sidebar" aria-label="Navegacao">
+            <div class="brand">
+                <div class="brand-title">Webstation Backup</div>
+                <div class="brand-subtitle">Painel Administrativo</div>
+            </div>
+            <nav class="nav">
+                <a href="/admin"><span class="nav-icon">◎</span><span>Dashboard</span></a>
+                <a href="/admin/customers"><span class="nav-icon">◫</span><span>Clientes</span></a>
+                <a href="/admin/hosts"><span class="nav-icon">▣</span><span>Hosts</span></a>
+                <a href="/admin/policies"><span class="nav-icon">◩</span><span>Politicas</span></a>
+                <a href="/admin/configurations"><span class="nav-icon">◨</span><span>Configuracoes</span></a>
+                <a href="/admin/jobs"><span class="nav-icon">◉</span><span>Jobs</span></a>
+                <a href="/admin/alerts"><span class="nav-icon">▲</span><span>Alertas</span></a>
+            </nav>
+            <form method="post" action="/logout" class="logout-form">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="button danger full">Sair</button>
+            </form>
+        </aside>
+
+        <div class="sidebar-overlay" data-sidebar-overlay></div>
+
+        <main class="content">
+            <header class="topbar">
+                <button class="icon-button" type="button" data-sidebar-toggle aria-label="Abrir menu">
+                    <span class="icon-bars" aria-hidden="true"></span>
+                </button>
+                <div class="topbar-title-group">
+                    <div class="topbar-title">@ViewData["Title"]</div>
+                    <div class="topbar-subtitle">Controle operacional dos backups Webstation</div>
+                </div>
+                <div class="topbar-actions">
+                    <button class="button ghost" type="button" data-theme-toggle aria-label="Alternar tema">
+                        <span data-theme-label>Tema</span>
+                    </button>
+                    <a class="button ghost" href="/admin">Home</a>
+                </div>
+            </header>
+
+            <div class="page">
+                @RenderBody()
+            </div>
+        </main>
+    </div>
+</body>
+</html>

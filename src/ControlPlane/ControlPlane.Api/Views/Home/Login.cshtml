@@ -1,0 +1,38 @@
+@model LoginViewModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login - Webstation Backup</title>
+    <link rel="stylesheet" href="~/css/site.css" />
+    <script src="~/js/app.js" defer></script>
+</head>
+<body class="login-body app-body">
+    <div class="login-shell">
+        <div class="login-card">
+            <div class="brand">
+                <div class="brand-title">Webstation Backup</div>
+                <div class="brand-subtitle">Acesso administrativo</div>
+            </div>
+            <h1>Entrar</h1>
+            <p>Use o token administrativo para acessar o painel.</p>
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="error-banner">@Model.ErrorMessage</div>
+        }
+            <form method="post" action="/login" class="login-form">
+                @Html.AntiForgeryToken()
+                <div class="form-field full-width">
+                    <label for="token">Token</label>
+                    <input id="token" name="token" type="password" autocomplete="off" required />
+                </div>
+                <button class="button primary full" type="submit">Entrar</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

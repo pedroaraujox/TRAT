@@ -1,0 +1,85 @@
+@model JobsPageViewModel
+@{
+    ViewData["Title"] = "Jobs";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Jobs</h1>
+        <p>Historico de execucoes de backup com reconciliacao de bytes e itens.</p>
+    </div>
+</div>
+
+<section class="panel">
+    <form method="get" action="/admin/jobs" class="filters">
+        <input type="text" name="customerId" value="@Model.CustomerId" placeholder="Cliente" />
+        <input type="text" name="hostId" value="@Model.HostId" placeholder="Host" />
+        <select name="state">
+            <option value="">Todos os status</option>
+            <option value="SUCCEEDED" selected="@(Model.State == "SUCCEEDED")">SUCCEEDED</option>
+            <option value="FAILED" selected="@(Model.State == "FAILED")">FAILED</option>
+            <option value="STARTED" selected="@(Model.State == "STARTED")">STARTED</option>
+            <option value="UPLOADING" selected="@(Model.State == "UPLOADING")">UPLOADING</option>
+            <option value="SCANNING" selected="@(Model.State == "SCANNING")">SCANNING</option>
+        </select>
+        <button type="submit" class="button primary">Filtrar</button>
+    </form>
+    <div class="table-wrap">
+        <table class="table responsive-table rt-jobs">
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Cliente</th>
+                    <th>Host</th>
+                    <th>Status</th>
+                    <th>Inicio</th>
+                    <th>Fim</th>
+                    <th>Planejado</th>
+                    <th>Enviado</th>
+                    <th>Falha</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Jobs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="9">Nenhum job encontrado.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var job in Model.Jobs)
+                    {
+                        <tr>
+                            <td><a href="/admin/jobs/@Uri.EscapeDataString(job.Id)">@job.Id</a></td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(job.CustomerId)">@(job.CustomerName ?? job.CustomerId)</a></td>
+                            <td>@(job.Hostname ?? job.HostId)</td>
+                            <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                            <td>@job.StartedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@(job.FinishedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                            <td>@($"{job.PlannedItems:N0} / {FormatBytes(job.PlannedBytes)}")</td>
+                            <td>@($"{job.UploadedItems:N0} / {FormatBytes(job.UploadedBytes)}")</td>
+                            <td>@(string.IsNullOrWhiteSpace(job.FailureCode) ? "-" : job.FailureCode)</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@functions {
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = value;
+        var index = 0;
+        while (size >= 1024 && index < suffixes.Length - 1)
+        {
+            size /= 1024;
+            index++;
+        }
+
+        return $"{size:N1} {suffixes[index]}";
+    }
+}

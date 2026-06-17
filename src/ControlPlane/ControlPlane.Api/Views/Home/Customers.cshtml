@@ -1,0 +1,61 @@
+@model CustomersPageViewModel
+@{
+    ViewData["Title"] = "Clientes";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Clientes</h1>
+        <p>Inventario de clientes monitorados pelo painel.</p>
+    </div>
+    <a class="primary-button" href="/admin/customers/new">Novo cliente</a>
+</div>
+
+<section class="panel">
+    <form method="get" action="/admin/customers" class="filters">
+        <input type="text" name="q" value="@Model.Search" placeholder="Buscar por ID, nome ou conta AWS" />
+        <button type="submit" class="button primary">Filtrar</button>
+    </form>
+    <div class="table-wrap">
+        <table class="table responsive-table rt-customers">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Conta AWS</th>
+                    <th>Hosts</th>
+                    <th>Jobs</th>
+                    <th>Alertas</th>
+                    <th>Emails</th>
+                    <th>Criado em</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Customers.Count == 0)
+                {
+                    <tr>
+                        <td colspan="9">Nenhum cliente encontrado.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var customer in Model.Customers)
+                    {
+                        <tr>
+                            <td>@customer.Id</td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(customer.Id)">@customer.Name</a></td>
+                            <td>@customer.AwsAccountId</td>
+                            <td>@customer.HostCount</td>
+                            <td>@customer.JobCount</td>
+                            <td>@customer.ActiveAlertCount</td>
+                            <td>@(customer.NotificationEmailsCsv ?? "-")</td>
+                            <td>@customer.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(customer.Id)/edit">Editar</a></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

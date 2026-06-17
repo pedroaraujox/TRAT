@@ -1,0 +1,43 @@
+@model CustomerFormViewModel
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Editar Cliente" : "Novo Cliente";
+    var postUrl = Model.IsEditMode ? $"/admin/customers/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit" : "/admin/customers/new";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Cadastre ou ajuste os dados administrativos do cliente.</p>
+    </div>
+</div>
+
+<section class="panel narrow-panel">
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="error-banner">@Model.ErrorMessage</div>
+    }
+
+    <form method="post" action="@postUrl" class="form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-field">
+            <label for="Id">ID do cliente</label>
+            <input id="Id" name="Id" value="@Model.Id" @(Model.IsEditMode ? "readonly" : null) />
+        </div>
+        <div class="form-field">
+            <label for="Name">Nome</label>
+            <input id="Name" name="Name" value="@Model.Name" required />
+        </div>
+        <div class="form-field">
+            <label for="AwsAccountId">Conta AWS</label>
+            <input id="AwsAccountId" name="AwsAccountId" value="@Model.AwsAccountId" required />
+        </div>
+        <div class="form-field full-width">
+            <label for="NotificationEmailsCsv">Emails de notificacao</label>
+            <input id="NotificationEmailsCsv" name="NotificationEmailsCsv" value="@Model.NotificationEmailsCsv" placeholder="email1@dominio.com;email2@dominio.com" />
+        </div>
+        <div class="form-actions">
+            <a class="button secondary" href="@(Model.IsEditMode ? $"/admin/customers/{Uri.EscapeDataString(Model.Id)}" : "/admin/customers")">Cancelar</a>
+            <button class="button primary" type="submit">Salvar</button>
+        </div>
+    </form>
+</section>

@@ -1,0 +1,85 @@
+@model AgentConfigurationsPageViewModel
+@{
+    ViewData["Title"] = "Configuracoes";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Configuracoes do Agent</h1>
+        <p>Visao de compliance, prechecks e vinculacao de politica por host.</p>
+    </div>
+</div>
+
+<section class="panel">
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+    @if (TempData["ErrorMessage"] is string errorMessage)
+    {
+        <div class="error-banner">@errorMessage</div>
+    }
+
+    <form method="get" action="/admin/configurations" class="filters">
+        <input type="text" name="customerId" value="@Model.CustomerId" placeholder="Cliente" />
+        <select name="serviceStatus">
+            <option value="">Todos os status</option>
+            <option value="Running" selected="@(Model.ServiceStatus == "Running")">Running</option>
+            <option value="Warning" selected="@(Model.ServiceStatus == "Warning")">Warning</option>
+            <option value="Stopped" selected="@(Model.ServiceStatus == "Stopped")">Stopped</option>
+        </select>
+        <button type="submit" class="button primary">Filtrar</button>
+    </form>
+
+    <div class="table-wrap">
+        <table class="table responsive-table rt-configurations">
+            <thead>
+                <tr>
+                    <th>Host</th>
+                    <th>Cliente</th>
+                    <th>Politica</th>
+                    <th>Servico</th>
+                    <th>TLS</th>
+                    <th>Prechecks</th>
+                    <th>Sync</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Configurations.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8">Nenhuma configuracao encontrada.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var item in Model.Configurations)
+                    {
+                        <tr>
+                            <td>@(item.Hostname ?? item.HostId)</td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(item.CustomerId)">@(item.CustomerName ?? item.CustomerId)</a></td>
+                            <td>@(item.PolicyName ?? item.PolicyId ?? "-")</td>
+                            <td><span class="badge @(item.ServiceStatus == "Running" ? "succeeded" : item.ServiceStatus == "Warning" ? "critical" : "offline")">@item.ServiceStatus</span></td>
+                            <td>@item.TlsMode</td>
+                            <td>
+                                <div>TLS: @BoolBadge(item.PrecheckTlsOk)</div>
+                                <div>Disco: @BoolBadge(item.PrecheckDiskOk)</div>
+                                <div>Cred: @BoolBadge(item.PrecheckCredentialOk)</div>
+                            </td>
+                            <td>@(item.LastConfigSyncAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                            <td class="actions-cell">
+                                <a href="/admin/configurations/@Uri.EscapeDataString(item.Id)">Detalhes</a>
+                                <a href="/admin/configurations/@Uri.EscapeDataString(item.Id)">Vincular politica</a>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@functions {
+    private static string BoolBadge(bool value) => value ? "OK" : "Falhou";
+}

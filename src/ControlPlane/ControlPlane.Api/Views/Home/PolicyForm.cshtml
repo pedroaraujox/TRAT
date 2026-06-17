@@ -1,0 +1,85 @@
+@model PolicyFormViewModel
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Editar Politica" : "Nova Politica";
+    var postUrl = Model.IsEditMode ? $"/admin/policies/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit" : "/admin/policies/new";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Configure o que sera enviado, quando, e com quais limites de recurso.</p>
+    </div>
+</div>
+
+<section class="panel narrow-panel">
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="error-banner">@Model.ErrorMessage</div>
+    }
+
+    <form method="post" action="@postUrl" class="form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-field">
+            <label for="Id">ID da politica</label>
+            <input id="Id" name="Id" value="@Model.Id" @(Model.IsEditMode ? "readonly" : null) />
+        </div>
+        <div class="form-field">
+            <label for="CustomerId">CustomerId</label>
+            <input id="CustomerId" name="CustomerId" value="@Model.CustomerId" required />
+        </div>
+        <div class="form-field">
+            <label for="Name">Nome</label>
+            <input id="Name" name="Name" value="@Model.Name" required />
+        </div>
+        <div class="form-field">
+            <label for="ScopeType">Escopo</label>
+            <select id="ScopeType" name="ScopeType">
+                <option value="customer" selected="@(Model.ScopeType == "customer")">Cliente</option>
+                <option value="host" selected="@(Model.ScopeType == "host")">Host</option>
+            </select>
+        </div>
+        <div class="form-field">
+            <label for="HostId">HostId</label>
+            <input id="HostId" name="HostId" value="@Model.HostId" placeholder="Obrigatorio para escopo host" />
+        </div>
+        <div class="form-field">
+            <label for="StartTimeLocal">Horario inicial</label>
+            <input id="StartTimeLocal" name="StartTimeLocal" value="@Model.StartTimeLocal" placeholder="22:00" required />
+        </div>
+        <div class="form-field full-width">
+            <label for="IncludePathsCsv">Paths de inclusao</label>
+            <input id="IncludePathsCsv" name="IncludePathsCsv" value="@Model.IncludePathsCsv" placeholder="D:\Dados;C:\Webstation" required />
+        </div>
+        <div class="form-field full-width">
+            <label for="ExcludePathsCsv">Paths de exclusao</label>
+            <input id="ExcludePathsCsv" name="ExcludePathsCsv" value="@Model.ExcludePathsCsv" placeholder="D:\Dados\Temp" />
+        </div>
+        <div class="form-field full-width">
+            <label for="ScheduleDaysCsv">Dias da agenda</label>
+            <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.ScheduleDaysCsv" placeholder="MON,TUE,WED,THU,FRI" required />
+        </div>
+        <div class="form-field">
+            <label for="MaxRuntimeMinutes">Janela maxima (min)</label>
+            <input id="MaxRuntimeMinutes" name="MaxRuntimeMinutes" type="number" value="@Model.MaxRuntimeMinutes" required />
+        </div>
+        <div class="form-field">
+            <label for="CpuLimitPercent">CPU max %</label>
+            <input id="CpuLimitPercent" name="CpuLimitPercent" type="number" value="@Model.CpuLimitPercent" required />
+        </div>
+        <div class="form-field">
+            <label for="NetworkLimitMbit">Rede max Mbps</label>
+            <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" value="@Model.NetworkLimitMbit" required />
+        </div>
+        <div class="form-field">
+            <label for="Enabled">Status</label>
+            <select id="Enabled" name="Enabled">
+                <option value="true" selected="@Model.Enabled">Ativa</option>
+                <option value="false" selected="@(!Model.Enabled)">Desativada</option>
+            </select>
+        </div>
+        <div class="form-actions">
+            <a class="button secondary" href="/admin/policies">Cancelar</a>
+            <button class="button primary" type="submit">Salvar politica</button>
+        </div>
+    </form>
+</section>

@@ -1,0 +1,97 @@
+@model HostFormViewModel
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Editar Host" : "Novo Host";
+    var postUrl = Model.IsEditMode ? $"/admin/hosts/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit" : "/admin/hosts/new";
+    var cancelUrl = Model.IsEditMode ? "/admin/hosts" : "/admin/hosts";
+    var deleteReturnUrl = $"/admin/hosts/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Gerencie o cadastro operacional do servidor monitorado pelo control plane.</p>
+    </div>
+    <div class="page-actions">
+        <a class="button secondary" href="/admin/hosts">Voltar</a>
+        @if (Model.IsEditMode && !string.IsNullOrWhiteSpace(Model.ConfigurationId))
+        {
+            <a class="button primary" href="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId)">Abrir configuracao</a>
+        }
+    </div>
+</div>
+
+<section class="panel narrow-panel">
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="error-banner">@Model.ErrorMessage</div>
+    }
+    @if (TempData["ErrorMessage"] is string errorMessage)
+    {
+        <div class="error-banner">@errorMessage</div>
+    }
+
+    @if (Model.IsEditMode)
+    {
+        <div class="definition-grid form-summary">
+            <div>
+                <span>Primeira deteccao</span>
+                <strong>@(Model.FirstSeenAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong>
+            </div>
+            <div>
+                <span>Ultimo heartbeat</span>
+                <strong>@(Model.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong>
+            </div>
+            <div>
+                <span>Configuracao</span>
+                <strong>@(Model.ConfigurationId ?? "Pendente de sync do agent")</strong>
+            </div>
+            <div>
+                <span>Politica atual</span>
+                <strong>@(Model.AssignedPolicyName ?? "Nao vinculada")</strong>
+            </div>
+        </div>
+    }
+
+    <form method="post" action="@postUrl" class="form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-field">
+            <label for="Id">ID do host</label>
+            <input id="Id" name="Id" value="@Model.Id" @(Model.IsEditMode ? "readonly" : null) />
+        </div>
+        <div class="form-field">
+            <label for="CustomerId">CustomerId</label>
+            <input id="CustomerId" name="CustomerId" value="@Model.CustomerId" @(Model.IsEditMode ? "readonly" : null) />
+        </div>
+        <div class="form-field">
+            <label for="Hostname">Hostname</label>
+            <input id="Hostname" name="Hostname" value="@Model.Hostname" required />
+        </div>
+        <div class="form-field">
+            <label for="OsVersion">Versao do sistema operacional</label>
+            <input id="OsVersion" name="OsVersion" value="@Model.OsVersion" placeholder="Windows Server 2012 R2" required />
+        </div>
+        <div class="form-actions">
+            <a class="button secondary" href="@cancelUrl">Cancelar</a>
+            <button class="button primary" type="submit">Salvar host</button>
+        </div>
+    </form>
+
+    @if (Model.IsEditMode)
+    {
+        <div class="danger-zone">
+            <div>
+                <h2>Exclusao controlada</h2>
+                <p>O host so pode ser removido quando nao houver jobs, alertas, configuracoes ou politicas vinculadas.</p>
+            </div>
+            <form method="post" action="/admin/hosts/@Uri.EscapeDataString(Model.Id)/delete" onsubmit="return confirm('Confirma a exclusao deste host? A operacao sera bloqueada se houver dependencias.');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@deleteReturnUrl" />
+                <button class="button danger" type="submit">Excluir host</button>
+            </form>
+        </div>
+    }
+</section>

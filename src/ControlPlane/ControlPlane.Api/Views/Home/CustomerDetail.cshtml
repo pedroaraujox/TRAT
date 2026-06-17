@@ -1,0 +1,217 @@
+@model CustomerDetailViewModel
+@{
+    ViewData["Title"] = $"Cliente {Model.Customer.Name}";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@Model.Customer.Name</h1>
+        <p>Conta AWS @Model.Customer.AwsAccountId | Cliente @Model.Customer.Id</p>
+    </div>
+    <div class="page-actions">
+        <a class="button secondary" href="/admin/customers">Voltar</a>
+        <a class="button primary" href="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/edit">Editar cliente</a>
+    </div>
+</div>
+
+<section class="stats-grid">
+    <div class="stat-card">
+        <span>Hosts</span>
+        <strong>@Model.Hosts.Count</strong>
+    </div>
+    <div class="stat-card">
+        <span>Jobs Recentes</span>
+        <strong>@Model.Jobs.Count</strong>
+    </div>
+    <div class="stat-card">
+        <span>Alertas</span>
+        <strong>@Model.Alerts.Count</strong>
+    </div>
+    <div class="stat-card">
+        <span>Politicas</span>
+        <strong>@Model.Policies.Count</strong>
+    </div>
+    <div class="stat-card">
+        <span>Emails</span>
+        <strong class="small-stat">@(string.IsNullOrWhiteSpace(Model.Customer.NotificationEmailsCsv) ? "-" : Model.Customer.NotificationEmailsCsv)</strong>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Hosts do cliente</h2>
+        </div>
+        <div class="table-wrap">
+        <table class="table responsive-table rt-customer-hosts">
+            <thead>
+                <tr>
+                    <th>Host</th>
+                    <th>SO</th>
+                    <th>Heartbeat</th>
+                    <th>Status</th>
+                    <th>Servico</th>
+                    <th>Politica</th>
+                    <th>Prechecks</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Hosts.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7">Nenhum host encontrado.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var host in Model.Hosts)
+                    {
+                        <tr>
+                            <td>@host.Hostname</td>
+                            <td>@host.OsVersion</td>
+                            <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                            <td><span class="badge @host.HeartbeatStatus.ToLowerInvariant().Replace(" ", "-")">@host.HeartbeatStatus</span></td>
+                            <td>@(host.ServiceStatus ?? "-")</td>
+                            <td>@(host.AssignedPolicyName ?? "-")</td>
+                            <td>@($"{BoolText(host.PrecheckTlsOk)} / {BoolText(host.PrecheckDiskOk)} / {BoolText(host.PrecheckCredentialOk)}")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Alertas recentes</h2>
+        </div>
+        <div class="table-wrap">
+        <table class="table responsive-table rt-customer-alerts">
+            <thead>
+                <tr>
+                    <th>Severidade</th>
+                    <th>Mensagem</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Alerts.Count == 0)
+                {
+                    <tr>
+                        <td colspan="2">Nenhum alerta.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var alert in Model.Alerts)
+                    {
+                        <tr>
+                            <td><span class="badge @alert.Severity.ToLowerInvariant()">@alert.Severity</span></td>
+                            <td>@alert.Message</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Politicas do cliente</h2>
+        <a class="button ghost" href="/admin/policies?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir politicas</a>
+    </div>
+    <div class="table-wrap">
+    <table class="table responsive-table rt-customer-policies">
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Escopo</th>
+                <th>Agenda</th>
+                <th>Paths</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Policies.Count == 0)
+            {
+                <tr>
+                    <td colspan="5">Nenhuma politica cadastrada.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var policy in Model.Policies)
+                {
+                    <tr>
+                        <td>@policy.Name</td>
+                        <td>@(policy.ScopeType == "host" ? $"Host: {policy.Hostname ?? policy.HostId}" : "Cliente")</td>
+                        <td>@policy.ScheduleDaysCsv @policy.StartTimeLocal</td>
+                        <td>@policy.IncludePathsCsv</td>
+                        <td><span class="badge @(policy.Enabled ? "succeeded" : "offline")">@(policy.Enabled ? "Ativa" : "Desativada")</span></td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Jobs recentes</h2>
+    </div>
+    <div class="table-wrap">
+    <table class="table responsive-table rt-customer-jobs">
+        <thead>
+            <tr>
+                <th>Job</th>
+                <th>Host</th>
+                <th>Status</th>
+                <th>Inicio</th>
+                <th>Enviado</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Jobs.Count == 0)
+            {
+                <tr>
+                    <td colspan="5">Nenhum job encontrado.</td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var job in Model.Jobs)
+                {
+                    <tr>
+                        <td><a href="/admin/jobs/@Uri.EscapeDataString(job.Id)">@job.Id</a></td>
+                        <td>@(job.Hostname ?? job.HostId)</td>
+                        <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                        <td>@job.StartedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@($"{job.UploadedItems:N0} / {FormatBytes(job.UploadedBytes)}")</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+    </div>
+</section>
+
+@functions {
+    private static string BoolText(bool? value) => value.HasValue ? (value.Value ? "OK" : "Falhou") : "-";
+
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = value;
+        var index = 0;
+        while (size >= 1024 && index < suffixes.Length - 1)
+        {
+            size /= 1024;
+            index++;
+        }
+
+        return $"{size:N1} {suffixes[index]}";
+    }
+}

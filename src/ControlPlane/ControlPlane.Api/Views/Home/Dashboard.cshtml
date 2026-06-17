@@ -1,0 +1,263 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+    var totalJobs = Model.RecentJobs.Count;
+    var successfulJobs = Model.RecentJobs.Count(j => j.State == "SUCCEEDED");
+    var healthPercent = totalJobs == 0 ? 100 : (int)Math.Round((double)successfulJobs * 100 / totalJobs);
+    var customerBar = Math.Clamp(Model.Summary.CustomerCount * 10, 10, 100);
+    var hostBar = Math.Clamp(Model.Summary.HostCount * 5, 10, 100);
+    var alertBar = Model.Summary.ActiveAlertCount == 0 ? 12 : Math.Clamp(Model.Summary.ActiveAlertCount * 14, 12, 100);
+}
+
+<div class="page-header">
+    <div>
+        <h1>Dashboard</h1>
+        <p>Visao consolidada dos backups, hosts e alertas.</p>
+    </div>
+</div>
+
+<section class="hero-grid">
+    <div class="panel hero-panel">
+        <div class="hero-heading">
+            <div>
+                <div class="eyebrow">Backup Control Center</div>
+                <h2>Operacao centralizada, rastreavel e pronta para escalar.</h2>
+                <p>Monitore clientes, politicas, hosts e execucoes em uma experiencia visual mais executiva, clara e responsiva.</p>
+            </div>
+        </div>
+        <div class="hero-actions">
+            <a class="button primary" href="/admin/configurations">Revisar configuracoes</a>
+            <a class="button secondary" href="/admin/policies">Gerenciar politicas</a>
+        </div>
+        <div class="hero-kpis">
+            <div class="mini-kpi">
+                <span>Clientes monitorados</span>
+                <strong>@Model.Summary.CustomerCount</strong>
+            </div>
+            <div class="mini-kpi">
+                <span>Hosts observados</span>
+                <strong>@Model.Summary.HostCount</strong>
+            </div>
+            <div class="mini-kpi">
+                <span>Falhas recentes</span>
+                <strong>@Model.Summary.FailedJobsLast7Days</strong>
+            </div>
+        </div>
+    </div>
+    <div class="hero-side">
+        <div class="panel metric-card">
+            <div class="ring-chart" style="--percent:@healthPercent;">
+                <span>@healthPercent%</span>
+            </div>
+            <div class="metric-copy">
+                <h3>Saude das execucoes</h3>
+                <p>@successfulJobs de @totalJobs jobs recentes concluídos com sucesso. Visao instantanea para priorizar a operacao.</p>
+            </div>
+        </div>
+        <div class="panel trend-card">
+            <h3>Pressao operacional</h3>
+            <p>Indicadores leves para leitura executiva do ambiente em uma unica dobra.</p>
+            <div class="trend-bars">
+                <div class="trend-row">
+                    <label>Clientes</label>
+                    <div class="trend-track"><div class="trend-fill" style="width:@customerBar%;"></div></div>
+                    <strong>@Model.Summary.CustomerCount</strong>
+                </div>
+                <div class="trend-row">
+                    <label>Hosts</label>
+                    <div class="trend-track"><div class="trend-fill" style="width:@hostBar%;"></div></div>
+                    <strong>@Model.Summary.HostCount</strong>
+                </div>
+                <div class="trend-row">
+                    <label>Alertas</label>
+                    <div class="trend-track"><div class="trend-fill" style="width:@alertBar%;"></div></div>
+                    <strong>@Model.Summary.ActiveAlertCount</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="stats-grid">
+    <div class="stat-card">
+        <span>Clientes</span>
+        <strong>@Model.Summary.CustomerCount</strong>
+    </div>
+    <div class="stat-card">
+        <span>Hosts</span>
+        <strong>@Model.Summary.HostCount</strong>
+    </div>
+    <div class="stat-card">
+        <span>Alertas Ativos</span>
+        <strong>@Model.Summary.ActiveAlertCount</strong>
+    </div>
+    <div class="stat-card">
+        <span>Falhas 7 Dias</span>
+        <strong>@Model.Summary.FailedJobsLast7Days</strong>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Clientes</h2>
+        <a class="button ghost" href="/admin/customers">Ver todos</a>
+    </div>
+    <div class="card-grid">
+        @if (Model.Customers.Count == 0)
+        {
+            <div class="info-card">Nenhum cliente registrado ainda.</div>
+        }
+        else
+        {
+            @foreach (var customer in Model.Customers)
+            {
+                <div class="info-card">
+                    <div class="info-title"><a href="/admin/customers/@Uri.EscapeDataString(customer.Id)">@customer.Name</a></div>
+                    <div class="info-line">Conta AWS: @customer.AwsAccountId</div>
+                    <div class="info-line">Hosts: @customer.HostCount</div>
+                    <div class="info-line">Falhas 30 dias: @customer.FailedJobsLast30Days</div>
+                    <div class="info-line">Ultimo job: @(customer.LastJobAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                </div>
+            }
+        }
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Hosts</h2>
+            <a class="button ghost" href="/admin/hosts">Ver todos</a>
+        </div>
+        <div class="table-wrap">
+            <table class="table responsive-table rt-dashboard-hosts">
+                <thead>
+                    <tr>
+                        <th>Host</th>
+                        <th>Cliente</th>
+                        <th>SO</th>
+                        <th>Status</th>
+                        <th>Servico</th>
+                        <th>Politica</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Hosts.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="6">Nenhum host registrado ainda.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var host in Model.Hosts)
+                        {
+                            <tr>
+                                <td>@host.Hostname</td>
+                                <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
+                                <td>@host.OsVersion</td>
+                                <td><span class="badge @host.HeartbeatStatus.ToLowerInvariant().Replace(" ", "-")">@host.HeartbeatStatus</span></td>
+                                <td>@(host.ServiceStatus ?? "-")</td>
+                                <td>@(host.AssignedPolicyName ?? "-")</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Alertas Recentes</h2>
+            <a class="button ghost" href="/admin/alerts">Ver todos</a>
+        </div>
+        <div class="table-wrap">
+            <table class="table responsive-table rt-dashboard-alerts">
+                <thead>
+                    <tr>
+                        <th>Severidade</th>
+                        <th>Mensagem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Alerts.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="2">Nenhum alerta ativo.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var alert in Model.Alerts)
+                        {
+                            <tr>
+                                <td><span class="badge @alert.Severity.ToLowerInvariant()">@alert.Severity</span></td>
+                                <td>@alert.Message</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Jobs Recentes</h2>
+        <a class="button ghost" href="/admin/jobs">Ver todos</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table responsive-table rt-dashboard-jobs">
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Cliente</th>
+                    <th>Host</th>
+                    <th>Status</th>
+                    <th>Planejado</th>
+                    <th>Enviado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.RecentJobs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6">Nenhum job registrado ainda.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var job in Model.RecentJobs)
+                    {
+                        <tr>
+                            <td><a href="/admin/jobs/@Uri.EscapeDataString(job.Id)">@job.Id</a></td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(job.CustomerId)">@(job.CustomerName ?? job.CustomerId)</a></td>
+                            <td>@(job.Hostname ?? job.HostId)</td>
+                            <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                            <td>@($"{job.PlannedItems:N0} itens / {FormatBytes(job.PlannedBytes)}")</td>
+                            <td>@($"{job.UploadedItems:N0} itens / {FormatBytes(job.UploadedBytes)}")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@functions {
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = value;
+        var index = 0;
+        while (size >= 1024 && index < suffixes.Length - 1)
+        {
+            size /= 1024;
+            index++;
+        }
+
+        return $"{size:N1} {suffixes[index]}";
+    }
+}

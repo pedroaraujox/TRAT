@@ -1,0 +1,112 @@
+@model AlertsPageViewModel
+@{
+    ViewData["Title"] = "Alertas";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Alertas</h1>
+        <p>Eventos criticos e warnings operacionais do ambiente.</p>
+    </div>
+</div>
+
+<section class="panel">
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+    @if (TempData["ErrorMessage"] is string errorMessage)
+    {
+        <div class="error-banner">@errorMessage</div>
+    }
+
+    <form method="get" action="/admin/alerts" class="filters">
+        <input type="text" name="customerId" value="@Model.CustomerId" placeholder="Cliente" />
+        <select name="severity">
+            <option value="">Todas as severidades</option>
+            <option value="CRITICAL" selected="@(Model.Severity == "CRITICAL")">CRITICAL</option>
+            <option value="WARNING" selected="@(Model.Severity == "WARNING")">WARNING</option>
+            <option value="INFO" selected="@(Model.Severity == "INFO")">INFO</option>
+        </select>
+        <select name="status">
+            <option value="">Todos os status</option>
+            <option value="active" selected="@(Model.Status == "active")">Ativos</option>
+            <option value="acknowledged" selected="@(Model.Status == "acknowledged")">Reconhecidos</option>
+        </select>
+        <button type="submit" class="button primary">Filtrar</button>
+    </form>
+    <div class="table-wrap">
+        <table class="table responsive-table rt-alerts">
+            <thead>
+                <tr>
+                    <th>Severidade</th>
+                    <th>Tipo</th>
+                    <th>Cliente</th>
+                    <th>Host</th>
+                    <th>Job</th>
+                    <th>Mensagem</th>
+                    <th>Data</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Alerts.Count == 0)
+                {
+                    <tr>
+                        <td colspan="9">Nenhum alerta encontrado.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var alert in Model.Alerts)
+                    {
+                        <tr>
+                            <td><span class="badge @alert.Severity.ToLowerInvariant()">@alert.Severity</span></td>
+                            <td>@alert.Type</td>
+                            <td><a href="/admin/customers/@Uri.EscapeDataString(alert.CustomerId)">@(alert.CustomerName ?? alert.CustomerId)</a></td>
+                            <td>@(alert.Hostname ?? alert.HostId ?? "-")</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(alert.JobId))
+                                {
+                                    <a href="/admin/jobs/@Uri.EscapeDataString(alert.JobId)">@alert.JobId</a>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>@alert.Message</td>
+                            <td>@alert.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>
+                                @if (alert.AcknowledgedAtUtc is null)
+                                {
+                                    <span class="badge warning">Ativo</span>
+                                }
+                                else
+                                {
+                                    <span class="badge succeeded">Reconhecido</span>
+                                }
+                            </td>
+                            <td class="actions-cell">
+                                @if (alert.AcknowledgedAtUtc is null)
+                                {
+                                    <form method="post" action="/admin/alerts/@Uri.EscapeDataString(alert.Id)/ack">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="returnUrl" value="@returnUrl" />
+                                        <button type="submit" class="button secondary compact-button">Reconhecer</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <span class="muted-text">@(alert.AcknowledgedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

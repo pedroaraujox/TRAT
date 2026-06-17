@@ -1,0 +1,37 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# .NET build outputs
+**/bin/
+**/obj/
+TestResults/
+
+# Logs and runtime artifacts
+*.log
+*.tmp
+*.cache
+*.pid
+artifacts/
+
+# Local databases / state
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+
+# Environment-specific config overrides
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+
+# NuGet local state
+*.nupkg
+packages/

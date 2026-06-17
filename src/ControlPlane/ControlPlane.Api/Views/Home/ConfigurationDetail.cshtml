@@ -1,0 +1,145 @@
+@model AgentConfigurationDetailViewModel
+@{
+    ViewData["Title"] = $"Configuracao {Model.Configuration.Hostname ?? Model.Configuration.HostId}";
+    var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Configuracao do Agent</h1>
+        <p>@(Model.Configuration.Hostname ?? Model.Configuration.HostId) | @(Model.Configuration.CustomerName ?? Model.Configuration.CustomerId)</p>
+    </div>
+    <div class="page-actions">
+        <a class="button secondary" href="/admin/configurations">Voltar</a>
+        <a class="button primary" href="/admin/customers/@Uri.EscapeDataString(Model.Configuration.CustomerId)">Abrir cliente</a>
+    </div>
+</div>
+
+<section class="stats-grid">
+    <div class="stat-card">
+        <span>Servico</span>
+        <strong class="small-stat">@Model.Configuration.ServiceStatus</strong>
+    </div>
+    <div class="stat-card">
+        <span>Versao</span>
+        <strong class="small-stat">@Model.Configuration.AgentVersion</strong>
+    </div>
+    <div class="stat-card">
+        <span>Politica</span>
+        <strong class="small-stat">@(Model.Configuration.PolicyName ?? "-")</strong>
+    </div>
+    <div class="stat-card">
+        <span>Upload</span>
+        <strong class="small-stat">@Model.Configuration.UploadMode</strong>
+    </div>
+</section>
+
+@if (TempData["StatusMessage"] is string statusMessage)
+{
+    <section class="panel">
+        <div class="status-banner">@statusMessage</div>
+    </section>
+}
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <section class="panel">
+        <div class="error-banner">@errorMessage</div>
+    </section>
+}
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Compliance</h2>
+        </div>
+        <div class="definition-grid">
+            <div><span>TLS</span><strong>@Model.Configuration.TlsMode (@(Model.Configuration.PrecheckTlsOk ? "OK" : "Falhou"))</strong></div>
+            <div><span>Disco staging</span><strong>@(Model.Configuration.PrecheckDiskOk ? "OK" : "Falhou")</strong></div>
+            <div><span>Credencial</span><strong>@(Model.Configuration.PrecheckCredentialOk ? "OK" : "Falhou")</strong></div>
+            <div><span>Ultima sync</span><strong>@(Model.Configuration.LastConfigSyncAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+            <div class="wide"><span>Ultimo precheck</span><strong>@(Model.Configuration.LastPrecheckAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-") - @(Model.Configuration.LastPrecheckMessage ?? "-")</strong></div>
+            <div class="wide"><span>Staging</span><strong>@Model.Configuration.StagingPath</strong></div>
+            <div class="wide"><span>Credential Target</span><strong>@Model.Configuration.CredentialTargetName</strong></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Politica aplicada</h2>
+        </div>
+        <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.Configuration.Id)/policy" class="form-grid compact-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@returnUrl" />
+            <div class="form-field full-width">
+                <label for="policyId">Politica elegivel</label>
+                <select id="policyId" name="policyId">
+                    <option value="">Sem politica vinculada</option>
+                    @foreach (var option in Model.PolicyOptions)
+                    {
+                        <option value="@option.Id" selected="@(Model.Configuration.PolicyId == option.Id)">@option.Label</option>
+                    }
+                </select>
+            </div>
+            <div class="form-field full-width">
+                <span class="form-help">Sao exibidas apenas politicas ativas do mesmo cliente e compativeis com o escopo do host.</span>
+            </div>
+            <div class="form-actions">
+                <button class="button primary" type="submit">Salvar vinculacao</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Jobs recentes do host</h2>
+    </div>
+        <div class="table-wrap">
+        <table class="table responsive-table rt-config-jobs">
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Status</th>
+                    <th>Inicio</th>
+                    <th>Enviado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.RecentJobs.Count == 0)
+                {
+                    <tr>
+                        <td colspan="4">Nenhum job encontrado.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var job in Model.RecentJobs)
+                    {
+                        <tr>
+                            <td><a href="/admin/jobs/@Uri.EscapeDataString(job.Id)">@job.Id</a></td>
+                            <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                            <td>@job.StartedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@($"{job.UploadedItems:N0} / {FormatBytes(job.UploadedBytes)}")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+</section>
+
+@functions {
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = value;
+        var index = 0;
+        while (size >= 1024 && index < suffixes.Length - 1)
+        {
+            size /= 1024;
+            index++;
+        }
+
+        return $"{size:N1} {suffixes[index]}";
+    }
+}
