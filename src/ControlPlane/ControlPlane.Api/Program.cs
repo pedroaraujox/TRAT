@@ -2,6 +2,7 @@ using ControlPlane.Api.Data;
 using ControlPlane.Api.Email;
 using ControlPlane.Api.Seed;
 using ControlPlane.Api.Security;
+using ControlPlane.Api.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddScoped<PolicyResolutionService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {

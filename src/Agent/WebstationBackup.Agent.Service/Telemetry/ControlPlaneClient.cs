@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using WebstationBackup.Agent.Service.Core;
 using WebstationBackup.Agent.Service.Logging;
 
 namespace WebstationBackup.Agent.Service.Telemetry;
@@ -31,6 +32,48 @@ internal sealed class ControlPlaneClient
     public Task ReportProgressAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/progress", payload, ct);
     public Task ReportFinalAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/final", payload, ct);
     public Task ReportConfigurationAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/configuration/report", payload, ct);
+
+    public async Task<RemoteEffectivePolicyResponse?> TryGetEffectivePolicyAsync(string customerId, string hostId, CancellationToken ct)
+    {
+        var path = "api/v1/agents/effective-policy?customerId=" + Uri.EscapeDataString(customerId) + "&hostId=" + Uri.EscapeDataString(hostId);
+
+        try
+        {
+            var resp = await _http.GetAsync(path, ct);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.Warn("ControlPlane effective policy request failed", new System.Collections.Generic.Dictionary<string, object?>
+                {
+                    ["path"] = path,
+                    ["statusCode"] = (int)resp.StatusCode,
+                    ["body"] = body
+                });
+                return null;
+            }
+
+            var parsed = JsonConvert.DeserializeObject<RemoteEffectivePolicyResponse>(body);
+            if (parsed is null)
+            {
+                _logger.Warn("ControlPlane effective policy response could not be deserialized", new System.Collections.Generic.Dictionary<string, object?>
+                {
+                    ["path"] = path
+                });
+            }
+
+            return parsed;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("ControlPlane effective policy request raised exception", new System.Collections.Generic.Dictionary<string, object?>
+            {
+                ["path"] = path,
+                ["exceptionType"] = ex.GetType().FullName,
+                ["message"] = ex.Message
+            });
+            return null;
+        }
+    }
 
     private async Task PostJsonAsync(string path, object payload, CancellationToken ct)
     {

@@ -63,3 +63,20 @@ public sealed record AgentConfigurationReportRequest(
     DateTimeOffset? PrecheckAtUtc,
     string? PrecheckMessage
 );
+
+public sealed record AgentEffectivePolicyResponse(
+    string CustomerId,
+    string HostId,
+    bool Resolved,
+    string ResolutionSource,
+    string? PolicyId,
+    string? PolicyName,
+    string? PolicyScopeType,
+    string[] IncludePaths,
+    string[] ExcludePaths,
+    string[] ScheduleDaysOfWeek,
+    string ScheduleStartTimeLocal,
+    int MaxRuntimeMinutes,
+    int CpuLimitPercent,
+    int NetworkLimitMbit
+);

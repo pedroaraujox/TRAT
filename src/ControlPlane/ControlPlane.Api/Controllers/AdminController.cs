@@ -1,5 +1,6 @@
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
+using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,13 +8,30 @@ namespace ControlPlane.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/admin")]
-public sealed class AdminController(AppDbContext db) : ControllerBase
+public sealed class AdminController(AppDbContext db, PolicyResolutionService policyResolutionService) : ControllerBase
 {
     public sealed record CustomerUpsertRequest(
         string Id,
         string Name,
         string AwsAccountId,
         string? NotificationEmailsCsv,
+        DateTimeOffset? CreatedAtUtc
+    );
+
+    public sealed record PolicyUpsertRequest(
+        string Id,
+        string CustomerId,
+        string Name,
+        string ScopeType,
+        string? HostId,
+        string IncludePathsCsv,
+        string? ExcludePathsCsv,
+        string ScheduleDaysCsv,
+        string StartTimeLocal,
+        int MaxRuntimeMinutes,
+        int CpuLimitPercent,
+        int NetworkLimitMbit,
+        bool Enabled,
         DateTimeOffset? CreatedAtUtc
     );
 
@@ -147,5 +165,95 @@ public sealed class AdminController(AppDbContext db) : ControllerBase
             .ToList();
 
         return Ok(configs);
+    }
+
+    [HttpGet("effective-policy")]
+    public async Task<IActionResult> EffectivePolicy([FromQuery] string customerId, [FromQuery] string hostId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(hostId))
+        {
+            return BadRequest("CustomerId e HostId são obrigatórios.");
+        }
+
+        var response = await policyResolutionService.ResolveEffectivePolicyAsync(customerId, hostId, ct);
+        return Ok(response);
+    }
+
+    [HttpPost("policies")]
+    public async Task<IActionResult> UpsertPolicy([FromBody] PolicyUpsertRequest request, CancellationToken ct)
+    {
+        if (request is null)
+        {
+            return BadRequest("Body inválido.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Id) ||
+            string.IsNullOrWhiteSpace(request.CustomerId) ||
+            string.IsNullOrWhiteSpace(request.Name) ||
+            string.IsNullOrWhiteSpace(request.ScopeType) ||
+            string.IsNullOrWhiteSpace(request.IncludePathsCsv) ||
+            string.IsNullOrWhiteSpace(request.ScheduleDaysCsv) ||
+            string.IsNullOrWhiteSpace(request.StartTimeLocal))
+        {
+            return BadRequest("Id, CustomerId, Name, ScopeType, IncludePathsCsv, ScheduleDaysCsv e StartTimeLocal são obrigatórios.");
+        }
+
+        var scopeType = request.ScopeType.Trim();
+        if (!string.Equals(scopeType, "customer", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(scopeType, "host", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest("ScopeType deve ser 'customer' ou 'host'.");
+        }
+
+        if (string.Equals(scopeType, "host", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(request.HostId))
+        {
+            return BadRequest("HostId é obrigatório para políticas de host.");
+        }
+
+        if (request.MaxRuntimeMinutes <= 0 || request.CpuLimitPercent <= 0 || request.NetworkLimitMbit <= 0)
+        {
+            return BadRequest("MaxRuntimeMinutes, CpuLimitPercent e NetworkLimitMbit devem ser maiores que zero.");
+        }
+
+        var policyId = request.Id.Trim();
+        var existing = await db.BackupPolicies.FirstOrDefaultAsync(p => p.Id == policyId, ct);
+        if (existing is null)
+        {
+            db.BackupPolicies.Add(new BackupPolicy
+            {
+                Id = policyId,
+                CustomerId = request.CustomerId.Trim(),
+                Name = request.Name.Trim(),
+                ScopeType = scopeType.ToLowerInvariant(),
+                HostId = string.IsNullOrWhiteSpace(request.HostId) ? null : request.HostId.Trim(),
+                IncludePathsCsv = request.IncludePathsCsv.Trim(),
+                ExcludePathsCsv = string.IsNullOrWhiteSpace(request.ExcludePathsCsv) ? null : request.ExcludePathsCsv.Trim(),
+                ScheduleDaysCsv = request.ScheduleDaysCsv.Trim().ToUpperInvariant(),
+                StartTimeLocal = request.StartTimeLocal.Trim(),
+                MaxRuntimeMinutes = request.MaxRuntimeMinutes,
+                CpuLimitPercent = request.CpuLimitPercent,
+                NetworkLimitMbit = request.NetworkLimitMbit,
+                Enabled = request.Enabled,
+                CreatedAtUtc = request.CreatedAtUtc ?? DateTimeOffset.UtcNow
+            });
+        }
+        else
+        {
+            existing.CustomerId = request.CustomerId.Trim();
+            existing.Name = request.Name.Trim();
+            existing.ScopeType = scopeType.ToLowerInvariant();
+            existing.HostId = string.IsNullOrWhiteSpace(request.HostId) ? null : request.HostId.Trim();
+            existing.IncludePathsCsv = request.IncludePathsCsv.Trim();
+            existing.ExcludePathsCsv = string.IsNullOrWhiteSpace(request.ExcludePathsCsv) ? null : request.ExcludePathsCsv.Trim();
+            existing.ScheduleDaysCsv = request.ScheduleDaysCsv.Trim().ToUpperInvariant();
+            existing.StartTimeLocal = request.StartTimeLocal.Trim();
+            existing.MaxRuntimeMinutes = request.MaxRuntimeMinutes;
+            existing.CpuLimitPercent = request.CpuLimitPercent;
+            existing.NetworkLimitMbit = request.NetworkLimitMbit;
+            existing.Enabled = request.Enabled;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Ok();
     }
 }

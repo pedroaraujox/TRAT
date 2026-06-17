@@ -7,24 +7,39 @@ namespace WebstationBackup.Agent.Service.Core;
 internal sealed class ScheduleEvaluator
 {
     public (bool ShouldRunNow, string WindowKeyLocal, DateTimeOffset WindowStartUtc, DateTimeOffset WindowEndUtc) Evaluate(ProjectRules rules, DateTimeOffset nowUtc)
+        => Evaluate(
+            rules.Defaults.Schedule.Enabled,
+            rules.Defaults.Schedule.Timezone,
+            rules.Defaults.Schedule.DaysOfWeek,
+            rules.Defaults.Schedule.StartTimeLocal,
+            rules.Defaults.Schedule.MaxRuntimeMinutes,
+            nowUtc);
+
+    public (bool ShouldRunNow, string WindowKeyLocal, DateTimeOffset WindowStartUtc, DateTimeOffset WindowEndUtc) Evaluate(
+        bool enabled,
+        string timezone,
+        string[] daysOfWeek,
+        string startTimeLocal,
+        int maxRuntimeMinutes,
+        DateTimeOffset nowUtc)
     {
-        if (!rules.Defaults.Schedule.Enabled)
+        if (!enabled)
         {
             return (false, "disabled", DateTimeOffset.MinValue, DateTimeOffset.MinValue);
         }
 
-        var tz = ResolveTimeZone(rules.Defaults.Schedule.Timezone);
+        var tz = ResolveTimeZone(timezone);
         var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, tz);
 
         var localDow = nowLocal.DayOfWeek;
-        if (!IsAllowedDay(rules.Defaults.Schedule.DaysOfWeek, localDow))
+        if (!IsAllowedDay(daysOfWeek, localDow))
         {
             return (false, nowLocal.ToString("yyyyMMdd", CultureInfo.InvariantCulture), DateTimeOffset.MinValue, DateTimeOffset.MinValue);
         }
 
-        var start = ParseLocalTime(rules.Defaults.Schedule.StartTimeLocal);
+        var start = ParseLocalTime(startTimeLocal);
         var windowStartLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, start.Hour, start.Minute, 0, DateTimeKind.Unspecified);
-        var windowEndLocal = windowStartLocal.AddMinutes(Math.Max(1, rules.Defaults.Schedule.MaxRuntimeMinutes));
+        var windowEndLocal = windowStartLocal.AddMinutes(Math.Max(1, maxRuntimeMinutes));
 
         var windowStartUtc = TimeZoneInfo.ConvertTimeToUtc(windowStartLocal, tz);
         var windowEndUtc = TimeZoneInfo.ConvertTimeToUtc(windowEndLocal, tz);
@@ -92,4 +107,3 @@ internal sealed class ScheduleEvaluator
         return TimeZoneInfo.Local;
     }
 }
-

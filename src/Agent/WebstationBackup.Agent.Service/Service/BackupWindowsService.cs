@@ -60,10 +60,17 @@ internal static class AgentWorker
             var nextRunDelay = TimeSpan.FromMinutes(1);
             try
             {
+                var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
                 await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
-                await ReportConfigurationIfDueAsync(runtime, options.DryRun, ct);
+                await ReportConfigurationIfDueAsync(runtime, options.DryRun, effectivePolicy, ct);
 
-                var eval = runtime.Schedule.Evaluate(runtime.Rules, DateTimeOffset.UtcNow);
+                var eval = runtime.Schedule.Evaluate(
+                    runtime.Rules.Defaults.Schedule.Enabled,
+                    runtime.Rules.Defaults.Schedule.Timezone,
+                    effectivePolicy.ScheduleDaysOfWeek,
+                    effectivePolicy.ScheduleStartTimeLocal,
+                    effectivePolicy.MaxRuntimeMinutes,
+                    DateTimeOffset.UtcNow);
                 if (!eval.ShouldRunNow)
                 {
                     await Task.Delay(nextRunDelay, ct);
@@ -83,7 +90,7 @@ internal static class AgentWorker
                 state.LastAttemptAtUtc = DateTimeOffset.UtcNow;
                 runtime.StateStore.Save(state);
 
-                await ExecuteOneJobAsync(runtime, options.DryRun, ct);
+                await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct);
             }
             catch (Exception ex)
             {
@@ -104,9 +111,10 @@ internal static class AgentWorker
     public static async Task RunOnceAsync(AgentWorkerOptions options, CancellationToken ct)
     {
         var runtime = BootstrapOrThrow(options);
+        var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
         await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
-        await ReportConfigurationAsync(runtime, options.DryRun, ct);
-        await ExecuteOneJobAsync(runtime, options.DryRun, ct);
+        await ReportConfigurationAsync(runtime, options.DryRun, effectivePolicy, ct);
+        await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct);
     }
 
     private sealed class Runtime
@@ -229,7 +237,7 @@ internal static class AgentWorker
         }, ct);
     }
 
-    private static async Task ReportConfigurationIfDueAsync(Runtime runtime, bool dryRun, CancellationToken ct)
+    private static async Task ReportConfigurationIfDueAsync(Runtime runtime, bool dryRun, EffectiveRuntimePolicy effectivePolicy, CancellationToken ct)
     {
         var state = runtime.StateStore.Load();
         if (state.LastConfigReportAtUtc.HasValue && DateTimeOffset.UtcNow - state.LastConfigReportAtUtc.Value < TimeSpan.FromMinutes(15))
@@ -237,12 +245,12 @@ internal static class AgentWorker
             return;
         }
 
-        await ReportConfigurationAsync(runtime, dryRun, ct);
+        await ReportConfigurationAsync(runtime, dryRun, effectivePolicy, ct);
         state.LastConfigReportAtUtc = DateTimeOffset.UtcNow;
         runtime.StateStore.Save(state);
     }
 
-    private static async Task ReportConfigurationAsync(Runtime runtime, bool dryRun, CancellationToken ct)
+    private static async Task ReportConfigurationAsync(Runtime runtime, bool dryRun, EffectiveRuntimePolicy effectivePolicy, CancellationToken ct)
     {
         var rules = runtime.Rules;
         var settings = runtime.Settings;
@@ -314,7 +322,7 @@ internal static class AgentWorker
             uploadMode = dryRun ? "dry-run" : "direct-s3",
             timestampUtc = now,
             precheckAtUtc = now,
-            precheckMessage = message
+            precheckMessage = message + " PolicySource=" + effectivePolicy.Source + (string.IsNullOrWhiteSpace(effectivePolicy.PolicyId) ? string.Empty : " PolicyId=" + effectivePolicy.PolicyId)
         }, ct);
 
         logger.Info("Config report enviado", new Dictionary<string, object?>
@@ -323,8 +331,33 @@ internal static class AgentWorker
             ["tlsOk"] = tlsOk,
             ["diskOk"] = diskOk,
             ["credOk"] = credOk,
-            ["stagingPath"] = stagingPath
+            ["stagingPath"] = stagingPath,
+            ["policySource"] = effectivePolicy.Source,
+            ["policyId"] = effectivePolicy.PolicyId
         });
+    }
+
+    private static async Task<EffectiveRuntimePolicy> ResolveEffectivePolicyAsync(Runtime runtime, CancellationToken ct)
+    {
+        var localPolicy = EffectiveRuntimePolicy.FromLocal(runtime.Rules, runtime.Settings);
+        var remotePolicy = await runtime.ControlPlane.TryGetEffectivePolicyAsync(runtime.Settings.CustomerId, runtime.Settings.HostId, ct);
+        if (remotePolicy is null || !remotePolicy.Resolved)
+        {
+            runtime.Logger.Info("Usando politica local/fallback", new Dictionary<string, object?>
+            {
+                ["source"] = localPolicy.Source,
+                ["policyId"] = null
+            });
+            return localPolicy;
+        }
+
+        var effectivePolicy = EffectiveRuntimePolicy.FromRemote(runtime.Rules, runtime.Settings, remotePolicy);
+        runtime.Logger.Info("Politica remota efetiva carregada", new Dictionary<string, object?>
+        {
+            ["source"] = effectivePolicy.Source,
+            ["policyId"] = effectivePolicy.PolicyId
+        });
+        return effectivePolicy;
     }
 
     private static string GetAgentVersion()
@@ -353,7 +386,7 @@ internal static class AgentWorker
         }
     }
 
-    private static async Task ExecuteOneJobAsync(Runtime runtime, bool dryRun, CancellationToken ct)
+    private static async Task ExecuteOneJobAsync(Runtime runtime, EffectiveRuntimePolicy effectivePolicy, bool dryRun, CancellationToken ct)
     {
         var rules = runtime.Rules;
         var settings = runtime.Settings;
@@ -378,7 +411,7 @@ internal static class AgentWorker
         }, ct);
 
         var scanner = new FileScanner();
-        var files = scanner.ScanFiles(settings.IncludePaths, settings.ExcludePaths);
+        var files = scanner.ScanFiles(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
 
         var builder = new ManifestBuilder();
         var manifest = builder.Build(jobId, settings, rules, files);
@@ -389,7 +422,11 @@ internal static class AgentWorker
             ["jobId"] = jobId,
             ["plannedBytes"] = manifest.PlannedBytes,
             ["plannedItems"] = manifest.PlannedItems,
-            ["dryRun"] = dryRun
+            ["dryRun"] = dryRun,
+            ["policySource"] = effectivePolicy.Source,
+            ["policyId"] = effectivePolicy.PolicyId,
+            ["cpuLimitPercent"] = effectivePolicy.CpuLimitPercent,
+            ["networkLimitMbit"] = effectivePolicy.NetworkLimitMbit
         });
 
         await controlPlane.ReportProgressAsync(new

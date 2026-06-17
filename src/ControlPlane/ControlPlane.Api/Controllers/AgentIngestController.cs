@@ -2,6 +2,7 @@ using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Dtos;
 using ControlPlane.Api.Email;
+using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -12,10 +13,26 @@ namespace ControlPlane.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/agents")]
-public sealed class AgentIngestController(AppDbContext db, SmtpEmailSender email, ILogger<AgentIngestController> logger) : ControllerBase
+public sealed class AgentIngestController(
+    AppDbContext db,
+    SmtpEmailSender email,
+    PolicyResolutionService policyResolutionService,
+    ILogger<AgentIngestController> logger) : ControllerBase
 {
     [HttpGet("/api/v1/health")]
     public IActionResult Health() => Ok(new { status = "ok" });
+
+    [HttpGet("effective-policy")]
+    public async Task<IActionResult> EffectivePolicy([FromQuery] string customerId, [FromQuery] string hostId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(hostId))
+        {
+            return BadRequest("CustomerId e HostId são obrigatórios.");
+        }
+
+        var response = await policyResolutionService.ResolveEffectivePolicyAsync(customerId, hostId, ct);
+        return Ok(response);
+    }
 
     [HttpPost("heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] AgentHeartbeatRequest request, CancellationToken ct)
