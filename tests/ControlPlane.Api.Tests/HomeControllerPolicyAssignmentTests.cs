@@ -1,6 +1,7 @@
 using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
+using ControlPlane.Api.Models;
 using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -48,6 +49,102 @@ public sealed class HomeControllerPolicyAssignmentTests
         Assert.Equal("Politica vinculada com sucesso.", controller.TempData["StatusMessage"]);
     }
 
+    [Fact]
+    public async Task CreateBootstrapPolicy_CreatesAndAssigns_WhenHostIsReady()
+    {
+        using var database = CreateDatabase();
+        await SeedScenarioAsync(database.Context, precheckCredentialOk: true);
+        var controller = CreateController(database.Context);
+
+        var result = await controller.CreateBootstrapPolicy(
+            "cfg-01",
+            new BootstrapPolicyDraftViewModel
+            {
+                SuggestedPolicyId = "policy-bootstrap-01",
+                Name = "Politica Inicial - HOST-01",
+                ScopeType = "host",
+                CustomerId = "customer-01",
+                HostId = "host-01",
+                IncludePathsCsv = @"C:\Dados;D:\ERP",
+                ExcludePathsCsv = @"C:\Dados\Temp",
+                ScheduleDaysCsv = "MON,TUE",
+                StartTimeLocal = "21:30",
+                MaxRuntimeMinutes = 180,
+                CpuLimitPercent = 20,
+                NetworkLimitMbit = 40,
+                Enabled = true,
+                HasBootstrapPaths = true
+            },
+            returnUrl: null,
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectResult>(result);
+        var persistedConfig = await database.Context.AgentConfigurations.AsNoTracking().SingleAsync();
+        var persistedPolicy = await database.Context.BackupPolicies.AsNoTracking().SingleAsync(p => p.Id == "policy-bootstrap-01");
+        var events = (await database.Context.PolicyChangeEvents.AsNoTracking()
+            .Where(e => e.PolicyId == "policy-bootstrap-01")
+            .ToListAsync())
+            .OrderBy(e => e.CreatedAtUtc)
+            .ToList();
+
+        Assert.Equal("/admin/configurations/cfg-01", redirect.Url);
+        Assert.Equal("policy-bootstrap-01", persistedConfig.PolicyId);
+        Assert.Equal("Politica Inicial - HOST-01", persistedPolicy.Name);
+        Assert.Equal("bootstrap", persistedPolicy.PolicyKind);
+        Assert.Equal("host-01", persistedPolicy.OriginHostId);
+        Assert.Equal(@"C:\Dados;D:\ERP", persistedPolicy.IncludePathsCsv);
+        Assert.Contains(events, e => e.EventType == "bootstrap_policy_created");
+        Assert.Contains(events, e => e.EventType == "bootstrap_policy_auto_assigned");
+        Assert.Equal("Politica inicial criada a partir do bootstrap e vinculada ao host.", controller.TempData["StatusMessage"]);
+    }
+
+    [Fact]
+    public async Task CreateBootstrapPolicy_CreatesWithoutAssigning_WhenHostIsNotReady()
+    {
+        using var database = CreateDatabase();
+        await SeedScenarioAsync(database.Context, precheckCredentialOk: false);
+        var controller = CreateController(database.Context);
+
+        var result = await controller.CreateBootstrapPolicy(
+            "cfg-01",
+            new BootstrapPolicyDraftViewModel
+            {
+                SuggestedPolicyId = "policy-bootstrap-02",
+                Name = "Politica Inicial - HOST-01",
+                ScopeType = "host",
+                CustomerId = "customer-01",
+                HostId = "host-01",
+                IncludePathsCsv = @"C:\Dados",
+                ExcludePathsCsv = null,
+                ScheduleDaysCsv = "MON,TUE",
+                StartTimeLocal = "21:30",
+                MaxRuntimeMinutes = 180,
+                CpuLimitPercent = 20,
+                NetworkLimitMbit = 40,
+                Enabled = true,
+                HasBootstrapPaths = true
+            },
+            returnUrl: null,
+            CancellationToken.None);
+
+        var redirect = Assert.IsType<RedirectResult>(result);
+        var persistedConfig = await database.Context.AgentConfigurations.AsNoTracking().SingleAsync();
+        var persistedPolicy = await database.Context.BackupPolicies.AsNoTracking().SingleAsync(p => p.Id == "policy-bootstrap-02");
+        var events = (await database.Context.PolicyChangeEvents.AsNoTracking()
+            .Where(e => e.PolicyId == "policy-bootstrap-02")
+            .ToListAsync())
+            .OrderBy(e => e.CreatedAtUtc)
+            .ToList();
+
+        Assert.Equal("/admin/configurations/cfg-01", redirect.Url);
+        Assert.Null(persistedConfig.PolicyId);
+        Assert.Equal("policy-bootstrap-02", persistedPolicy.Id);
+        Assert.Equal("bootstrap", persistedPolicy.PolicyKind);
+        Assert.Contains(events, e => e.EventType == "bootstrap_policy_created");
+        Assert.DoesNotContain(events, e => e.EventType == "bootstrap_policy_auto_assigned");
+        Assert.Equal("Politica inicial criada a partir do bootstrap. O vinculo automatico ficou pendente porque o host ainda nao esta pronto.", controller.TempData["StatusMessage"]);
+    }
+
     private static HomeController CreateController(AppDbContext db)
     {
         var httpContext = new DefaultHttpContext();
@@ -84,6 +181,8 @@ public sealed class HomeControllerPolicyAssignmentTests
             CustomerId = "customer-01",
             Hostname = "HOST-01",
             OsVersion = "Windows Server 2022",
+            BootstrapIncludePathsCsv = @"C:\Dados;D:\ERP",
+            BootstrapExcludePathsCsv = @"C:\Dados\Temp",
             FirstSeenAtUtc = now.AddDays(-5),
             LastHeartbeatAtUtc = now
         });
@@ -114,8 +213,10 @@ public sealed class HomeControllerPolicyAssignmentTests
             Id = "policy-01",
             CustomerId = "customer-01",
             Name = "Policy 01",
+            PolicyKind = "operational",
             ScopeType = "host",
             HostId = "host-01",
+            OriginHostId = null,
             IncludePathsCsv = @"C:\Dados",
             ExcludePathsCsv = @"C:\Dados\Temp",
             ScheduleDaysCsv = "MON,TUE,WED",
@@ -124,6 +225,7 @@ public sealed class HomeControllerPolicyAssignmentTests
             CpuLimitPercent = 25,
             NetworkLimitMbit = 50,
             Enabled = true,
+            LastChangedAtUtc = now.AddMinutes(-10),
             CreatedAtUtc = now.AddMinutes(-10)
         });
 

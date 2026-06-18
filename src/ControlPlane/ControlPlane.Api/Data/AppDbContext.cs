@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Artifact> Artifacts => Set<Artifact>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<BackupPolicy> BackupPolicies => Set<BackupPolicy>();
+    public DbSet<PolicyChangeEvent> PolicyChangeEvents => Set<PolicyChangeEvent>();
     public DbSet<AgentConfiguration> AgentConfigurations => Set<AgentConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -29,6 +30,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<BackupPolicy>()
             .HasIndex(p => new { p.CustomerId, p.Name })
+            .IsUnique(false);
+
+        modelBuilder.Entity<PolicyChangeEvent>()
+            .HasIndex(e => new { e.PolicyId, e.CreatedAtUtc })
             .IsUnique(false);
 
         modelBuilder.Entity<AgentConfiguration>()

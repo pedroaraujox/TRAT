@@ -22,7 +22,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
                 ResolutionSource: resolution.Source,
                 PolicyId: null,
                 PolicyName: null,
+                PolicyKind: null,
                 PolicyScopeType: null,
+                PolicyLastChangedAtUtc: null,
                 IncludePaths: Array.Empty<string>(),
                 ExcludePaths: Array.Empty<string>(),
                 ScheduleDaysOfWeek: Array.Empty<string>(),
@@ -49,7 +51,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
                 ResolutionSource: "invalid_policy_include_paths",
                 PolicyId: null,
                 PolicyName: null,
+                PolicyKind: null,
                 PolicyScopeType: null,
+                PolicyLastChangedAtUtc: null,
                 IncludePaths: Array.Empty<string>(),
                 ExcludePaths: Array.Empty<string>(),
                 ScheduleDaysOfWeek: Array.Empty<string>(),
@@ -67,7 +71,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
             ResolutionSource: resolution.Source,
             PolicyId: resolution.Policy.Id,
             PolicyName: resolution.Policy.Name,
+            PolicyKind: NormalizePolicyKind(resolution.Policy.PolicyKind),
             PolicyScopeType: resolution.Policy.ScopeType,
+            PolicyLastChangedAtUtc: resolution.Policy.LastChangedAtUtc ?? resolution.Policy.CreatedAtUtc,
             IncludePaths: includePaths,
             ExcludePaths: SplitPathList(resolution.Policy.ExcludePathsCsv),
             ScheduleDaysOfWeek: SplitTokenList(resolution.Policy.ScheduleDaysCsv),
@@ -219,5 +225,12 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
         }
 
         return value;
+    }
+
+    private static string NormalizePolicyKind(string? value)
+    {
+        return string.Equals(value, "bootstrap", StringComparison.OrdinalIgnoreCase)
+            ? "bootstrap"
+            : "operational";
     }
 }

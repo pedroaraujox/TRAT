@@ -46,6 +46,9 @@ public sealed class HostRowViewModel
     public required string OperationalStatusCssClass { get; init; }
     public required string OperationalStatusMessage { get; init; }
     public bool IsReadyForPolicyAssignment { get; init; }
+    public required string BootstrapStatusLabel { get; init; }
+    public required string BootstrapStatusCssClass { get; init; }
+    public required string BootstrapStatusMessage { get; init; }
 }
 
 public sealed class JobRowViewModel
@@ -193,6 +196,8 @@ public sealed class PolicyListItemViewModel
     public string? HostId { get; init; }
     public string? Hostname { get; init; }
     public required string Name { get; init; }
+    public required string PolicyKind { get; init; }
+    public string? OriginHostId { get; init; }
     public required string ScopeType { get; init; }
     public required string IncludePathsCsv { get; init; }
     public string? ExcludePathsCsv { get; init; }
@@ -202,6 +207,8 @@ public sealed class PolicyListItemViewModel
     public int CpuLimitPercent { get; init; }
     public int NetworkLimitMbit { get; init; }
     public bool Enabled { get; init; }
+    public DateTimeOffset? LastChangedAtUtc { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; }
 }
 
 public sealed record PolicyFormViewModel
@@ -211,6 +218,8 @@ public sealed record PolicyFormViewModel
     public required string CustomerId { get; init; }
     public string? HostId { get; init; }
     public required string Name { get; init; }
+    public required string PolicyKind { get; init; }
+    public string? OriginHostId { get; init; }
     public required string ScopeType { get; init; }
     public required string IncludePathsCsv { get; init; }
     public string? ExcludePathsCsv { get; init; }
@@ -222,6 +231,8 @@ public sealed record PolicyFormViewModel
     public bool Enabled { get; init; }
     public bool IsEditMode { get; init; }
     public string? ErrorMessage { get; init; }
+    public DateTimeOffset? LastChangedAtUtc { get; init; }
+    public IReadOnlyList<PolicyChangeEventViewModel> RecentEvents { get; init; } = Array.Empty<PolicyChangeEventViewModel>();
 }
 
 public sealed class AgentConfigurationsPageViewModel
@@ -240,6 +251,11 @@ public sealed class AgentConfigurationListItemViewModel
     public string? Hostname { get; init; }
     public string? PolicyId { get; init; }
     public string? PolicyName { get; init; }
+    public string? EffectivePolicyId { get; init; }
+    public string? EffectivePolicyName { get; init; }
+    public string? EffectivePolicyKind { get; init; }
+    public string? EffectivePolicySource { get; init; }
+    public DateTimeOffset? EffectivePolicyLastChangedAtUtc { get; init; }
     public required string AgentVersion { get; init; }
     public required string ServiceStatus { get; init; }
     public required string TlsMode { get; init; }
@@ -256,6 +272,14 @@ public sealed class AgentConfigurationListItemViewModel
     public required string OperationalStatusCssClass { get; init; }
     public required string OperationalStatusMessage { get; init; }
     public bool IsReadyForPolicyAssignment { get; init; }
+    public string? BootstrapIncludePathsCsv { get; init; }
+    public string? BootstrapExcludePathsCsv { get; init; }
+    public required string BootstrapStatusLabel { get; init; }
+    public required string BootstrapStatusCssClass { get; init; }
+    public required string BootstrapStatusMessage { get; init; }
+    public bool BootstrapPolicyExists { get; init; }
+    public bool IsBootstrapPolicyAssigned { get; init; }
+    public string? BootstrapPolicyId { get; init; }
 }
 
 public sealed class AgentConfigurationDetailViewModel
@@ -263,12 +287,38 @@ public sealed class AgentConfigurationDetailViewModel
     public required AgentConfigurationListItemViewModel Configuration { get; init; }
     public required IReadOnlyList<JobRowViewModel> RecentJobs { get; init; }
     public required IReadOnlyList<PolicyOptionViewModel> PolicyOptions { get; init; }
+    public required BootstrapPolicyDraftViewModel BootstrapPolicyDraft { get; init; }
 }
 
 public sealed class PolicyOptionViewModel
 {
     public required string Id { get; init; }
     public required string Label { get; init; }
+}
+
+public sealed record BootstrapPolicyDraftViewModel
+{
+    public required string SuggestedPolicyId { get; init; }
+    public required string Name { get; init; }
+    public required string ScopeType { get; init; }
+    public required string CustomerId { get; init; }
+    public required string HostId { get; init; }
+    public required string IncludePathsCsv { get; init; }
+    public string? ExcludePathsCsv { get; init; }
+    public required string ScheduleDaysCsv { get; init; }
+    public required string StartTimeLocal { get; init; }
+    public int MaxRuntimeMinutes { get; init; }
+    public int CpuLimitPercent { get; init; }
+    public int NetworkLimitMbit { get; init; }
+    public bool Enabled { get; init; }
+    public bool HasBootstrapPaths { get; init; }
+}
+
+public sealed record PolicyChangeEventViewModel
+{
+    public required string EventType { get; init; }
+    public required string Message { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; }
 }
 
 public sealed class LoginViewModel

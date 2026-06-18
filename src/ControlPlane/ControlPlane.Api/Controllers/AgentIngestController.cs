@@ -381,6 +381,11 @@ public sealed class AgentIngestController(
                 CustomerId = customerId,
                 HostId = hostId,
                 PolicyId = null,
+                EffectivePolicyId = TrimToMaxLengthOrNull(report.EffectivePolicyId, 64),
+                EffectivePolicyName = TrimToMaxLengthOrNull(report.EffectivePolicyName, 128),
+                EffectivePolicyKind = TrimToMaxLengthOrNull(report.EffectivePolicyKind, 32),
+                EffectivePolicySource = TrimToMaxLengthOrNull(report.EffectivePolicySource, 64),
+                EffectivePolicyLastChangedAtUtc = report.EffectivePolicyLastChangedAtUtc,
                 AgentVersion = TrimToMaxLength(report.AgentVersion, 64, defaultValue: "unknown"),
                 ServiceStatus = TrimToMaxLength(report.ServiceStatus, 32, defaultValue: "Unknown"),
                 TlsMode = TrimToMaxLength(report.TlsMode, 64, defaultValue: "unknown"),
@@ -399,6 +404,11 @@ public sealed class AgentIngestController(
         }
         else
         {
+            existing.EffectivePolicyId = TrimToMaxLengthOrNull(report.EffectivePolicyId, 64);
+            existing.EffectivePolicyName = TrimToMaxLengthOrNull(report.EffectivePolicyName, 128);
+            existing.EffectivePolicyKind = TrimToMaxLengthOrNull(report.EffectivePolicyKind, 32);
+            existing.EffectivePolicySource = TrimToMaxLengthOrNull(report.EffectivePolicySource, 64);
+            existing.EffectivePolicyLastChangedAtUtc = report.EffectivePolicyLastChangedAtUtc;
             existing.AgentVersion = TrimToMaxLength(report.AgentVersion, 64, defaultValue: existing.AgentVersion);
             existing.ServiceStatus = TrimToMaxLength(report.ServiceStatus, 32, defaultValue: existing.ServiceStatus);
             existing.TlsMode = TrimToMaxLength(report.TlsMode, 64, defaultValue: existing.TlsMode);
@@ -415,10 +425,12 @@ public sealed class AgentIngestController(
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
-            "Configuration report recebido: customer={CustomerId} host={HostId} service={ServiceStatus} tlsOk={TlsOk} diskOk={DiskOk} credOk={CredOk}",
+            "Configuration report recebido: customer={CustomerId} host={HostId} service={ServiceStatus} effectivePolicyId={EffectivePolicyId} effectivePolicySource={EffectivePolicySource} tlsOk={TlsOk} diskOk={DiskOk} credOk={CredOk}",
             customerId,
             hostId,
             existing.ServiceStatus,
+            existing.EffectivePolicyId,
+            existing.EffectivePolicySource,
             existing.PrecheckTlsOk,
             existing.PrecheckDiskOk,
             existing.PrecheckCredentialOk);

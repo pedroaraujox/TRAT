@@ -38,7 +38,9 @@
                     <th>Host</th>
                     <th>Cliente</th>
                     <th>Prontidao</th>
+                    <th>Bootstrap</th>
                     <th>Politica</th>
+                    <th>Efetiva</th>
                     <th>Servico</th>
                     <th>TLS</th>
                     <th>Prechecks</th>
@@ -50,7 +52,7 @@
                 @if (Model.Configurations.Count == 0)
                 {
                     <tr>
-                        <td colspan="9">Nenhuma configuracao encontrada.</td>
+                        <td colspan="11">Nenhuma configuracao encontrada.</td>
                     </tr>
                 }
                 else
@@ -66,7 +68,17 @@
                                     <div class="status-detail">@item.OperationalStatusMessage</div>
                                 </div>
                             </td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @item.BootstrapStatusCssClass">@item.BootstrapStatusLabel</span>
+                                    <div class="status-detail">@item.BootstrapStatusMessage</div>
+                                </div>
+                            </td>
                             <td>@(item.PolicyName ?? item.PolicyId ?? "-")</td>
+                            <td>
+                                <div>@(item.EffectivePolicyName ?? item.EffectivePolicyId ?? "-")</div>
+                                <div class="status-detail">@EffectivePolicyDetail(item)</div>
+                            </td>
                             <td><span class="badge @ServiceStatusCssClass(item.ServiceStatus)">@item.ServiceStatus</span></td>
                             <td>@item.TlsMode</td>
                             <td>
@@ -77,7 +89,7 @@
                             <td>@(item.LastConfigSyncAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
                             <td class="actions-cell">
                                 <a href="/admin/configurations/@Uri.EscapeDataString(item.Id)">Detalhes</a>
-                                <a href="/admin/configurations/@Uri.EscapeDataString(item.Id)">Vincular politica</a>
+                                <a href="/admin/configurations/@Uri.EscapeDataString(item.Id)">@(NeedsBootstrapAttention(item) ? "Aprovar bootstrap" : "Gerenciar politica")</a>
                             </td>
                         </tr>
                     }
@@ -93,4 +105,14 @@
         value == "Running" || value == "DryRun" ? "succeeded" :
         value == "Warning" ? "warning" :
         "offline";
+
+    private static bool NeedsBootstrapAttention(AgentConfigurationListItemViewModel item) =>
+        item.BootstrapStatusLabel == "Pendente aprovacao" || item.BootstrapStatusLabel == "Aguardando vinculo";
+
+    private static string EffectivePolicyDetail(AgentConfigurationListItemViewModel item)
+    {
+        var source = string.IsNullOrWhiteSpace(item.EffectivePolicySource) ? "sem sync" : item.EffectivePolicySource;
+        var kind = string.IsNullOrWhiteSpace(item.EffectivePolicyKind) ? "-" : item.EffectivePolicyKind;
+        return $"Fonte: {source} | Tipo: {kind}";
+    }
 }

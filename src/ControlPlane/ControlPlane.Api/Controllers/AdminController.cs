@@ -224,8 +224,10 @@ public sealed class AdminController(AppDbContext db, PolicyResolutionService pol
                 Id = policyId,
                 CustomerId = request.CustomerId.Trim(),
                 Name = request.Name.Trim(),
+                PolicyKind = "operational",
                 ScopeType = scopeType.ToLowerInvariant(),
                 HostId = string.IsNullOrWhiteSpace(request.HostId) ? null : request.HostId.Trim(),
+                OriginHostId = null,
                 IncludePathsCsv = request.IncludePathsCsv.Trim(),
                 ExcludePathsCsv = string.IsNullOrWhiteSpace(request.ExcludePathsCsv) ? null : request.ExcludePathsCsv.Trim(),
                 ScheduleDaysCsv = request.ScheduleDaysCsv.Trim().ToUpperInvariant(),
@@ -234,15 +236,27 @@ public sealed class AdminController(AppDbContext db, PolicyResolutionService pol
                 CpuLimitPercent = request.CpuLimitPercent,
                 NetworkLimitMbit = request.NetworkLimitMbit,
                 Enabled = request.Enabled,
+                LastChangedAtUtc = request.CreatedAtUtc ?? DateTimeOffset.UtcNow,
                 CreatedAtUtc = request.CreatedAtUtc ?? DateTimeOffset.UtcNow
+            });
+
+            db.PolicyChangeEvents.Add(new PolicyChangeEvent
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                PolicyId = policyId,
+                EventType = "policy_created_api",
+                Message = "Politica operacional criada via endpoint administrativo.",
+                CreatedAtUtc = DateTimeOffset.UtcNow
             });
         }
         else
         {
             existing.CustomerId = request.CustomerId.Trim();
             existing.Name = request.Name.Trim();
+            existing.PolicyKind = "operational";
             existing.ScopeType = scopeType.ToLowerInvariant();
             existing.HostId = string.IsNullOrWhiteSpace(request.HostId) ? null : request.HostId.Trim();
+            existing.OriginHostId = null;
             existing.IncludePathsCsv = request.IncludePathsCsv.Trim();
             existing.ExcludePathsCsv = string.IsNullOrWhiteSpace(request.ExcludePathsCsv) ? null : request.ExcludePathsCsv.Trim();
             existing.ScheduleDaysCsv = request.ScheduleDaysCsv.Trim().ToUpperInvariant();
@@ -251,6 +265,16 @@ public sealed class AdminController(AppDbContext db, PolicyResolutionService pol
             existing.CpuLimitPercent = request.CpuLimitPercent;
             existing.NetworkLimitMbit = request.NetworkLimitMbit;
             existing.Enabled = request.Enabled;
+            existing.LastChangedAtUtc = DateTimeOffset.UtcNow;
+
+            db.PolicyChangeEvents.Add(new PolicyChangeEvent
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                PolicyId = policyId,
+                EventType = "policy_updated_api",
+                Message = "Politica operacional atualizada via endpoint administrativo.",
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            });
         }
 
         await db.SaveChangesAsync(ct);

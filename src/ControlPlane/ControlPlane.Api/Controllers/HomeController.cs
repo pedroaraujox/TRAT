@@ -556,6 +556,8 @@ public sealed class HomeController(
             CustomerId = string.Empty,
             HostId = string.Empty,
             Name = string.Empty,
+            PolicyKind = "operational",
+            OriginHostId = null,
             ScopeType = "customer",
             IncludePathsCsv = string.Empty,
             ExcludePathsCsv = string.Empty,
@@ -585,12 +587,16 @@ public sealed class HomeController(
             return View("PolicyForm", form with { ErrorMessage = "Ja existe uma politica com este ID.", IsEditMode = false });
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var normalizedPolicyKind = NormalizePolicyKind(form.PolicyKind, fallback: "operational");
         db.BackupPolicies.Add(new BackupPolicy
         {
             Id = form.Id.Trim(),
             CustomerId = form.CustomerId.Trim(),
             HostId = string.IsNullOrWhiteSpace(form.HostId) ? null : form.HostId.Trim(),
             Name = form.Name.Trim(),
+            PolicyKind = normalizedPolicyKind,
+            OriginHostId = string.IsNullOrWhiteSpace(form.OriginHostId) ? null : form.OriginHostId.Trim(),
             ScopeType = form.ScopeType.Trim(),
             IncludePathsCsv = form.IncludePathsCsv.Trim(),
             ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim(),
@@ -600,8 +606,16 @@ public sealed class HomeController(
             CpuLimitPercent = form.CpuLimitPercent,
             NetworkLimitMbit = form.NetworkLimitMbit,
             Enabled = form.Enabled,
-            CreatedAtUtc = DateTimeOffset.UtcNow
+            LastChangedAtUtc = now,
+            CreatedAtUtc = now
         });
+
+        db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(
+            policyId: form.Id.Trim(),
+            eventType: "policy_created",
+            message: normalizedPolicyKind == "bootstrap"
+                ? "Politica bootstrap criada manualmente."
+                : "Politica operacional criada manualmente."));
 
         await db.SaveChangesAsync(ct);
         return Redirect("/admin/policies");
@@ -616,6 +630,13 @@ public sealed class HomeController(
             return NotFound();
         }
 
+        var events = (await db.PolicyChangeEvents.AsNoTracking()
+            .Where(e => e.PolicyId == id)
+            .ToListAsync(ct))
+            .OrderByDescending(e => e.CreatedAtUtc)
+            .Take(20)
+            .ToArray();
+
         return View("PolicyForm", new PolicyFormViewModel
         {
             OriginalId = policy.Id,
@@ -623,6 +644,8 @@ public sealed class HomeController(
             CustomerId = policy.CustomerId,
             HostId = policy.HostId,
             Name = policy.Name,
+            PolicyKind = NormalizePolicyKind(policy.PolicyKind, fallback: "operational"),
+            OriginHostId = policy.OriginHostId,
             ScopeType = policy.ScopeType,
             IncludePathsCsv = policy.IncludePathsCsv,
             ExcludePathsCsv = policy.ExcludePathsCsv,
@@ -632,7 +655,14 @@ public sealed class HomeController(
             CpuLimitPercent = policy.CpuLimitPercent,
             NetworkLimitMbit = policy.NetworkLimitMbit,
             Enabled = policy.Enabled,
-            IsEditMode = true
+            IsEditMode = true,
+            LastChangedAtUtc = policy.LastChangedAtUtc,
+            RecentEvents = events.Select(e => new PolicyChangeEventViewModel
+            {
+                EventType = e.EventType,
+                Message = e.Message,
+                CreatedAtUtc = e.CreatedAtUtc
+            }).ToArray()
         });
     }
 
@@ -652,9 +682,15 @@ public sealed class HomeController(
             return NotFound();
         }
 
+        var previousKind = NormalizePolicyKind(policy.PolicyKind, fallback: "operational");
+        var previousEnabled = policy.Enabled;
+        var normalizedPolicyKind = NormalizePolicyKind(form.PolicyKind, fallback: previousKind);
+
         policy.CustomerId = form.CustomerId.Trim();
         policy.HostId = string.IsNullOrWhiteSpace(form.HostId) ? null : form.HostId.Trim();
         policy.Name = form.Name.Trim();
+        policy.PolicyKind = normalizedPolicyKind;
+        policy.OriginHostId = string.IsNullOrWhiteSpace(form.OriginHostId) ? null : form.OriginHostId.Trim();
         policy.ScopeType = form.ScopeType.Trim();
         policy.IncludePathsCsv = form.IncludePathsCsv.Trim();
         policy.ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim();
@@ -664,6 +700,12 @@ public sealed class HomeController(
         policy.CpuLimitPercent = form.CpuLimitPercent;
         policy.NetworkLimitMbit = form.NetworkLimitMbit;
         policy.Enabled = form.Enabled;
+        policy.LastChangedAtUtc = DateTimeOffset.UtcNow;
+
+        db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(
+            policyId: policy.Id,
+            eventType: previousKind != normalizedPolicyKind ? "policy_kind_changed" : "policy_updated",
+            message: BuildPolicyUpdateMessage(previousKind, normalizedPolicyKind, previousEnabled, policy.Enabled)));
 
         await db.SaveChangesAsync(ct);
         return Redirect("/admin/policies");
@@ -775,6 +817,129 @@ public sealed class HomeController(
         TempData["StatusMessage"] = trimmedPolicyId is null
             ? "Politica desvinculada com sucesso."
             : "Politica vinculada com sucesso.";
+        return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+    }
+
+    [HttpPost("/admin/configurations/{id}/bootstrap-policy")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateBootstrapPolicy(string id, [FromForm] BootstrapPolicyDraftViewModel form, [FromForm] string? returnUrl, CancellationToken ct)
+    {
+        var configuration = await db.AgentConfigurations.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (configuration is null)
+        {
+            TempData["ErrorMessage"] = "Configuracao nao encontrada.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/configurations");
+        }
+
+        var host = await db.Hosts.FirstOrDefaultAsync(h => h.Id == configuration.HostId, ct);
+        if (host is null)
+        {
+            TempData["ErrorMessage"] = "Host da configuracao nao encontrado.";
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+        }
+
+        var bootstrapForm = NormalizeBootstrapPolicyDraft(form, configuration, host);
+        if (!bootstrapForm.HasBootstrapPaths)
+        {
+            TempData["ErrorMessage"] = "Este host ainda nao reportou paths iniciais do Agent.";
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+        }
+
+        var error = ValidatePolicyForm(new PolicyFormViewModel
+        {
+            Id = bootstrapForm.SuggestedPolicyId,
+            CustomerId = bootstrapForm.CustomerId,
+            HostId = bootstrapForm.HostId,
+            Name = bootstrapForm.Name,
+            PolicyKind = "bootstrap",
+            OriginHostId = bootstrapForm.HostId,
+            ScopeType = bootstrapForm.ScopeType,
+            IncludePathsCsv = bootstrapForm.IncludePathsCsv,
+            ExcludePathsCsv = bootstrapForm.ExcludePathsCsv,
+            ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv,
+            StartTimeLocal = bootstrapForm.StartTimeLocal,
+            MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes,
+            CpuLimitPercent = bootstrapForm.CpuLimitPercent,
+            NetworkLimitMbit = bootstrapForm.NetworkLimitMbit,
+            Enabled = bootstrapForm.Enabled,
+            IsEditMode = false
+        }, isEditMode: false);
+        if (error is not null)
+        {
+            TempData["ErrorMessage"] = error;
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+        }
+
+        var policyId = bootstrapForm.SuggestedPolicyId;
+        var policy = await db.BackupPolicies.FirstOrDefaultAsync(p => p.Id == policyId, ct);
+        var policyEventType = "bootstrap_policy_updated";
+        var policyEventMessage = "Politica bootstrap atualizada a partir do host.";
+        if (policy is null)
+        {
+            policy = new BackupPolicy
+            {
+                Id = policyId,
+                CustomerId = bootstrapForm.CustomerId,
+                HostId = bootstrapForm.HostId,
+                Name = bootstrapForm.Name,
+                PolicyKind = "bootstrap",
+                OriginHostId = bootstrapForm.HostId,
+                ScopeType = bootstrapForm.ScopeType,
+                IncludePathsCsv = bootstrapForm.IncludePathsCsv,
+                ExcludePathsCsv = bootstrapForm.ExcludePathsCsv,
+                ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv,
+                StartTimeLocal = bootstrapForm.StartTimeLocal,
+                MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes,
+                CpuLimitPercent = bootstrapForm.CpuLimitPercent,
+                NetworkLimitMbit = bootstrapForm.NetworkLimitMbit,
+                Enabled = bootstrapForm.Enabled,
+                LastChangedAtUtc = DateTimeOffset.UtcNow,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+            db.BackupPolicies.Add(policy);
+            policyEventType = "bootstrap_policy_created";
+            policyEventMessage = "Politica bootstrap criada a partir do bootstrap do host.";
+        }
+        else
+        {
+            policy.CustomerId = bootstrapForm.CustomerId;
+            policy.HostId = bootstrapForm.HostId;
+            policy.Name = bootstrapForm.Name;
+            policy.PolicyKind = "bootstrap";
+            policy.OriginHostId = bootstrapForm.HostId;
+            policy.ScopeType = bootstrapForm.ScopeType;
+            policy.IncludePathsCsv = bootstrapForm.IncludePathsCsv;
+            policy.ExcludePathsCsv = bootstrapForm.ExcludePathsCsv;
+            policy.ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv;
+            policy.StartTimeLocal = bootstrapForm.StartTimeLocal;
+            policy.MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes;
+            policy.CpuLimitPercent = bootstrapForm.CpuLimitPercent;
+            policy.NetworkLimitMbit = bootstrapForm.NetworkLimitMbit;
+            policy.Enabled = bootstrapForm.Enabled;
+            policy.LastChangedAtUtc = DateTimeOffset.UtcNow;
+        }
+
+        db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(policyId, policyEventType, policyEventMessage));
+
+        var readiness = hostOperationalStatusService.Evaluate(host, configuration);
+        if (readiness.IsReadyForPolicyAssignment)
+        {
+            configuration.PolicyId = policyId;
+            TempData["StatusMessage"] = "Politica inicial criada a partir do bootstrap e vinculada ao host.";
+            db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(policyId, "bootstrap_policy_auto_assigned", "Politica bootstrap vinculada automaticamente ao host apos readiness."));
+        }
+        else
+        {
+            TempData["StatusMessage"] = "Politica inicial criada a partir do bootstrap. O vinculo automatico ficou pendente porque o host ainda nao esta pronto.";
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Bootstrap policy {PolicyId} processed for configuration {ConfigurationId}. AutoAssigned={AutoAssigned}",
+            policyId,
+            id,
+            readiness.IsReadyForPolicyAssignment);
+
         return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
     }
 
@@ -975,6 +1140,10 @@ public sealed class HomeController(
         {
             return "Nome da politica e obrigatorio.";
         }
+        if (NormalizePolicyKind(form.PolicyKind, fallback: string.Empty) is not ("bootstrap" or "operational"))
+        {
+            return "PolicyKind deve ser 'bootstrap' ou 'operational'.";
+        }
         if (string.IsNullOrWhiteSpace(form.IncludePathsCsv))
         {
             return "Ao menos um path de inclusao e obrigatorio.";
@@ -1014,6 +1183,7 @@ public sealed class HomeController(
         }
 
         var operational = hostOperationalStatusService.Evaluate(host, config);
+        var bootstrap = DescribeBootstrapState(host.CustomerId, host.Id, host.BootstrapIncludePathsCsv, config?.PolicyId, policiesById);
 
         return new HostRowViewModel
         {
@@ -1033,7 +1203,10 @@ public sealed class HomeController(
             OperationalStatusLabel = operational.Label,
             OperationalStatusCssClass = operational.CssClass,
             OperationalStatusMessage = operational.Message,
-            IsReadyForPolicyAssignment = operational.IsReadyForPolicyAssignment
+            IsReadyForPolicyAssignment = operational.IsReadyForPolicyAssignment,
+            BootstrapStatusLabel = bootstrap.Label,
+            BootstrapStatusCssClass = bootstrap.CssClass,
+            BootstrapStatusMessage = bootstrap.Message
         };
     }
 
@@ -1115,6 +1288,8 @@ public sealed class HomeController(
             HostId = policy.HostId,
             Hostname = host?.Hostname,
             Name = policy.Name,
+            PolicyKind = NormalizePolicyKind(policy.PolicyKind, fallback: "operational"),
+            OriginHostId = policy.OriginHostId,
             ScopeType = policy.ScopeType,
             IncludePathsCsv = policy.IncludePathsCsv,
             ExcludePathsCsv = policy.ExcludePathsCsv,
@@ -1123,7 +1298,9 @@ public sealed class HomeController(
             MaxRuntimeMinutes = policy.MaxRuntimeMinutes,
             CpuLimitPercent = policy.CpuLimitPercent,
             NetworkLimitMbit = policy.NetworkLimitMbit,
-            Enabled = policy.Enabled
+            Enabled = policy.Enabled,
+            LastChangedAtUtc = policy.LastChangedAtUtc,
+            CreatedAtUtc = policy.CreatedAtUtc
         };
     }
 
@@ -1146,6 +1323,7 @@ public sealed class HomeController(
         {
             operational = hostOperationalStatusService.Evaluate(host, configuration);
         }
+        var bootstrap = DescribeBootstrapState(configuration.CustomerId, configuration.HostId, host?.BootstrapIncludePathsCsv, configuration.PolicyId, policies);
 
         return new AgentConfigurationListItemViewModel
         {
@@ -1156,6 +1334,11 @@ public sealed class HomeController(
             Hostname = host?.Hostname,
             PolicyId = configuration.PolicyId,
             PolicyName = policy?.Name,
+            EffectivePolicyId = configuration.EffectivePolicyId,
+            EffectivePolicyName = configuration.EffectivePolicyName,
+            EffectivePolicyKind = configuration.EffectivePolicyKind,
+            EffectivePolicySource = configuration.EffectivePolicySource,
+            EffectivePolicyLastChangedAtUtc = configuration.EffectivePolicyLastChangedAtUtc,
             AgentVersion = configuration.AgentVersion,
             ServiceStatus = configuration.ServiceStatus,
             TlsMode = configuration.TlsMode,
@@ -1171,7 +1354,15 @@ public sealed class HomeController(
             OperationalStatusLabel = operational?.Label ?? "Nao validado",
             OperationalStatusCssClass = operational?.CssClass ?? "not-ready",
             OperationalStatusMessage = operational?.Message ?? "Host ainda nao localizado no cadastro operacional.",
-            IsReadyForPolicyAssignment = operational?.IsReadyForPolicyAssignment ?? false
+            IsReadyForPolicyAssignment = operational?.IsReadyForPolicyAssignment ?? false,
+            BootstrapIncludePathsCsv = host?.BootstrapIncludePathsCsv,
+            BootstrapExcludePathsCsv = host?.BootstrapExcludePathsCsv,
+            BootstrapStatusLabel = bootstrap.Label,
+            BootstrapStatusCssClass = bootstrap.CssClass,
+            BootstrapStatusMessage = bootstrap.Message,
+            BootstrapPolicyExists = bootstrap.PolicyExists,
+            IsBootstrapPolicyAssigned = bootstrap.IsAssigned,
+            BootstrapPolicyId = bootstrap.PolicyId
         };
     }
 
@@ -1237,11 +1428,15 @@ public sealed class HomeController(
             .Take(20)
             .ToArray();
 
+        hosts.TryGetValue(configEntity.HostId, out var host);
+        var mappedConfiguration = MapAgentConfiguration(configEntity, customers, hosts, policies);
+
         return new AgentConfigurationDetailViewModel
         {
-            Configuration = MapAgentConfiguration(configEntity, customers, hosts, policies),
+            Configuration = mappedConfiguration,
             RecentJobs = jobs.Select(j => MapJob(j, customers, hosts)).ToArray(),
-            PolicyOptions = await BuildPolicyOptionsAsync(configEntity.CustomerId, configEntity.HostId, ct)
+            PolicyOptions = await BuildPolicyOptionsAsync(configEntity.CustomerId, configEntity.HostId, ct),
+            BootstrapPolicyDraft = BuildBootstrapPolicyDraft(configEntity, host, mappedConfiguration)
         };
     }
 
@@ -1262,6 +1457,230 @@ public sealed class HomeController(
                 Label = $"{p.Name} [{(string.Equals(p.ScopeType, "host", StringComparison.OrdinalIgnoreCase) ? "Host" : "Cliente")}]"
             })
             .ToArray();
+    }
+
+    private static BootstrapPolicyDraftViewModel BuildBootstrapPolicyDraft(
+        AgentConfiguration configuration,
+        ControlPlane.Api.Domain.Host? host,
+        AgentConfigurationListItemViewModel mappedConfiguration)
+    {
+        var includePathsCsv = NormalizePathCsv(host?.BootstrapIncludePathsCsv);
+        var excludePathsCsv = NormalizePathCsv(host?.BootstrapExcludePathsCsv);
+        var hostLabel = string.IsNullOrWhiteSpace(mappedConfiguration.Hostname) ? configuration.HostId : mappedConfiguration.Hostname!;
+
+        return new BootstrapPolicyDraftViewModel
+        {
+            SuggestedPolicyId = BuildBootstrapPolicyId(configuration.CustomerId, configuration.HostId),
+            Name = $"Politica Inicial - {hostLabel}",
+            ScopeType = "host",
+            CustomerId = configuration.CustomerId,
+            HostId = configuration.HostId,
+            IncludePathsCsv = includePathsCsv ?? string.Empty,
+            ExcludePathsCsv = excludePathsCsv,
+            ScheduleDaysCsv = "TUE,FRI",
+            StartTimeLocal = "22:00",
+            MaxRuntimeMinutes = 720,
+            CpuLimitPercent = 35,
+            NetworkLimitMbit = 80,
+            Enabled = true,
+            HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
+        };
+    }
+
+    private static BootstrapPolicyDraftViewModel NormalizeBootstrapPolicyDraft(
+        BootstrapPolicyDraftViewModel form,
+        AgentConfiguration configuration,
+        ControlPlane.Api.Domain.Host host)
+    {
+        var suggestedPolicyId = string.IsNullOrWhiteSpace(form.SuggestedPolicyId)
+            ? BuildBootstrapPolicyId(configuration.CustomerId, configuration.HostId)
+            : form.SuggestedPolicyId.Trim();
+
+        var name = string.IsNullOrWhiteSpace(form.Name)
+            ? $"Politica Inicial - {host.Hostname}"
+            : form.Name.Trim();
+
+        var includePathsCsv = NormalizePathCsv(form.IncludePathsCsv);
+        var excludePathsCsv = NormalizePathCsv(form.ExcludePathsCsv);
+
+        return new BootstrapPolicyDraftViewModel
+        {
+            SuggestedPolicyId = suggestedPolicyId,
+            Name = name,
+            ScopeType = "host",
+            CustomerId = configuration.CustomerId,
+            HostId = configuration.HostId,
+            IncludePathsCsv = includePathsCsv ?? string.Empty,
+            ExcludePathsCsv = excludePathsCsv,
+            ScheduleDaysCsv = NormalizeUpperTokenCsv(form.ScheduleDaysCsv, fallback: "TUE,FRI"),
+            StartTimeLocal = NormalizeScheduleTime(form.StartTimeLocal, fallback: "22:00"),
+            MaxRuntimeMinutes = ClampPositive(form.MaxRuntimeMinutes, fallback: 720),
+            CpuLimitPercent = ClampRange(form.CpuLimitPercent, min: 1, max: 100, fallback: 35),
+            NetworkLimitMbit = ClampRange(form.NetworkLimitMbit, min: 1, max: 100_000, fallback: 80),
+            Enabled = form.Enabled,
+            HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
+        };
+    }
+
+    private static string BuildBootstrapPolicyId(string customerId, string hostId)
+    {
+        var input = $"bootstrap-policy\n{customerId.Trim()}\n{hostId.Trim()}";
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = SHA256.HashData(bytes);
+        var hex = Convert.ToHexString(hash).ToLowerInvariant();
+        return "policy-bootstrap-" + hex[..40];
+    }
+
+    private static string NormalizePolicyKind(string? policyKind, string fallback)
+    {
+        if (string.Equals(policyKind, "bootstrap", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bootstrap";
+        }
+
+        if (string.Equals(policyKind, "operational", StringComparison.OrdinalIgnoreCase))
+        {
+            return "operational";
+        }
+
+        return fallback;
+    }
+
+    private static PolicyChangeEvent BuildPolicyChangeEvent(string policyId, string eventType, string message)
+    {
+        return new PolicyChangeEvent
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            PolicyId = policyId,
+            EventType = eventType,
+            Message = message,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+    }
+
+    private static string BuildPolicyUpdateMessage(string previousKind, string newKind, bool previousEnabled, bool newEnabled)
+    {
+        if (!string.Equals(previousKind, newKind, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Politica alterada de {previousKind} para {newKind}.";
+        }
+
+        if (previousEnabled != newEnabled)
+        {
+            return newEnabled ? "Politica reativada." : "Politica desativada.";
+        }
+
+        return "Parametros operacionais da politica foram atualizados.";
+    }
+
+    private static (string Label, string CssClass, string Message, bool PolicyExists, bool IsAssigned, string? PolicyId) DescribeBootstrapState(
+        string customerId,
+        string hostId,
+        string? bootstrapIncludePathsCsv,
+        string? assignedPolicyId,
+        IReadOnlyDictionary<string, BackupPolicy> policies)
+    {
+        var hasBootstrapPaths = !string.IsNullOrWhiteSpace(NormalizePathCsv(bootstrapIncludePathsCsv));
+        if (!hasBootstrapPaths)
+        {
+            return ("Sem bootstrap", "offline", "O Agent ainda nao reportou paths iniciais para este host.", false, false, null);
+        }
+
+        var bootstrapPolicyId = BuildBootstrapPolicyId(customerId, hostId);
+        var bootstrapPolicyExists = policies.ContainsKey(bootstrapPolicyId);
+        var bootstrapAssigned = string.Equals(assignedPolicyId, bootstrapPolicyId, StringComparison.OrdinalIgnoreCase);
+        var hasAnyAssignedPolicy = !string.IsNullOrWhiteSpace(assignedPolicyId);
+
+        if (bootstrapAssigned)
+        {
+            return ("Promovido", "ready", "A politica bootstrap ja foi aprovada e esta vinculada ao host.", true, true, bootstrapPolicyId);
+        }
+
+        if (hasAnyAssignedPolicy)
+        {
+            return (
+                "Customizado",
+                "ready",
+                bootstrapPolicyExists
+                    ? "O host ja usa uma politica diferente da bootstrap inicial."
+                    : "O host ja usa uma politica operacional; o bootstrap inicial nao precisa mais ser promovido.",
+                bootstrapPolicyExists,
+                false,
+                bootstrapPolicyId);
+        }
+
+        if (bootstrapPolicyExists)
+        {
+            return ("Aguardando vinculo", "warning", "A politica bootstrap ja existe no painel e aguarda vinculacao ao host.", true, false, bootstrapPolicyId);
+        }
+
+        return ("Pendente aprovacao", "warning", "O host reportou paths bootstrap e aguarda aprovacao da politica inicial.", false, false, bootstrapPolicyId);
+    }
+
+    private static string? NormalizePathCsv(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+        {
+            return null;
+        }
+
+        var values = csv
+            .Split(new[] { ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return values.Length == 0 ? null : string.Join(";", values);
+    }
+
+    private static string NormalizeUpperTokenCsv(string? csv, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+        {
+            return fallback;
+        }
+
+        var values = csv
+            .Split(new[] { ',', ';', ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim().ToUpperInvariant())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return values.Length == 0 ? fallback : string.Join(",", values);
+    }
+
+    private static string NormalizeScheduleTime(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        var parts = value.Trim().Split(':');
+        if (parts.Length != 2 ||
+            !int.TryParse(parts[0], out var hour) ||
+            !int.TryParse(parts[1], out var minute))
+        {
+            return fallback;
+        }
+
+        hour = Math.Clamp(hour, 0, 23);
+        minute = Math.Clamp(minute, 0, 59);
+        return $"{hour:00}:{minute:00}";
+    }
+
+    private static int ClampPositive(int value, int fallback) => value > 0 ? value : fallback;
+
+    private static int ClampRange(int value, int min, int max, int fallback)
+    {
+        if (value < min || value > max)
+        {
+            return fallback;
+        }
+
+        return value;
     }
 
     private IActionResult RedirectToLocalOrDefault(string? returnUrl, string defaultPath)

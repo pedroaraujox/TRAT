@@ -11,7 +11,9 @@ internal sealed class RemoteEffectivePolicyResponse
     public string ResolutionSource { get; set; } = string.Empty;
     public string? PolicyId { get; set; }
     public string? PolicyName { get; set; }
+    public string? PolicyKind { get; set; }
     public string? PolicyScopeType { get; set; }
+    public DateTimeOffset? PolicyLastChangedAtUtc { get; set; }
     public string[] IncludePaths { get; set; } = Array.Empty<string>();
     public string[] ExcludePaths { get; set; } = Array.Empty<string>();
     public string[] ScheduleDaysOfWeek { get; set; } = Array.Empty<string>();
@@ -25,6 +27,9 @@ internal sealed class EffectiveRuntimePolicy
 {
     public required string Source { get; init; }
     public string? PolicyId { get; init; }
+    public string? PolicyName { get; init; }
+    public string? PolicyKind { get; init; }
+    public DateTimeOffset? PolicyLastChangedAtUtc { get; init; }
     public string[] IncludePaths { get; init; } = Array.Empty<string>();
     public string[] ExcludePaths { get; init; } = Array.Empty<string>();
     public string[] ScheduleDaysOfWeek { get; init; } = Array.Empty<string>();
@@ -39,6 +44,9 @@ internal sealed class EffectiveRuntimePolicy
         {
             Source = "local_fallback",
             PolicyId = null,
+            PolicyName = null,
+            PolicyKind = "local_fallback",
+            PolicyLastChangedAtUtc = null,
             IncludePaths = NormalizePaths(settings.IncludePaths),
             ExcludePaths = NormalizePaths(settings.ExcludePaths),
             ScheduleDaysOfWeek = NormalizeTokens(rules.Defaults.Schedule.DaysOfWeek),
@@ -59,6 +67,9 @@ internal sealed class EffectiveRuntimePolicy
         {
             Source = string.IsNullOrWhiteSpace(remote.ResolutionSource) ? "remote_effective_policy" : remote.ResolutionSource.Trim(),
             PolicyId = normalizedPolicyId,
+            PolicyName = string.IsNullOrWhiteSpace(remote.PolicyName) ? null : remote.PolicyName!.Trim(),
+            PolicyKind = NormalizePolicyKind(remote.PolicyKind),
+            PolicyLastChangedAtUtc = remote.PolicyLastChangedAtUtc,
             IncludePaths = normalizedIncludePaths.Length > 0 ? normalizedIncludePaths : local.IncludePaths,
             ExcludePaths = NormalizePaths(remote.ExcludePaths),
             ScheduleDaysOfWeek = normalizedScheduleDays.Length > 0 ? normalizedScheduleDays : local.ScheduleDaysOfWeek,
@@ -121,5 +132,38 @@ internal sealed class EffectiveRuntimePolicy
     private static int NormalizePositive(int value, int fallback)
     {
         return value > 0 ? value : fallback;
+    }
+
+    private static string NormalizePolicyKind(string? value)
+    {
+        if (string.Equals(value, "bootstrap", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bootstrap";
+        }
+
+        if (string.Equals(value, "operational", StringComparison.OrdinalIgnoreCase))
+        {
+            return "operational";
+        }
+
+        return "operational";
+    }
+
+    public string BuildFingerprint()
+    {
+        var changedAt = PolicyLastChangedAtUtc?.ToUniversalTime().ToString("O") ?? "-";
+        return string.Join("|",
+            Source ?? string.Empty,
+            PolicyId ?? string.Empty,
+            PolicyName ?? string.Empty,
+            PolicyKind ?? string.Empty,
+            changedAt,
+            string.Join(";", IncludePaths ?? Array.Empty<string>()),
+            string.Join(";", ExcludePaths ?? Array.Empty<string>()),
+            string.Join(",", ScheduleDaysOfWeek ?? Array.Empty<string>()),
+            ScheduleStartTimeLocal ?? string.Empty,
+            MaxRuntimeMinutes.ToString(),
+            CpuLimitPercent.ToString(),
+            NetworkLimitMbit.ToString());
     }
 }

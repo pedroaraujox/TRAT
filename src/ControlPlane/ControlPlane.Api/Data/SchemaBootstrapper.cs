@@ -9,6 +9,14 @@ public static class SchemaBootstrapper
         await TryAddColumnAsync(db, tableName: "Customers", columnName: "AgentEnrollmentTokenHash", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapIncludePathsCsv", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapExcludePathsCsv", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "PolicyKind", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "OriginHostId", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "LastChangedAtUtc", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyId", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyName", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyKind", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicySource", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyLastChangedAtUtc", columnTypeSql: "TEXT");
 
         await db.Database.ExecuteSqlRawAsync(
             """
@@ -16,8 +24,10 @@ public static class SchemaBootstrapper
                 "Id" TEXT NOT NULL CONSTRAINT "PK_BackupPolicies" PRIMARY KEY,
                 "CustomerId" TEXT NOT NULL,
                 "Name" TEXT NOT NULL,
+                "PolicyKind" TEXT NOT NULL DEFAULT 'operational',
                 "ScopeType" TEXT NOT NULL,
                 "HostId" TEXT NULL,
+                "OriginHostId" TEXT NULL,
                 "IncludePathsCsv" TEXT NOT NULL,
                 "ExcludePathsCsv" TEXT NULL,
                 "ScheduleDaysCsv" TEXT NOT NULL,
@@ -26,6 +36,18 @@ public static class SchemaBootstrapper
                 "CpuLimitPercent" INTEGER NOT NULL,
                 "NetworkLimitMbit" INTEGER NOT NULL,
                 "Enabled" INTEGER NOT NULL,
+                "LastChangedAtUtc" TEXT NULL,
+                "CreatedAtUtc" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "PolicyChangeEvents" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PolicyChangeEvents" PRIMARY KEY,
+                "PolicyId" TEXT NOT NULL,
+                "EventType" TEXT NOT NULL,
+                "Message" TEXT NOT NULL,
                 "CreatedAtUtc" TEXT NOT NULL
             );
             """);
@@ -37,6 +59,11 @@ public static class SchemaBootstrapper
                 "CustomerId" TEXT NOT NULL,
                 "HostId" TEXT NOT NULL,
                 "PolicyId" TEXT NULL,
+                "EffectivePolicyId" TEXT NULL,
+                "EffectivePolicyName" TEXT NULL,
+                "EffectivePolicyKind" TEXT NULL,
+                "EffectivePolicySource" TEXT NULL,
+                "EffectivePolicyLastChangedAtUtc" TEXT NULL,
                 "AgentVersion" TEXT NOT NULL,
                 "ServiceStatus" TEXT NOT NULL,
                 "TlsMode" TEXT NOT NULL,
@@ -63,6 +90,19 @@ public static class SchemaBootstrapper
             """
             CREATE INDEX IF NOT EXISTS "IX_AgentConfigurations_CustomerId_HostId"
             ON "AgentConfigurations" ("CustomerId", "HostId");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_PolicyChangeEvents_PolicyId_CreatedAtUtc"
+            ON "PolicyChangeEvents" ("PolicyId", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE "BackupPolicies"
+            SET "PolicyKind" = COALESCE(NULLIF(TRIM("PolicyKind"), ''), 'operational')
+            WHERE "PolicyKind" IS NULL OR TRIM("PolicyKind") = '';
             """);
     }
 

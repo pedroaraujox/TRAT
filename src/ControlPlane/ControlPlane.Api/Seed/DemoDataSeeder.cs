@@ -125,8 +125,10 @@ public static class DemoDataSeeder
                     Id = "policy-demo-default",
                     CustomerId = "cliente-demo",
                     Name = "Politica Noturna Padrao",
+                    PolicyKind = "operational",
                     ScopeType = "customer",
                     HostId = null,
+                    OriginHostId = null,
                     IncludePathsCsv = @"D:\Dados;C:\Webstation",
                     ExcludePathsCsv = @"D:\Dados\Temp",
                     ScheduleDaysCsv = "TUE,FRI",
@@ -135,6 +137,7 @@ public static class DemoDataSeeder
                     CpuLimitPercent = 35,
                     NetworkLimitMbit = 80,
                     Enabled = true,
+                    LastChangedAtUtc = DateTimeOffset.UtcNow.AddDays(-8),
                     CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-8)
                 },
                 new BackupPolicy
@@ -142,8 +145,10 @@ public static class DemoDataSeeder
                     Id = "policy-demo-erp",
                     CustomerId = "cliente-demo",
                     Name = "ERP Critico",
+                    PolicyKind = "operational",
                     ScopeType = "host",
                     HostId = "host-demo-02",
+                    OriginHostId = null,
                     IncludePathsCsv = @"D:\ERP\Backup;D:\ERP\Exports",
                     ExcludePathsCsv = @"D:\ERP\Temp",
                     ScheduleDaysCsv = "MON,TUE,WED,THU,FRI",
@@ -152,6 +157,7 @@ public static class DemoDataSeeder
                     CpuLimitPercent = 25,
                     NetworkLimitMbit = 60,
                     Enabled = true,
+                    LastChangedAtUtc = DateTimeOffset.UtcNow.AddDays(-7),
                     CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-7)
                 });
         }

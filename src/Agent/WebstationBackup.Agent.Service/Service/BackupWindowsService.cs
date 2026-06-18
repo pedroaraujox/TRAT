@@ -330,6 +330,11 @@ internal static class AgentWorker
         {
             customerId = settings.CustomerId,
             hostId = settings.HostId,
+            effectivePolicyId = effectivePolicy.PolicyId,
+            effectivePolicyName = effectivePolicy.PolicyName,
+            effectivePolicyKind = effectivePolicy.PolicyKind,
+            effectivePolicySource = effectivePolicy.Source,
+            effectivePolicyLastChangedAtUtc = effectivePolicy.PolicyLastChangedAtUtc,
             agentVersion,
             serviceStatus,
             tlsMode,
@@ -363,22 +368,27 @@ internal static class AgentWorker
     {
         var localPolicy = EffectiveRuntimePolicy.FromLocal(runtime.Rules, runtime.Settings);
         var remotePolicy = await runtime.ControlPlane.TryGetEffectivePolicyAsync(runtime.Settings.CustomerId, runtime.Settings.HostId, ct);
-        if (remotePolicy is null || !remotePolicy.Resolved)
+        var effectivePolicy = remotePolicy is null || !remotePolicy.Resolved
+            ? localPolicy
+            : EffectiveRuntimePolicy.FromRemote(runtime.Rules, runtime.Settings, remotePolicy);
+
+        var state = runtime.StateStore.Load();
+        var fingerprint = effectivePolicy.BuildFingerprint();
+        if (!string.Equals(state.LastEffectivePolicyFingerprint, fingerprint, StringComparison.Ordinal))
         {
-            runtime.Logger.Info("Usando politica local/fallback", new Dictionary<string, object?>
+            runtime.Logger.Info("Politica efetiva alterada", new Dictionary<string, object?>
             {
-                ["source"] = localPolicy.Source,
-                ["policyId"] = null
+                ["source"] = effectivePolicy.Source,
+                ["policyId"] = effectivePolicy.PolicyId,
+                ["policyName"] = effectivePolicy.PolicyName,
+                ["policyKind"] = effectivePolicy.PolicyKind,
+                ["policyLastChangedAtUtc"] = effectivePolicy.PolicyLastChangedAtUtc
             });
-            return localPolicy;
+            state.LastEffectivePolicyFingerprint = fingerprint;
+            state.LastEffectivePolicyObservedAtUtc = DateTimeOffset.UtcNow;
+            runtime.StateStore.Save(state);
         }
 
-        var effectivePolicy = EffectiveRuntimePolicy.FromRemote(runtime.Rules, runtime.Settings, remotePolicy);
-        runtime.Logger.Info("Politica remota efetiva carregada", new Dictionary<string, object?>
-        {
-            ["source"] = effectivePolicy.Source,
-            ["policyId"] = effectivePolicy.PolicyId
-        });
         return effectivePolicy;
     }
 

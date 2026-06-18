@@ -32,6 +32,13 @@
             <input id="Name" name="Name" value="@Model.Name" required />
         </div>
         <div class="form-field">
+            <label for="PolicyKind">Tipo</label>
+            <select id="PolicyKind" name="PolicyKind">
+                <option value="operational" selected="@(Model.PolicyKind == "operational")">Operacional</option>
+                <option value="bootstrap" selected="@(Model.PolicyKind == "bootstrap")">Bootstrap</option>
+            </select>
+        </div>
+        <div class="form-field">
             <label for="ScopeType">Escopo</label>
             <select id="ScopeType" name="ScopeType">
                 <option value="customer" selected="@(Model.ScopeType == "customer")">Cliente</option>
@@ -41,6 +48,10 @@
         <div class="form-field">
             <label for="HostId">HostId</label>
             <input id="HostId" name="HostId" value="@Model.HostId" placeholder="Obrigatorio para escopo host" />
+        </div>
+        <div class="form-field">
+            <label for="OriginHostId">Origem bootstrap</label>
+            <input id="OriginHostId" name="OriginHostId" value="@Model.OriginHostId" placeholder="Preencha so se a politica veio do onboarding" />
         </div>
         <div class="form-field">
             <label for="StartTimeLocal">Horario inicial</label>
@@ -77,9 +88,52 @@
                 <option value="false" selected="@(!Model.Enabled)">Desativada</option>
             </select>
         </div>
+        @if (Model.IsEditMode)
+        {
+            <div class="form-field full-width">
+                <span class="form-help">Ultima mudanca registrada: @(Model.LastChangedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</span>
+            </div>
+        }
         <div class="form-actions">
             <a class="button secondary" href="/admin/policies">Cancelar</a>
             <button class="button primary" type="submit">Salvar politica</button>
         </div>
     </form>
 </section>
+
+@if (Model.IsEditMode)
+{
+    <section class="panel narrow-panel">
+        <div class="panel-header">
+            <h2>Historico Recente</h2>
+        </div>
+        @if (Model.RecentEvents.Count == 0)
+        {
+            <p>Nenhum evento registrado para esta politica.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Quando</th>
+                            <th>Evento</th>
+                            <th>Mensagem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.RecentEvents)
+                        {
+                            <tr>
+                                <td>@item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                <td>@item.EventType</td>
+                                <td>@item.Message</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}

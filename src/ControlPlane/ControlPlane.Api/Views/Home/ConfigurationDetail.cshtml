@@ -33,8 +33,16 @@
         <strong class="small-stat">@(Model.Configuration.PolicyName ?? "-")</strong>
     </div>
     <div class="stat-card">
+        <span>Efetiva</span>
+        <strong class="small-stat">@(Model.Configuration.EffectivePolicyName ?? Model.Configuration.EffectivePolicyId ?? "-")</strong>
+    </div>
+    <div class="stat-card">
         <span>Upload</span>
         <strong class="small-stat">@Model.Configuration.UploadMode</strong>
+    </div>
+    <div class="stat-card">
+        <span>Bootstrap</span>
+        <strong class="small-stat"><span class="badge @Model.Configuration.BootstrapStatusCssClass">@Model.Configuration.BootstrapStatusLabel</span></strong>
     </div>
 </section>
 
@@ -64,6 +72,9 @@
             <div class="wide"><span>Ultimo precheck</span><strong>@(Model.Configuration.LastPrecheckAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-") - @(Model.Configuration.LastPrecheckMessage ?? "-")</strong></div>
             <div class="wide"><span>Staging</span><strong>@Model.Configuration.StagingPath</strong></div>
             <div class="wide"><span>Credential Target</span><strong>@Model.Configuration.CredentialTargetName</strong></div>
+            <div><span>Fonte efetiva</span><strong>@(Model.Configuration.EffectivePolicySource ?? "-")</strong></div>
+            <div><span>Tipo efetivo</span><strong>@(Model.Configuration.EffectivePolicyKind ?? "-")</strong></div>
+            <div class="wide"><span>Ultima mudanca da politica</span><strong>@(Model.Configuration.EffectivePolicyLastChangedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
         </div>
     </div>
 
@@ -96,6 +107,90 @@
                 <button class="button primary" type="submit">Salvar vinculacao</button>
             </div>
         </form>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Bootstrap do Host</h2>
+        </div>
+        <div class="definition-grid">
+            <div><span>Status</span><strong><span class="badge @Model.Configuration.BootstrapStatusCssClass">@Model.Configuration.BootstrapStatusLabel</span></strong></div>
+            <div class="wide"><span>Diagnostico</span><strong>@Model.Configuration.BootstrapStatusMessage</strong></div>
+            <div class="wide"><span>IncludePaths reportado</span><strong>@(Model.Configuration.BootstrapIncludePathsCsv ?? "-")</strong></div>
+            <div class="wide"><span>ExcludePaths reportado</span><strong>@(Model.Configuration.BootstrapExcludePathsCsv ?? "-")</strong></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Politica Inicial do Bootstrap</h2>
+        </div>
+        @if (!Model.BootstrapPolicyDraft.HasBootstrapPaths)
+        {
+            <div class="error-banner">O Agent ainda nao reportou IncludePaths bootstrap para este host.</div>
+        }
+        else
+        {
+            <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.Configuration.Id)/bootstrap-policy" class="form-grid compact-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                <input type="hidden" name="SuggestedPolicyId" value="@Model.BootstrapPolicyDraft.SuggestedPolicyId" />
+                <input type="hidden" name="CustomerId" value="@Model.BootstrapPolicyDraft.CustomerId" />
+                <input type="hidden" name="HostId" value="@Model.BootstrapPolicyDraft.HostId" />
+                <input type="hidden" name="ScopeType" value="@Model.BootstrapPolicyDraft.ScopeType" />
+                <input type="hidden" name="Enabled" value="@Model.BootstrapPolicyDraft.Enabled" />
+
+                <div class="form-field full-width">
+                    <label for="Name">Nome da politica</label>
+                    <input id="Name" name="Name" value="@Model.BootstrapPolicyDraft.Name" />
+                </div>
+                <div class="form-field full-width">
+                    <label for="IncludePathsCsv">IncludePaths</label>
+                    <textarea id="IncludePathsCsv" name="IncludePathsCsv" rows="4">@Model.BootstrapPolicyDraft.IncludePathsCsv</textarea>
+                </div>
+                <div class="form-field full-width">
+                    <label for="ExcludePathsCsv">ExcludePaths</label>
+                    <textarea id="ExcludePathsCsv" name="ExcludePathsCsv" rows="3">@Model.BootstrapPolicyDraft.ExcludePathsCsv</textarea>
+                </div>
+                <div class="form-field">
+                    <label for="ScheduleDaysCsv">Dias</label>
+                    <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.BootstrapPolicyDraft.ScheduleDaysCsv" />
+                </div>
+                <div class="form-field">
+                    <label for="StartTimeLocal">Horario</label>
+                    <input id="StartTimeLocal" name="StartTimeLocal" value="@Model.BootstrapPolicyDraft.StartTimeLocal" />
+                </div>
+                <div class="form-field">
+                    <label for="MaxRuntimeMinutes">Max runtime (min)</label>
+                    <input id="MaxRuntimeMinutes" name="MaxRuntimeMinutes" type="number" min="1" value="@Model.BootstrapPolicyDraft.MaxRuntimeMinutes" />
+                </div>
+                <div class="form-field">
+                    <label for="CpuLimitPercent">CPU max (%)</label>
+                    <input id="CpuLimitPercent" name="CpuLimitPercent" type="number" min="1" max="100" value="@Model.BootstrapPolicyDraft.CpuLimitPercent" />
+                </div>
+                <div class="form-field">
+                    <label for="NetworkLimitMbit">Rede max (Mbit)</label>
+                    <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" min="1" value="@Model.BootstrapPolicyDraft.NetworkLimitMbit" />
+                </div>
+                <div class="form-field full-width">
+                    <span class="form-help">A acao cria ou atualiza a politica inicial derivada do bootstrap do host.</span>
+                    <span class="form-help">Se o host estiver pronto, o painel vincula automaticamente essa politica a configuracao.</span>
+                    @if (Model.Configuration.IsBootstrapPolicyAssigned)
+                    {
+                        <span class="form-help">A politica bootstrap ja esta vinculada ao host; este formulario passa a funcionar como atualizacao controlada.</span>
+                    }
+                    else if (Model.Configuration.BootstrapPolicyExists)
+                    {
+                        <span class="form-help">A politica bootstrap ja existe no painel e esta aguardando vinculacao ou revisao.</span>
+                    }
+                </div>
+                <div class="form-actions">
+                    <button class="button primary" type="submit">@BootstrapSubmitLabel(Model.Configuration)</button>
+                </div>
+            </form>
+        }
     </div>
 </section>
 
@@ -138,6 +233,21 @@
 </section>
 
 @functions {
+    private static string BootstrapSubmitLabel(AgentConfigurationListItemViewModel configuration)
+    {
+        if (configuration.IsBootstrapPolicyAssigned)
+        {
+            return "Atualizar politica bootstrap";
+        }
+
+        if (configuration.BootstrapPolicyExists)
+        {
+            return "Atualizar bootstrap e tentar vincular";
+        }
+
+        return "Criar politica inicial";
+    }
+
     private static string FormatBytes(long value)
     {
         string[] suffixes = ["B", "KB", "MB", "GB", "TB"];

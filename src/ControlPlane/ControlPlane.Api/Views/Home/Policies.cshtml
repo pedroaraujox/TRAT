@@ -26,12 +26,14 @@
             <thead>
                 <tr>
                     <th>Politica</th>
+                    <th>Tipo</th>
                     <th>Cliente</th>
                     <th>Escopo</th>
                     <th>Paths</th>
                     <th>Agenda</th>
                     <th>Limites</th>
                     <th>Status</th>
+                    <th>Ultima mudanca</th>
                     <th></th>
                 </tr>
             </thead>
@@ -39,7 +41,7 @@
                 @if (Model.Policies.Count == 0)
                 {
                     <tr>
-                        <td colspan="8">Nenhuma politica encontrada.</td>
+                        <td colspan="10">Nenhuma politica encontrada.</td>
                     </tr>
                 }
                 else
@@ -48,6 +50,12 @@
                     {
                         <tr>
                             <td>@policy.Name</td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @(policy.PolicyKind == "bootstrap" ? "warning" : "ready")">@(policy.PolicyKind == "bootstrap" ? "Bootstrap" : "Operacional")</span>
+                                    <div class="status-detail">@BootstrapOrigin(policy)</div>
+                                </div>
+                            </td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(policy.CustomerId)">@(policy.CustomerName ?? policy.CustomerId)</a></td>
                             <td>@(policy.ScopeType == "host" ? $"Host: {policy.Hostname ?? policy.HostId}" : "Cliente")</td>
                             <td>
@@ -57,6 +65,7 @@
                             <td>@policy.ScheduleDaysCsv @policy.StartTimeLocal</td>
                             <td>CPU @policy.CpuLimitPercent% / Rede @policy.NetworkLimitMbit Mbps / Janela @policy.MaxRuntimeMinutes min</td>
                             <td><span class="badge @(policy.Enabled ? "succeeded" : "offline")">@(policy.Enabled ? "Ativa" : "Desativada")</span></td>
+                            <td>@(policy.LastChangedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? policy.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))</td>
                             <td><a href="/admin/policies/@Uri.EscapeDataString(policy.Id)/edit">Editar</a></td>
                         </tr>
                     }
@@ -65,3 +74,17 @@
         </table>
     </div>
 </section>
+
+@functions {
+    private static string BootstrapOrigin(PolicyListItemViewModel policy)
+    {
+        if (policy.PolicyKind != "bootstrap")
+        {
+            return "Gerenciada pelo painel";
+        }
+
+        return string.IsNullOrWhiteSpace(policy.OriginHostId)
+            ? "Derivada do onboarding do host"
+            : $"Origem: {policy.OriginHostId}";
+    }
+}

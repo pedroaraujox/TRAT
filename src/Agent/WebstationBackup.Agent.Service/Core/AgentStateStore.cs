@@ -11,6 +11,8 @@ internal sealed class AgentState
     public string? LastJobId { get; set; }
     public string? LastFinalState { get; set; }
     public DateTimeOffset? LastConfigReportAtUtc { get; set; }
+    public string? LastEffectivePolicyFingerprint { get; set; }
+    public DateTimeOffset? LastEffectivePolicyObservedAtUtc { get; set; }
 }
 
 internal sealed class AgentStateStore

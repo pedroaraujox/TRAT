@@ -142,11 +142,17 @@ public sealed class BackupPolicy
     [MaxLength(128)]
     public required string Name { get; set; }
 
+    [MaxLength(32)]
+    public required string PolicyKind { get; set; }
+
     [MaxLength(16)]
     public required string ScopeType { get; set; }
 
     [MaxLength(64)]
     public string? HostId { get; set; }
+
+    [MaxLength(64)]
+    public string? OriginHostId { get; set; }
 
     [MaxLength(2000)]
     public required string IncludePathsCsv { get; set; }
@@ -168,6 +174,26 @@ public sealed class BackupPolicy
 
     public bool Enabled { get; set; }
 
+    public DateTimeOffset? LastChangedAtUtc { get; set; }
+
+    public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class PolicyChangeEvent
+{
+    [Key]
+    [MaxLength(64)]
+    public required string Id { get; init; }
+
+    [MaxLength(64)]
+    public required string PolicyId { get; init; }
+
+    [MaxLength(32)]
+    public required string EventType { get; init; }
+
+    [MaxLength(2000)]
+    public required string Message { get; init; }
+
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
@@ -185,6 +211,20 @@ public sealed class AgentConfiguration
 
     [MaxLength(64)]
     public string? PolicyId { get; set; }
+
+    [MaxLength(64)]
+    public string? EffectivePolicyId { get; set; }
+
+    [MaxLength(128)]
+    public string? EffectivePolicyName { get; set; }
+
+    [MaxLength(32)]
+    public string? EffectivePolicyKind { get; set; }
+
+    [MaxLength(64)]
+    public string? EffectivePolicySource { get; set; }
+
+    public DateTimeOffset? EffectivePolicyLastChangedAtUtc { get; set; }
 
     [MaxLength(64)]
     public required string AgentVersion { get; set; }
