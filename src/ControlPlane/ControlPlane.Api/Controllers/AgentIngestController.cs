@@ -3,6 +3,7 @@ using ControlPlane.Api.Domain;
 using ControlPlane.Api.Dtos;
 using ControlPlane.Api.Email;
 using ControlPlane.Api.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -59,19 +60,37 @@ public sealed class AgentIngestController(
             return Unauthorized();
         }
 
-        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == customerId && h.Id == normalizedHostId, ct);
+        var effectiveHostId = normalizedHostId;
+        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == customerId && h.Id == effectiveHostId, ct);
         if (host is null)
         {
-            host = new ControlPlane.Api.Domain.Host
+            var collidesWithAnotherCustomer = await db.Hosts.AsNoTracking().AnyAsync(
+                h => h.Id == normalizedHostId && h.CustomerId != customerId,
+                ct);
+            if (collidesWithAnotherCustomer)
             {
-                Id = normalizedHostId,
-                CustomerId = customerId,
-                Hostname = request.Hostname.Trim(),
-                OsVersion = request.OsVersion.Trim(),
-                FirstSeenAtUtc = DateTimeOffset.UtcNow,
-                LastHeartbeatAtUtc = null
-            };
-            db.Hosts.Add(host);
+                effectiveHostId = BuildScopedHostId(customerId, normalizedHostId);
+                logger.LogWarning(
+                    "Enroll detectou colisao global de HostId. customer={CustomerId} requestedHostId={RequestedHostId} scopedHostId={ScopedHostId}",
+                    customerId,
+                    normalizedHostId,
+                    effectiveHostId);
+            }
+
+            host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == customerId && h.Id == effectiveHostId, ct);
+            if (host is null)
+            {
+                host = new ControlPlane.Api.Domain.Host
+                {
+                    Id = effectiveHostId,
+                    CustomerId = customerId,
+                    Hostname = request.Hostname.Trim(),
+                    OsVersion = request.OsVersion.Trim(),
+                    FirstSeenAtUtc = DateTimeOffset.UtcNow,
+                    LastHeartbeatAtUtc = null
+                };
+                db.Hosts.Add(host);
+            }
         }
         else
         {
@@ -79,8 +98,25 @@ public sealed class AgentIngestController(
             host.OsVersion = request.OsVersion.Trim();
         }
 
-        await db.SaveChangesAsync(ct);
-        return Ok(new AgentEnrollResponse(customerId, normalizedHostId, customer.AwsAccountId));
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogError(
+                ex,
+                "Enroll falhou ao persistir host. customer={CustomerId} requestedHostId={RequestedHostId} effectiveHostId={EffectiveHostId}",
+                customerId,
+                normalizedHostId,
+                effectiveHostId);
+
+            return Problem(
+                detail: "Falha ao registrar o host no ControlPlane.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        return Ok(new AgentEnrollResponse(customerId, effectiveHostId, customer.AwsAccountId));
     }
 
     [HttpPost("bootstrap/paths")]
@@ -161,15 +197,30 @@ public sealed class AgentIngestController(
             return Forbid();
         }
 
-        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == request.CustomerId && h.Id == request.HostId, ct);
+        var normalizedCustomerId = request.CustomerId.Trim();
+        var normalizedHostId = request.HostId.Trim();
+
+        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == normalizedCustomerId && h.Id == normalizedHostId, ct);
         if (host is null)
         {
+            var collidesWithAnotherCustomer = await db.Hosts.AsNoTracking().AnyAsync(
+                h => h.Id == normalizedHostId && h.CustomerId != normalizedCustomerId,
+                ct);
+            if (collidesWithAnotherCustomer)
+            {
+                logger.LogWarning(
+                    "Heartbeat rejeitado por colisao global de HostId. customer={CustomerId} host={HostId}",
+                    normalizedCustomerId,
+                    normalizedHostId);
+                return Conflict("HostId já existe para outro cliente. Reinstale/re-enrole o Agent para obter um HostId escopado por cliente.");
+            }
+
             host = new ControlPlane.Api.Domain.Host
             {
-                Id = request.HostId,
-                CustomerId = request.CustomerId,
-                Hostname = request.Hostname,
-                OsVersion = request.OsVersion,
+                Id = normalizedHostId,
+                CustomerId = normalizedCustomerId,
+                Hostname = request.Hostname.Trim(),
+                OsVersion = request.OsVersion.Trim(),
                 FirstSeenAtUtc = DateTimeOffset.UtcNow,
                 LastHeartbeatAtUtc = request.TimestampUtc
             };
@@ -181,7 +232,7 @@ public sealed class AgentIngestController(
         }
 
         await db.SaveChangesAsync(ct);
-        logger.LogInformation("Heartbeat recebido: customer={CustomerId} host={HostId} os={OsVersion}", request.CustomerId, request.HostId, request.OsVersion);
+        logger.LogInformation("Heartbeat recebido: customer={CustomerId} host={HostId} os={OsVersion}", normalizedCustomerId, normalizedHostId, request.OsVersion);
         return Ok();
     }
 
@@ -510,5 +561,32 @@ public sealed class AgentIngestController(
 
         var trimmed = value.Trim();
         return trimmed.Length <= maxLen ? trimmed : trimmed.Substring(0, maxLen);
+    }
+
+    private static string BuildScopedHostId(string customerId, string requestedHostId)
+    {
+        var c = customerId.Trim();
+        var h = requestedHostId.Trim();
+
+        var suffix = ShortStableSuffix(c);
+        const string separator = "--";
+        var reserved = separator.Length + suffix.Length;
+
+        var maxHostPartLen = 64 - reserved;
+        if (maxHostPartLen <= 0)
+        {
+            throw new InvalidOperationException("HostId escopado inválido por restrição de tamanho.");
+        }
+
+        var hostPart = h.Length <= maxHostPartLen ? h : h.Substring(0, maxHostPartLen);
+        return hostPart + separator + suffix;
+    }
+
+    private static string ShortStableSuffix(string input)
+    {
+        var bytes = Encoding.UTF8.GetBytes(input);
+        var hash = SHA256.HashData(bytes);
+        var hex = Convert.ToHexString(hash).ToLowerInvariant();
+        return hex.Substring(0, 10);
     }
 }
