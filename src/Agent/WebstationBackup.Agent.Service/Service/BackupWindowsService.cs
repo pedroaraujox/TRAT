@@ -21,9 +21,13 @@ internal sealed class BackupWindowsService : ServiceBase
     private readonly CancellationTokenSource _cts = new();
     private Task? _mainLoop;
 
-    protected override void OnStart(string[] args)
+    public BackupWindowsService()
     {
         ServiceName = "WebstationBackupAgent";
+    }
+
+    protected override void OnStart(string[] args)
+    {
         _mainLoop = Task.Run(() => AgentWorker.RunLoopAsync(new AgentWorkerOptions(), _cts.Token));
     }
 
@@ -291,17 +295,32 @@ internal static class AgentWorker
         var diskOk = true;
 
         var credOk = true;
-        if (!dryRun)
+        string? awsCredentialSource = null;
+        string? awsAccountId = null;
+        string? bucketRegion = null;
+        if (dryRun && IsPlaceholderAwsConfiguration(settings))
         {
-            try
+            credOk = false;
+            precheckOk = false;
+            precheckMessages.Add("AWS precheck nao executado em dry-run sem configuracao real do host.");
+        }
+        else
+        {
+            var awsValidator = new AwsReadinessValidator();
+            var awsReadiness = await awsValidator.ValidateAsync(settings, logger, ct);
+            credOk = awsReadiness.CredentialOk;
+            awsCredentialSource = awsReadiness.CredentialSource;
+            awsAccountId = awsReadiness.AwsAccountId;
+            bucketRegion = awsReadiness.BucketRegion;
+
+            if (!credOk)
             {
-                _ = WindowsCredentialManager.ReadAwsKeysOrThrow(settings.AwsCredentialTargetName);
-            }
-            catch (Exception ex)
-            {
-                credOk = false;
                 precheckOk = false;
-                precheckMessages.Add("Falha ao ler credenciais AWS: " + ex.GetType().Name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(awsReadiness.Message))
+            {
+                precheckMessages.Add(awsReadiness.Message);
             }
         }
 
@@ -318,7 +337,7 @@ internal static class AgentWorker
             precheckDiskOk = diskOk,
             precheckCredentialOk = credOk,
             stagingPath,
-            credentialTargetName = settings.AwsCredentialTargetName,
+            credentialTargetName = string.IsNullOrWhiteSpace(settings.AwsCredentialTargetName) ? "N/A" : settings.AwsCredentialTargetName,
             uploadMode = dryRun ? "dry-run" : "direct-s3",
             timestampUtc = now,
             precheckAtUtc = now,
@@ -331,6 +350,9 @@ internal static class AgentWorker
             ["tlsOk"] = tlsOk,
             ["diskOk"] = diskOk,
             ["credOk"] = credOk,
+            ["awsCredentialSource"] = awsCredentialSource,
+            ["awsAccountId"] = awsAccountId,
+            ["bucketRegion"] = bucketRegion,
             ["stagingPath"] = stagingPath,
             ["policySource"] = effectivePolicy.Source,
             ["policyId"] = effectivePolicy.PolicyId
@@ -401,6 +423,28 @@ internal static class AgentWorker
 
         PrecheckOrThrow(rules, settings);
 
+        if (!dryRun && !IsAwsConfigured(settings))
+        {
+            logger.Warn("Job bloqueado: configuracao AWS incompleta no host.", new Dictionary<string, object?>
+            {
+                ["awsRegion"] = settings.AwsRegion,
+                ["bucket"] = settings.S3BucketName,
+                ["prefix"] = settings.S3KeyPrefix,
+                ["credentialTargetName"] = settings.AwsCredentialTargetName
+            });
+            return;
+        }
+
+        if (effectivePolicy.IncludePaths.Length == 0)
+        {
+            logger.Warn("Job bloqueado: nenhuma IncludePaths efetiva foi definida.", new Dictionary<string, object?>
+            {
+                ["policySource"] = effectivePolicy.Source,
+                ["policyId"] = effectivePolicy.PolicyId
+            });
+            return;
+        }
+
         var jobId = Guid.NewGuid().ToString("N");
         await controlPlane.StartJobAsync(new
         {
@@ -452,8 +496,13 @@ internal static class AgentWorker
         }
         else
         {
-            var keys = WindowsCredentialManager.ReadAwsKeysOrThrow(settings.AwsCredentialTargetName);
-            var uploader = new S3Uploader(settings.AwsRegion, settings.S3BucketName, settings.S3KeyPrefix, keys.AccessKeyId, keys.SecretAccessKey, logger);
+            var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(settings.AwsCredentialTargetName!);
+            logger.Info("Credenciais AWS resolvidas para upload", new Dictionary<string, object?>
+            {
+                ["credentialSource"] = resolvedCredentials.Source,
+                ["credentialReference"] = resolvedCredentials.Reference
+            });
+            var uploader = new S3Uploader(settings.AwsRegion!, settings.S3BucketName!, settings.S3KeyPrefix!, resolvedCredentials.Credentials, logger);
 
             foreach (var item in manifest.Items)
             {
@@ -520,5 +569,20 @@ internal static class AgentWorker
         state.LastJobId = jobId;
         state.LastFinalState = finalState;
         stateStore.Save(state);
+    }
+
+    private static bool IsPlaceholderAwsConfiguration(AgentSettings settings)
+    {
+        return string.Equals(settings.AwsRegion ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(settings.S3BucketName ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(settings.AwsCredentialTargetName ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAwsConfigured(AgentSettings settings)
+    {
+        return !string.IsNullOrWhiteSpace(settings.AwsRegion) &&
+               !string.IsNullOrWhiteSpace(settings.S3BucketName) &&
+               !string.IsNullOrWhiteSpace(settings.S3KeyPrefix) &&
+               !string.IsNullOrWhiteSpace(settings.AwsCredentialTargetName);
     }
 }

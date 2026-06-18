@@ -57,6 +57,7 @@ internal static class Program
                     HostId = loaded.HostId,
                     ControlPlaneBaseUrl = loaded.ControlPlaneBaseUrl,
                     AgentToken = loaded.AgentToken,
+                    AgentTokenCredentialTargetName = loaded.AgentTokenCredentialTargetName,
                     AwsRegion = loaded.AwsRegion,
                     S3BucketName = loaded.S3BucketName,
                     S3KeyPrefix = loaded.S3KeyPrefix,

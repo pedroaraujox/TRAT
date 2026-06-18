@@ -1,0 +1,18 @@
+{
+  "CustomerId": "CHANGE_ME_CUSTOMER_ID",
+  "HostId": "CHANGE_ME_HOST_ID",
+  "ControlPlaneBaseUrl": "http://CHANGE_ME_CONTROLPLANE_HOST:5080",
+  "AgentToken": "",
+  "AgentTokenDpapiProtected": "CHANGE_ME_TOKEN_DPAPI_BASE64",
+  "AgentTokenCredentialTargetName": "",
+  "AwsRegion": "us-east-1",
+  "S3BucketName": "change-me-bucket",
+  "S3KeyPrefix": "backups/change-me-host",
+  "AwsCredentialTargetName": "WebstationBackupAwsKeys",
+  "IncludePaths": [
+    "C:\\Data"
+  ],
+  "ExcludePaths": [
+    "C:\\Data\\Temp"
+  ]
+}

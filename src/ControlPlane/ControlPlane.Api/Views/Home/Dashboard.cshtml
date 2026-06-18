@@ -156,7 +156,7 @@
                                 <td>@host.Hostname</td>
                                 <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
                                 <td>@host.OsVersion</td>
-                                <td><span class="badge @host.HeartbeatStatus.ToLowerInvariant().Replace(" ", "-")">@host.HeartbeatStatus</span></td>
+                                <td><span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span></td>
                                 <td>@(host.ServiceStatus ?? "-")</td>
                                 <td>@(host.AssignedPolicyName ?? "-")</td>
                             </tr>

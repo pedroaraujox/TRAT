@@ -27,6 +27,10 @@
         <input type="text" name="customerId" value="@Model.CustomerId" placeholder="Filtrar por cliente" />
         <select name="status">
             <option value="">Todos os status</option>
+            <option value="Pronto" selected="@(Model.Status == "Pronto")">Pronto</option>
+            <option value="Pendente AWS" selected="@(Model.Status == "Pendente AWS")">Pendente AWS</option>
+            <option value="Atencao" selected="@(Model.Status == "Atencao")">Atencao</option>
+            <option value="Nao validado" selected="@(Model.Status == "Nao validado")">Nao validado</option>
             <option value="Online" selected="@(Model.Status == "Online")">Online</option>
             <option value="Atrasado" selected="@(Model.Status == "Atrasado")">Atrasado</option>
             <option value="Offline" selected="@(Model.Status == "Offline")">Offline</option>
@@ -42,7 +46,7 @@
                     <th>Cliente</th>
                     <th>SO</th>
                     <th>Ultimo Heartbeat</th>
-                    <th>Status</th>
+                    <th>Prontidao</th>
                     <th>Servico</th>
                     <th>Politica</th>
                     <th>Prechecks</th>
@@ -65,7 +69,13 @@
                             <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
                             <td>@host.OsVersion</td>
                             <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
-                            <td><span class="badge @host.HeartbeatStatus.ToLowerInvariant().Replace(" ", "-")">@host.HeartbeatStatus</span></td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span>
+                                    <div class="status-detail">Heartbeat: @host.HeartbeatStatus</div>
+                                    <div class="status-detail">@host.OperationalStatusMessage</div>
+                                </div>
+                            </td>
                             <td>@(host.ServiceStatus ?? "-")</td>
                             <td>@(host.AssignedPolicyName ?? "-")</td>
                             <td>@($"{BoolText(host.PrecheckTlsOk)} / {BoolText(host.PrecheckDiskOk)} / {BoolText(host.PrecheckCredentialOk)}")</td>

@@ -62,6 +62,7 @@ internal sealed class JsonFileLogger : ILogger
 
         lock (_sync)
         {
+            Directory.CreateDirectory(_directoryPath);
             RotateIfNeeded();
             File.AppendAllText(_filePath, line, Encoding.UTF8);
         }
@@ -103,4 +104,3 @@ internal sealed class JsonFileLogger : ILogger
         File.Move(_filePath, first);
     }
 }
-

@@ -42,6 +42,10 @@ public sealed class HostRowViewModel
     public bool? PrecheckTlsOk { get; init; }
     public bool? PrecheckDiskOk { get; init; }
     public bool? PrecheckCredentialOk { get; init; }
+    public required string OperationalStatusLabel { get; init; }
+    public required string OperationalStatusCssClass { get; init; }
+    public required string OperationalStatusMessage { get; init; }
+    public bool IsReadyForPolicyAssignment { get; init; }
 }
 
 public sealed class JobRowViewModel
@@ -98,6 +102,7 @@ public sealed class CustomerListItemViewModel
 public sealed class CustomerDetailViewModel
 {
     public required CustomerFormViewModel Customer { get; init; }
+    public string? EnrollmentTokenOneTime { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
     public required IReadOnlyList<JobRowViewModel> Jobs { get; init; }
     public required IReadOnlyList<AlertRowViewModel> Alerts { get; init; }
@@ -134,6 +139,11 @@ public sealed record HostFormViewModel
     public DateTimeOffset? LastHeartbeatAtUtc { get; init; }
     public string? ConfigurationId { get; init; }
     public string? AssignedPolicyName { get; init; }
+    public string? OperationalStatusLabel { get; init; }
+    public string? OperationalStatusCssClass { get; init; }
+    public string? OperationalStatusMessage { get; init; }
+    public string? BootstrapIncludePathsCsv { get; init; }
+    public string? BootstrapExcludePathsCsv { get; init; }
     public string? ErrorMessage { get; init; }
 }
 
@@ -242,6 +252,10 @@ public sealed class AgentConfigurationListItemViewModel
     public DateTimeOffset? LastConfigSyncAtUtc { get; init; }
     public DateTimeOffset? LastPrecheckAtUtc { get; init; }
     public string? LastPrecheckMessage { get; init; }
+    public required string OperationalStatusLabel { get; init; }
+    public required string OperationalStatusCssClass { get; init; }
+    public required string OperationalStatusMessage { get; init; }
+    public bool IsReadyForPolicyAssignment { get; init; }
 }
 
 public sealed class AgentConfigurationDetailViewModel

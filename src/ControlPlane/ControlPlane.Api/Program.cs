@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddSingleton<HostOperationalStatusService>();
 builder.Services.AddScoped<PolicyResolutionService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>

@@ -37,6 +37,7 @@
                 <tr>
                     <th>Host</th>
                     <th>Cliente</th>
+                    <th>Prontidao</th>
                     <th>Politica</th>
                     <th>Servico</th>
                     <th>TLS</th>
@@ -49,7 +50,7 @@
                 @if (Model.Configurations.Count == 0)
                 {
                     <tr>
-                        <td colspan="8">Nenhuma configuracao encontrada.</td>
+                        <td colspan="9">Nenhuma configuracao encontrada.</td>
                     </tr>
                 }
                 else
@@ -59,8 +60,14 @@
                         <tr>
                             <td>@(item.Hostname ?? item.HostId)</td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(item.CustomerId)">@(item.CustomerName ?? item.CustomerId)</a></td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @item.OperationalStatusCssClass">@item.OperationalStatusLabel</span>
+                                    <div class="status-detail">@item.OperationalStatusMessage</div>
+                                </div>
+                            </td>
                             <td>@(item.PolicyName ?? item.PolicyId ?? "-")</td>
-                            <td><span class="badge @(item.ServiceStatus == "Running" ? "succeeded" : item.ServiceStatus == "Warning" ? "critical" : "offline")">@item.ServiceStatus</span></td>
+                            <td><span class="badge @ServiceStatusCssClass(item.ServiceStatus)">@item.ServiceStatus</span></td>
                             <td>@item.TlsMode</td>
                             <td>
                                 <div>TLS: @BoolBadge(item.PrecheckTlsOk)</div>
@@ -82,4 +89,8 @@
 
 @functions {
     private static string BoolBadge(bool value) => value ? "OK" : "Falhou";
+    private static string ServiceStatusCssClass(string value) =>
+        value == "Running" || value == "DryRun" ? "succeeded" :
+        value == "Warning" ? "warning" :
+        "offline";
 }

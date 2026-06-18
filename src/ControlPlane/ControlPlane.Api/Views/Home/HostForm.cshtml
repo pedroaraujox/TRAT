@@ -53,6 +53,22 @@
                 <span>Politica atual</span>
                 <strong>@(Model.AssignedPolicyName ?? "Nao vinculada")</strong>
             </div>
+            <div>
+                <span>Prontidao</span>
+                <strong><span class="badge @(Model.OperationalStatusCssClass ?? "not-ready")">@(Model.OperationalStatusLabel ?? "Nao validado")</span></strong>
+            </div>
+            <div class="wide">
+                <span>Diagnostico operacional</span>
+                <strong>@(Model.OperationalStatusMessage ?? "Sem diagnostico disponivel.")</strong>
+            </div>
+            <div class="wide">
+                <span>Bootstrap IncludePaths (reportado pelo Agent)</span>
+                <strong>@(string.IsNullOrWhiteSpace(Model.BootstrapIncludePathsCsv) ? "-" : Model.BootstrapIncludePathsCsv)</strong>
+            </div>
+            <div class="wide">
+                <span>Bootstrap ExcludePaths (reportado pelo Agent)</span>
+                <strong>@(string.IsNullOrWhiteSpace(Model.BootstrapExcludePathsCsv) ? "-" : Model.BootstrapExcludePathsCsv)</strong>
+            </div>
         </div>
     }
 

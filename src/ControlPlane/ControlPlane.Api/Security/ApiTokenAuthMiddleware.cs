@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.Http;
+using ControlPlane.Api.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ControlPlane.Api.Security;
 
-public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration config)
+public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration config, IServiceScopeFactory scopeFactory)
 {
     public async Task InvokeAsync(HttpContext ctx)
     {
@@ -15,14 +19,29 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
 
         if (path.StartsWith("/api/v1/agents", StringComparison.OrdinalIgnoreCase))
         {
-            var expected = config["ControlPlane:Security:AgentToken"] ?? string.Empty;
             var provided = ctx.Request.Headers["X-Agent-Token"].ToString();
-            if (string.IsNullOrWhiteSpace(expected) || !ConstantTimeEquals(expected, provided))
+            if (string.IsNullOrWhiteSpace(provided))
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsync("Unauthorized");
                 return;
             }
+
+            var tokenHash = ComputeTokenHash(provided);
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var customerId = await db.Customers.AsNoTracking()
+                .Where(c => c.AgentEnrollmentTokenHash == tokenHash)
+                .Select(c => c.Id)
+                .FirstOrDefaultAsync(ctx.RequestAborted);
+            if (string.IsNullOrWhiteSpace(customerId))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsync("Unauthorized");
+                return;
+            }
+
+            ctx.Items["AgentCustomerId"] = customerId;
         }
 
         if (path.StartsWith("/api/v1/admin", StringComparison.OrdinalIgnoreCase))
@@ -61,5 +80,12 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
         var aBytes = System.Text.Encoding.UTF8.GetBytes(a);
         var bBytes = System.Text.Encoding.UTF8.GetBytes(b);
         return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
+    }
+
+    private static string ComputeTokenHash(string token)
+    {
+        var bytes = Encoding.UTF8.GetBytes(token.Trim());
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToBase64String(hash);
     }
 }

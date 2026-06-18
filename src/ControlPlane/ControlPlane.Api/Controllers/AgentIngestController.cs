@@ -19,15 +19,123 @@ public sealed class AgentIngestController(
     PolicyResolutionService policyResolutionService,
     ILogger<AgentIngestController> logger) : ControllerBase
 {
+    public sealed record AgentEnrollRequest(string HostId, string Hostname, string OsVersion);
+    public sealed record AgentEnrollResponse(string CustomerId, string HostId, string ExpectedAwsAccountId);
+
+    public sealed record AgentBootstrapPathsRequest(string HostId, string[] IncludePaths, string[] ExcludePaths);
+
     [HttpGet("/api/v1/health")]
     public IActionResult Health() => Ok(new { status = "ok" });
+
+    [HttpGet("ping")]
+    public IActionResult Ping() => Ok(new { ok = true, tsUtc = DateTimeOffset.UtcNow });
+
+    [HttpPost("enroll")]
+    public async Task<IActionResult> Enroll([FromBody] AgentEnrollRequest request, CancellationToken ct)
+    {
+        var customerId = GetAuthenticatedAgentCustomerId();
+        if (customerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (request is null ||
+            string.IsNullOrWhiteSpace(request.HostId) ||
+            string.IsNullOrWhiteSpace(request.Hostname) ||
+            string.IsNullOrWhiteSpace(request.OsVersion))
+        {
+            return BadRequest("HostId, Hostname e OsVersion são obrigatórios.");
+        }
+
+        var normalizedHostId = request.HostId.Trim();
+        if (normalizedHostId.Length > 64)
+        {
+            return BadRequest("HostId inválido (muito longo).");
+        }
+
+        var customer = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == customerId, ct);
+        if (customer is null)
+        {
+            return Unauthorized();
+        }
+
+        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == customerId && h.Id == normalizedHostId, ct);
+        if (host is null)
+        {
+            host = new ControlPlane.Api.Domain.Host
+            {
+                Id = normalizedHostId,
+                CustomerId = customerId,
+                Hostname = request.Hostname.Trim(),
+                OsVersion = request.OsVersion.Trim(),
+                FirstSeenAtUtc = DateTimeOffset.UtcNow,
+                LastHeartbeatAtUtc = null
+            };
+            db.Hosts.Add(host);
+        }
+        else
+        {
+            host.Hostname = request.Hostname.Trim();
+            host.OsVersion = request.OsVersion.Trim();
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new AgentEnrollResponse(customerId, normalizedHostId, customer.AwsAccountId));
+    }
+
+    [HttpPost("bootstrap/paths")]
+    public async Task<IActionResult> BootstrapPaths([FromBody] AgentBootstrapPathsRequest request, CancellationToken ct)
+    {
+        var customerId = GetAuthenticatedAgentCustomerId();
+        if (customerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (request is null || string.IsNullOrWhiteSpace(request.HostId))
+        {
+            return BadRequest("HostId é obrigatório.");
+        }
+
+        var normalizedHostId = request.HostId.Trim();
+        var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == customerId && h.Id == normalizedHostId, ct);
+        if (host is null)
+        {
+            return NotFound("Host não encontrado para este cliente.");
+        }
+
+        var include = NormalizeCsvPathList(request.IncludePaths);
+        var exclude = NormalizeCsvPathList(request.ExcludePaths);
+
+        host.BootstrapIncludePathsCsv = include;
+        host.BootstrapExcludePathsCsv = exclude;
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { ok = true });
+    }
 
     [HttpGet("effective-policy")]
     public async Task<IActionResult> EffectivePolicy([FromQuery] string customerId, [FromQuery] string hostId, CancellationToken ct)
     {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
         if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(hostId))
         {
-            return BadRequest("CustomerId e HostId são obrigatórios.");
+            if (string.IsNullOrWhiteSpace(hostId))
+            {
+                return BadRequest("HostId é obrigatório.");
+            }
+
+            customerId = authCustomerId;
+        }
+
+        if (!string.Equals(customerId.Trim(), authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
         }
 
         var response = await policyResolutionService.ResolveEffectivePolicyAsync(customerId, hostId, ct);
@@ -37,9 +145,20 @@ public sealed class AgentIngestController(
     [HttpPost("heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] AgentHeartbeatRequest request, CancellationToken ct)
     {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
         if (string.IsNullOrWhiteSpace(request.CustomerId) || string.IsNullOrWhiteSpace(request.HostId))
         {
             return BadRequest("CustomerId e HostId são obrigatórios.");
+        }
+
+        if (!string.Equals(request.CustomerId.Trim(), authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
         }
 
         var host = await db.Hosts.FirstOrDefaultAsync(h => h.CustomerId == request.CustomerId && h.Id == request.HostId, ct);
@@ -69,9 +188,20 @@ public sealed class AgentIngestController(
     [HttpPost("jobs/start")]
     public async Task<IActionResult> JobStart([FromBody] JobStartRequest request, CancellationToken ct)
     {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
         if (string.IsNullOrWhiteSpace(request.CustomerId) || string.IsNullOrWhiteSpace(request.HostId) || string.IsNullOrWhiteSpace(request.JobId))
         {
             return BadRequest("CustomerId, HostId e JobId são obrigatórios.");
+        }
+
+        if (!string.Equals(request.CustomerId.Trim(), authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
         }
 
         var exists = await db.Jobs.AnyAsync(j => j.CustomerId == request.CustomerId && j.HostId == request.HostId && j.Id == request.JobId, ct);
@@ -97,6 +227,17 @@ public sealed class AgentIngestController(
     [HttpPost("jobs/progress")]
     public async Task<IActionResult> JobProgress([FromBody] JobProgressReport report, CancellationToken ct)
     {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (!string.Equals(report.CustomerId?.Trim(), authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.CustomerId == report.CustomerId && j.HostId == report.HostId && j.Id == report.JobId, ct);
         if (job is null)
         {
@@ -116,7 +257,27 @@ public sealed class AgentIngestController(
     [HttpPost("jobs/final")]
     public async Task<IActionResult> JobFinal([FromBody] JobFinalReport report, CancellationToken ct)
     {
-        var job = await db.Jobs.FirstOrDefaultAsync(j => j.CustomerId == report.CustomerId && j.HostId == report.HostId && j.Id == report.JobId, ct);
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(report.CustomerId) || string.IsNullOrWhiteSpace(report.HostId) || string.IsNullOrWhiteSpace(report.JobId))
+        {
+            return BadRequest("CustomerId, HostId e JobId são obrigatórios.");
+        }
+
+        var customerId = report.CustomerId.Trim();
+        var hostId = report.HostId.Trim();
+        var jobId = report.JobId.Trim();
+
+        if (!string.Equals(customerId, authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.CustomerId == customerId && j.HostId == hostId && j.Id == jobId, ct);
         if (job is null)
         {
             return NotFound("Job não encontrado.");
@@ -149,9 +310,9 @@ public sealed class AgentIngestController(
             db.Alerts.Add(new Alert
             {
                 Id = Guid.NewGuid().ToString("N"),
-                CustomerId = report.CustomerId,
-                HostId = report.HostId,
-                JobId = report.JobId,
+                CustomerId = customerId,
+                HostId = hostId,
+                JobId = jobId,
                 Type = "JOB_FAILED",
                 Severity = "CRITICAL",
                 Message = $"{report.FailureCode ?? "FAILED"}: {report.FailureMessage ?? "Job finalizado com falha."}",
@@ -160,15 +321,15 @@ public sealed class AgentIngestController(
             await db.SaveChangesAsync(ct);
         }
 
-        var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == report.CustomerId, ct);
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId, ct);
         if (customer is not null)
         {
             var recipients = ParseEmails(customer.NotificationEmailsCsv);
-            var subject = $"Backup {report.FinalState} - Cliente {customer.Name} - Host {report.HostId}";
+            var subject = $"Backup {report.FinalState} - Cliente {customer.Name} - Host {hostId}";
             var body =
-                $"JobId: {report.JobId}\n" +
+                $"JobId: {jobId}\n" +
                 $"Cliente: {customer.Name} ({customer.Id})\n" +
-                $"Host: {report.HostId}\n" +
+                $"Host: {hostId}\n" +
                 $"FinalState: {report.FinalState}\n" +
                 $"PlannedBytes: {report.PlannedBytes}\n" +
                 $"PlannedItems: {report.PlannedItems}\n" +
@@ -184,16 +345,27 @@ public sealed class AgentIngestController(
             }
         }
 
-        logger.LogInformation("Job finalizado: customer={CustomerId} host={HostId} job={JobId} state={State}", report.CustomerId, report.HostId, report.JobId, report.FinalState);
+        logger.LogInformation("Job finalizado: customer={CustomerId} host={HostId} job={JobId} state={State}", customerId, hostId, jobId, report.FinalState);
         return Ok();
     }
 
     [HttpPost("configuration/report")]
     public async Task<IActionResult> ConfigurationReport([FromBody] AgentConfigurationReportRequest report, CancellationToken ct)
     {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
         if (string.IsNullOrWhiteSpace(report.CustomerId) || string.IsNullOrWhiteSpace(report.HostId))
         {
             return BadRequest("CustomerId e HostId são obrigatórios.");
+        }
+
+        if (!string.Equals(report.CustomerId.Trim(), authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
         }
 
         var customerId = report.CustomerId.Trim();
@@ -252,6 +424,33 @@ public sealed class AgentIngestController(
             existing.PrecheckCredentialOk);
 
         return Ok(new { configurationId = configId });
+    }
+
+    private string? GetAuthenticatedAgentCustomerId()
+    {
+        return HttpContext.Items.TryGetValue("AgentCustomerId", out var raw) ? raw as string : null;
+    }
+
+    private static string? NormalizeCsvPathList(string[]? values)
+    {
+        if (values is null || values.Length == 0)
+        {
+            return null;
+        }
+
+        var normalized = values
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalized.Length == 0)
+        {
+            return null;
+        }
+
+        var joined = string.Join(";", normalized);
+        return joined.Length > 4000 ? joined.Substring(0, 4000) : joined;
     }
 
     private static IReadOnlyList<string> ParseEmails(string? csv)

@@ -6,6 +6,10 @@ public static class SchemaBootstrapper
 {
     public static async Task EnsureExtendedSchemaAsync(AppDbContext db)
     {
+        await TryAddColumnAsync(db, tableName: "Customers", columnName: "AgentEnrollmentTokenHash", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapIncludePathsCsv", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapExcludePathsCsv", columnTypeSql: "TEXT");
+
         await db.Database.ExecuteSqlRawAsync(
             """
             CREATE TABLE IF NOT EXISTS "BackupPolicies" (
@@ -60,5 +64,17 @@ public static class SchemaBootstrapper
             CREATE INDEX IF NOT EXISTS "IX_AgentConfigurations_CustomerId_HostId"
             ON "AgentConfigurations" ("CustomerId", "HostId");
             """);
+    }
+
+    private static async Task TryAddColumnAsync(AppDbContext db, string tableName, string columnName, string columnTypeSql)
+    {
+        try
+        {
+            var sql = "ALTER TABLE \"" + tableName + "\" ADD COLUMN \"" + columnName + "\" " + columnTypeSql + " NULL;";
+            await db.Database.ExecuteSqlRawAsync(sql);
+        }
+        catch
+        {
+        }
     }
 }

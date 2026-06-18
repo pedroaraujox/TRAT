@@ -1,13 +1,22 @@
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Models;
+using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ControlPlane.Api.Controllers;
 
-public sealed class HomeController(AppDbContext db, IConfiguration config, ILogger<HomeController> logger) : Controller
+public sealed class HomeController(
+    AppDbContext db,
+    IConfiguration config,
+    HostOperationalStatusService hostOperationalStatusService,
+    ILogger<HomeController> logger) : Controller
 {
+    private const string EnrollmentTokenSessionKeyPrefix = "customer-enroll-token:";
+
     [HttpGet("/")]
     public IActionResult Root() => Redirect("/admin");
 
@@ -177,17 +186,23 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
             return View("CustomerForm", form with { ErrorMessage = "Ja existe um cliente com este ID.", IsEditMode = false });
         }
 
+        var customerId = form.Id.Trim();
+        var enrollmentToken = GenerateEnrollmentToken();
+        var enrollmentTokenHash = ComputeTokenHash(enrollmentToken);
+
         db.Customers.Add(new Customer
         {
-            Id = form.Id.Trim(),
+            Id = customerId,
             Name = form.Name.Trim(),
             AwsAccountId = form.AwsAccountId.Trim(),
             NotificationEmailsCsv = string.IsNullOrWhiteSpace(form.NotificationEmailsCsv) ? null : form.NotificationEmailsCsv.Trim(),
+            AgentEnrollmentTokenHash = enrollmentTokenHash,
             CreatedAtUtc = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync(ct);
 
-        return Redirect($"/admin/customers/{Uri.EscapeDataString(form.Id.Trim())}");
+        HttpContext.Session.SetString(BuildEnrollmentTokenSessionKey(customerId), enrollmentToken);
+        return Redirect($"/admin/customers/{Uri.EscapeDataString(customerId)}");
     }
 
     [HttpGet("/admin/customers/{id}")]
@@ -197,6 +212,13 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         if (customer is null)
         {
             return NotFound();
+        }
+
+        var tokenSessionKey = BuildEnrollmentTokenSessionKey(customer.Id);
+        var enrollmentToken = HttpContext.Session.GetString(tokenSessionKey);
+        if (!string.IsNullOrWhiteSpace(enrollmentToken))
+        {
+            HttpContext.Session.Remove(tokenSessionKey);
         }
 
         var customerMap = new Dictionary<string, Customer>(StringComparer.OrdinalIgnoreCase) { [customer.Id] = customer };
@@ -237,11 +259,55 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
                 NotificationEmailsCsv = customer.NotificationEmailsCsv,
                 IsEditMode = true
             },
+            EnrollmentTokenOneTime = string.IsNullOrWhiteSpace(enrollmentToken) ? null : enrollmentToken,
             Hosts = hosts.Select(h => MapHost(h, customerMap, configsByHostId, policyMap)).ToArray(),
             Jobs = jobs.Select(j => MapJob(j, customerMap, hostsById)).ToArray(),
             Alerts = alerts.Select(a => MapAlert(a, customerMap, hostsById)).ToArray(),
             Policies = policies.Select(p => MapPolicy(p, customerMap, hostsById)).ToArray()
         });
+    }
+
+    [HttpPost("/admin/customers/{id}/token/regenerate")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RegenerateCustomerEnrollmentToken(string id, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return BadRequest();
+        }
+
+        var customerId = id.Trim();
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId, ct);
+        if (customer is null)
+        {
+            return NotFound();
+        }
+
+        var enrollmentToken = GenerateEnrollmentToken();
+        customer.AgentEnrollmentTokenHash = ComputeTokenHash(enrollmentToken);
+        await db.SaveChangesAsync(ct);
+
+        HttpContext.Session.SetString(BuildEnrollmentTokenSessionKey(customerId), enrollmentToken);
+        return Redirect($"/admin/customers/{Uri.EscapeDataString(customerId)}");
+    }
+
+    private static string BuildEnrollmentTokenSessionKey(string customerId)
+    {
+        return EnrollmentTokenSessionKeyPrefix + customerId.Trim().ToLowerInvariant();
+    }
+
+    private static string GenerateEnrollmentToken()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(32);
+        var base64 = Convert.ToBase64String(bytes);
+        return base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    }
+
+    private static string ComputeTokenHash(string token)
+    {
+        var bytes = Encoding.UTF8.GetBytes(token.Trim());
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToBase64String(hash);
     }
 
     [HttpGet("/admin/customers/{id}/edit")]
@@ -308,7 +374,9 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         }
         if (!string.IsNullOrWhiteSpace(status))
         {
-            rows = rows.Where(h => string.Equals(h.HeartbeatStatus, status, StringComparison.OrdinalIgnoreCase)).ToArray();
+            rows = rows.Where(h =>
+                string.Equals(h.HeartbeatStatus, status, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(h.OperationalStatusLabel, status, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
 
         return View(new HostsPageViewModel
@@ -653,6 +721,20 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         var trimmedPolicyId = string.IsNullOrWhiteSpace(policyId) ? null : policyId.Trim();
         if (trimmedPolicyId is not null)
         {
+            var host = await db.Hosts.AsNoTracking().FirstOrDefaultAsync(h => h.Id == configuration.HostId, ct);
+            if (host is null)
+            {
+                TempData["ErrorMessage"] = "Host da configuracao nao encontrado.";
+                return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+            }
+
+            var readiness = hostOperationalStatusService.Evaluate(host, configuration);
+            if (!readiness.IsReadyForPolicyAssignment)
+            {
+                TempData["ErrorMessage"] = readiness.Message;
+                return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+            }
+
             var policy = await db.BackupPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.Id == trimmedPolicyId, ct);
             if (policy is null)
             {
@@ -917,7 +999,7 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         return null;
     }
 
-    private static HostRowViewModel MapHost(
+    private HostRowViewModel MapHost(
         ControlPlane.Api.Domain.Host host,
         IReadOnlyDictionary<string, Customer> customers,
         IReadOnlyDictionary<string, AgentConfiguration> configsByHostId,
@@ -930,6 +1012,8 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         {
             policiesById.TryGetValue(config.PolicyId, out policy);
         }
+
+        var operational = hostOperationalStatusService.Evaluate(host, config);
 
         return new HostRowViewModel
         {
@@ -945,7 +1029,11 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
             AssignedPolicyName = policy?.Name,
             PrecheckTlsOk = config?.PrecheckTlsOk,
             PrecheckDiskOk = config?.PrecheckDiskOk,
-            PrecheckCredentialOk = config?.PrecheckCredentialOk
+            PrecheckCredentialOk = config?.PrecheckCredentialOk,
+            OperationalStatusLabel = operational.Label,
+            OperationalStatusCssClass = operational.CssClass,
+            OperationalStatusMessage = operational.Message,
+            IsReadyForPolicyAssignment = operational.IsReadyForPolicyAssignment
         };
     }
 
@@ -1039,7 +1127,7 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         };
     }
 
-    private static AgentConfigurationListItemViewModel MapAgentConfiguration(
+    private AgentConfigurationListItemViewModel MapAgentConfiguration(
         AgentConfiguration configuration,
         IReadOnlyDictionary<string, Customer> customers,
         IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts,
@@ -1051,6 +1139,12 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
         if (!string.IsNullOrWhiteSpace(configuration.PolicyId))
         {
             policies.TryGetValue(configuration.PolicyId, out policy);
+        }
+
+        HostOperationalStatus? operational = null;
+        if (host is not null)
+        {
+            operational = hostOperationalStatusService.Evaluate(host, configuration);
         }
 
         return new AgentConfigurationListItemViewModel
@@ -1073,30 +1167,15 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
             UploadMode = configuration.UploadMode,
             LastConfigSyncAtUtc = configuration.LastConfigSyncAtUtc,
             LastPrecheckAtUtc = configuration.LastPrecheckAtUtc,
-            LastPrecheckMessage = configuration.LastPrecheckMessage
+            LastPrecheckMessage = configuration.LastPrecheckMessage,
+            OperationalStatusLabel = operational?.Label ?? "Nao validado",
+            OperationalStatusCssClass = operational?.CssClass ?? "not-ready",
+            OperationalStatusMessage = operational?.Message ?? "Host ainda nao localizado no cadastro operacional.",
+            IsReadyForPolicyAssignment = operational?.IsReadyForPolicyAssignment ?? false
         };
     }
 
-    private static string GetHeartbeatStatus(DateTimeOffset? lastHeartbeatAtUtc)
-    {
-        if (lastHeartbeatAtUtc is null)
-        {
-            return "Sem heartbeat";
-        }
-
-        var age = DateTimeOffset.UtcNow - lastHeartbeatAtUtc.Value;
-        if (age <= TimeSpan.FromMinutes(5))
-        {
-            return "Online";
-        }
-
-        if (age <= TimeSpan.FromMinutes(15))
-        {
-            return "Atrasado";
-        }
-
-        return "Offline";
-    }
+    private string GetHeartbeatStatus(DateTimeOffset? lastHeartbeatAtUtc) => hostOperationalStatusService.GetHeartbeatStatus(lastHeartbeatAtUtc);
 
     private async Task<HostFormViewModel?> BuildHostFormViewModelAsync(string id, CancellationToken ct, string? errorMessage = null)
     {
@@ -1119,6 +1198,8 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
                 .FirstOrDefaultAsync(p => p.Id == latestConfiguration.PolicyId, ct);
         }
 
+        var operational = hostOperationalStatusService.Evaluate(host, latestConfiguration);
+
         return new HostFormViewModel
         {
             OriginalId = host.Id,
@@ -1131,6 +1212,11 @@ public sealed class HomeController(AppDbContext db, IConfiguration config, ILogg
             LastHeartbeatAtUtc = host.LastHeartbeatAtUtc,
             ConfigurationId = latestConfiguration?.Id,
             AssignedPolicyName = policy?.Name,
+            OperationalStatusLabel = operational.Label,
+            OperationalStatusCssClass = operational.CssClass,
+            OperationalStatusMessage = operational.Message,
+            BootstrapIncludePathsCsv = host.BootstrapIncludePathsCsv,
+            BootstrapExcludePathsCsv = host.BootstrapExcludePathsCsv,
             ErrorMessage = errorMessage
         };
     }

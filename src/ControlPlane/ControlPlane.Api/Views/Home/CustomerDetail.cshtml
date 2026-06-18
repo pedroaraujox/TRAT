@@ -14,6 +14,28 @@
     </div>
 </div>
 
+<section class="panel">
+    <div class="panel-header">
+        <h2>Token do Agent</h2>
+    </div>
+    <div style="padding: 12px 14px;">
+        @if (!string.IsNullOrWhiteSpace(Model.EnrollmentTokenOneTime))
+        {
+            <p>Copie e guarde este token. Ele sera exibido apenas uma vez.</p>
+            <input type="text" value="@Model.EnrollmentTokenOneTime" readonly style="width: 100%; font-family: monospace;" />
+        }
+        else
+        {
+            <p>Por seguranca, o token nao fica visivel. Use o botao abaixo para gerar um novo.</p>
+        }
+
+        <form method="post" action="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/token/regenerate" style="margin-top: 10px;">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="button secondary">Gerar novo token</button>
+        </form>
+    </div>
+</section>
+
 <section class="stats-grid">
     <div class="stat-card">
         <span>Hosts</span>
@@ -70,7 +92,7 @@
                             <td>@host.Hostname</td>
                             <td>@host.OsVersion</td>
                             <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
-                            <td><span class="badge @host.HeartbeatStatus.ToLowerInvariant().Replace(" ", "-")">@host.HeartbeatStatus</span></td>
+                            <td><span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span></td>
                             <td>@(host.ServiceStatus ?? "-")</td>
                             <td>@(host.AssignedPolicyName ?? "-")</td>
                             <td>@($"{BoolText(host.PrecheckTlsOk)} / {BoolText(host.PrecheckDiskOk)} / {BoolText(host.PrecheckCredentialOk)}")</td>

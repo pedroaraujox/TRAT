@@ -19,14 +19,13 @@ internal sealed class S3Uploader
     private readonly string _bucket;
     private readonly string _keyPrefix;
 
-    public S3Uploader(string region, string bucket, string keyPrefix, string accessKeyId, string secretAccessKey, ILogger logger)
+    public S3Uploader(string region, string bucket, string keyPrefix, AWSCredentials credentials, ILogger logger)
     {
         _bucket = bucket;
         _keyPrefix = keyPrefix.Trim().TrimEnd('/') + "/";
         _logger = logger;
 
-        var creds = new BasicAWSCredentials(accessKeyId, secretAccessKey);
-        _s3 = new AmazonS3Client(creds, RegionEndpoint.GetBySystemName(region));
+        _s3 = new AmazonS3Client(credentials, RegionEndpoint.GetBySystemName(region));
     }
 
     public async Task UploadFileAndVerifyAsync(string absolutePath, string relativePath, string? sha256Base64, CancellationToken ct)

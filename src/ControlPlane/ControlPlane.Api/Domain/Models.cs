@@ -17,6 +17,9 @@ public sealed class Customer
     [MaxLength(2000)]
     public string? NotificationEmailsCsv { get; set; }
 
+    [MaxLength(64)]
+    public string? AgentEnrollmentTokenHash { get; set; }
+
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
@@ -34,6 +37,12 @@ public sealed class Host
 
     [MaxLength(64)]
     public required string OsVersion { get; set; }
+
+    [MaxLength(4000)]
+    public string? BootstrapIncludePathsCsv { get; set; }
+
+    [MaxLength(4000)]
+    public string? BootstrapExcludePathsCsv { get; set; }
 
     public required DateTimeOffset FirstSeenAtUtc { get; init; } = DateTimeOffset.UtcNow;
 

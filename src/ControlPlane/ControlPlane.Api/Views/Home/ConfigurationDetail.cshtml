@@ -25,6 +25,10 @@
         <strong class="small-stat">@Model.Configuration.AgentVersion</strong>
     </div>
     <div class="stat-card">
+        <span>Prontidao</span>
+        <strong class="small-stat"><span class="badge @Model.Configuration.OperationalStatusCssClass">@Model.Configuration.OperationalStatusLabel</span></strong>
+    </div>
+    <div class="stat-card">
         <span>Politica</span>
         <strong class="small-stat">@(Model.Configuration.PolicyName ?? "-")</strong>
     </div>
@@ -67,6 +71,10 @@
         <div class="panel-header">
             <h2>Politica aplicada</h2>
         </div>
+        @if (!Model.Configuration.IsReadyForPolicyAssignment)
+        {
+            <div class="error-banner">Vinculo de politica bloqueado: @Model.Configuration.OperationalStatusMessage</div>
+        }
         <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.Configuration.Id)/policy" class="form-grid compact-form">
             @Html.AntiForgeryToken()
             <input type="hidden" name="returnUrl" value="@returnUrl" />
@@ -82,6 +90,7 @@
             </div>
             <div class="form-field full-width">
                 <span class="form-help">Sao exibidas apenas politicas ativas do mesmo cliente e compativeis com o escopo do host.</span>
+                <span class="form-help">Status atual do host: @Model.Configuration.OperationalStatusMessage</span>
             </div>
             <div class="form-actions">
                 <button class="button primary" type="submit">Salvar vinculacao</button>
