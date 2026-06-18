@@ -53,7 +53,7 @@ internal static class InstallerValidation
             string.IsNullOrWhiteSpace(model.AgentTokenDpapiProtected) &&
             string.IsNullOrWhiteSpace(model.AgentTokenCredentialTargetName))
         {
-            errors.Add("Token do Agent invalido. Informe AgentToken (>=8) ou AgentTokenDpapiProtected ou AgentTokenCredentialTargetName.");
+            errors.Add("Token do cliente invalido. Informe um token valido do painel.");
         }
 
         if (string.IsNullOrWhiteSpace(model.ControlPlaneBaseUrl) ||

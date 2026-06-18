@@ -2,6 +2,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$PackageOutputDir = "artifacts\agent-package",
+    [string]$WindowsRuntimeIdentifier = "win-x64",
     [switch]$SkipZip
 )
 
@@ -36,20 +37,20 @@ New-Item -ItemType Directory -Force -Path $trayDir | Out-Null
 New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
 dotnet build $projectPath -c $Configuration
-dotnet build $trayProjectPath -c $Configuration
-dotnet build $installerProjectPath -c $Configuration
+dotnet publish $trayProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish $installerProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 
 $buildOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Service\bin\{0}\net48" -f $Configuration)
-$trayOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Tray\bin\{0}\net8.0-windows" -f $Configuration)
-$installerOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Installer\bin\{0}\net8.0-windows" -f $Configuration)
+$trayOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Tray\bin\{0}\net8.0-windows\{1}\publish" -f $Configuration, $WindowsRuntimeIdentifier)
+$installerOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Installer\bin\{0}\net8.0-windows\{1}\publish" -f $Configuration, $WindowsRuntimeIdentifier)
 if (-not (Test-Path (Join-Path $buildOutputDir "WebstationBackup.Agent.Service.exe"))) {
     throw "Build do Agent nao gerou o executavel esperado em: $buildOutputDir"
 }
 if (-not (Test-Path (Join-Path $trayOutputDir "WebstationBackup.Agent.Tray.exe"))) {
-    throw "Build do Tray App nao gerou o executavel esperado em: $trayOutputDir"
+    throw "Publish do Tray App nao gerou o executavel esperado em: $trayOutputDir"
 }
 if (-not (Test-Path (Join-Path $installerOutputDir "WebstationBackup.Agent.Installer.exe"))) {
-    throw "Build do Installer GUI nao gerou o executavel esperado em: $installerOutputDir"
+    throw "Publish do Installer GUI nao gerou o executavel esperado em: $installerOutputDir"
 }
 
 Copy-Item -Path (Join-Path $buildOutputDir "*") -Destination $binDir -Recurse -Force

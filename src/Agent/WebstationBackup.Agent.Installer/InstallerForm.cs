@@ -31,6 +31,9 @@ internal sealed class InstallerForm : Form
     private readonly CheckBox _startServiceCheckBox;
     private readonly CheckBox _enableTrayAutostartCheckBox;
     private readonly CheckBox _launchTrayAfterInstallCheckBox;
+    private readonly Button _openPackageButton;
+    private readonly Button _openInstallDirButton;
+    private readonly Button _clearIncludePathsButton;
     private readonly TextBox _outputTextBox;
     private readonly Button _saveSettingsButton;
     private readonly Button _installButton;
@@ -41,8 +44,8 @@ internal sealed class InstallerForm : Form
     {
         Text = "Webstation Backup Agent Installer";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(960, 760);
-        Size = new Size(1040, 820);
+        MinimumSize = new Size(860, 680);
+        Size = new Size(980, 760);
 
         var packageRoot = InstallerPackagePaths.ResolveInitialPackageRoot();
         var packageLayout = InstallerPackagePaths.Resolve(packageRoot);
@@ -96,20 +99,10 @@ internal sealed class InstallerForm : Form
         _bucketTextBox = AddTextRow(configurationPanel, 9, "Bucket", string.Empty, CreateSpacerButton(configurationPanel));
         _prefixTextBox = AddTextRow(configurationPanel, 10, "Prefixo", string.Empty, CreateSpacerButton(configurationPanel));
         _credentialTargetTextBox = AddTextRow(configurationPanel, 11, "Credential target", string.Empty, CreateSpacerButton(configurationPanel));
-        _includePathsTextBox = AddMultilineRow(configurationPanel, 12, "IncludePaths", string.Empty);
-        _excludePathsTextBox = AddMultilineRow(configurationPanel, 13, "ExcludePaths", string.Empty);
+        _includePathsTextBox = AddMultilineRow(configurationPanel, 12, "Caminhos de backup", string.Empty);
+        _excludePathsTextBox = AddMultilineRow(configurationPanel, 13, "Exclusoes", string.Empty);
 
         _customerIdTextBox.ReadOnly = true;
-
-        _showAdvancedCheckBox = new CheckBox
-        {
-            Text = "Mostrar opcoes avancadas (AWS, Excludes, etc.)",
-            AutoSize = true,
-            Checked = false,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        _showAdvancedCheckBox.CheckedChanged += (_, _) => SetAdvancedVisibility(_showAdvancedCheckBox.Checked);
 
         _protectTokenCheckBox = new CheckBox
         {
@@ -119,6 +112,16 @@ internal sealed class InstallerForm : Form
             Dock = DockStyle.Top,
             Padding = new Padding(0, 12, 0, 0)
         };
+
+        _showAdvancedCheckBox = new CheckBox
+        {
+            Text = "Mostrar opcoes avancadas",
+            AutoSize = true,
+            Checked = false,
+            Dock = DockStyle.Top,
+            Padding = new Padding(0, 10, 0, 0)
+        };
+        _showAdvancedCheckBox.CheckedChanged += (_, _) => SetAdvancedVisibility(_showAdvancedCheckBox.Checked);
 
         _startServiceCheckBox = new CheckBox
         {
@@ -158,33 +161,29 @@ internal sealed class InstallerForm : Form
         _validateButton = new Button { Text = "Validar", AutoSize = true };
         _saveSettingsButton = new Button { Text = "Salvar settings", AutoSize = true };
         _installButton = new Button { Text = "Instalar Agent", AutoSize = true };
-        _testControlPlaneButton = new Button { Text = "Testar ControlPlane", AutoSize = true };
+        _testControlPlaneButton = new Button { Text = "Testar conexao", AutoSize = true };
         _testAwsButton = new Button { Text = "Testar AWS (CLI)", AutoSize = true };
-        var openPackageButton = new Button { Text = "Abrir pacote", AutoSize = true };
-        var openInstallDirButton = new Button { Text = "Abrir pasta destino", AutoSize = true };
+        _openPackageButton = new Button { Text = "Abrir pacote", AutoSize = true };
+        _openInstallDirButton = new Button { Text = "Abrir pasta destino", AutoSize = true };
 
         _validateButton.Click += (_, _) => ValidateCurrentInput(showSuccessMessage: true);
         _saveSettingsButton.Click += (_, _) => SaveSettings(showSuccessMessage: true);
         _installButton.Click += async (_, _) => await InstallAsync();
         _testControlPlaneButton.Click += async (_, _) => await TestControlPlaneAsync();
         _testAwsButton.Click += async (_, _) => await TestAwsAsync();
-        openPackageButton.Click += (_, _) => OpenShell(_packageRootTextBox.Text);
-        openInstallDirButton.Click += (_, _) => OpenShell(_installDirectoryTextBox.Text);
+        _openPackageButton.Click += (_, _) => OpenShell(_packageRootTextBox.Text);
+        _openInstallDirButton.Click += (_, _) => OpenShell(_installDirectoryTextBox.Text);
 
-        actionPanel.Controls.Add(_validateButton);
-        actionPanel.Controls.Add(_saveSettingsButton);
         actionPanel.Controls.Add(_installButton);
         actionPanel.Controls.Add(_testControlPlaneButton);
+        actionPanel.Controls.Add(_showAdvancedCheckBox);
+        actionPanel.Controls.Add(_validateButton);
+        actionPanel.Controls.Add(_saveSettingsButton);
         actionPanel.Controls.Add(_testAwsButton);
-        actionPanel.Controls.Add(openPackageButton);
-        actionPanel.Controls.Add(openInstallDirButton);
+        actionPanel.Controls.Add(_openPackageButton);
+        actionPanel.Controls.Add(_openInstallDirButton);
 
         content.Controls.Add(configurationPanel);
-        content.Controls.Add(_showAdvancedCheckBox);
-        content.Controls.Add(_protectTokenCheckBox);
-        content.Controls.Add(_startServiceCheckBox);
-        content.Controls.Add(_enableTrayAutostartCheckBox);
-        content.Controls.Add(_launchTrayAfterInstallCheckBox);
 
         var includeActions = new FlowLayoutPanel
         {
@@ -193,13 +192,30 @@ internal sealed class InstallerForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             Padding = new Padding(0, 8, 0, 0)
         };
-        var addFolderButton = new Button { Text = "Adicionar pasta", AutoSize = true };
-        var addFileButton = new Button { Text = "Adicionar arquivo", AutoSize = true };
+        var addFolderButton = new Button { Text = "Selecionar pasta", AutoSize = true };
+        var addFileButton = new Button { Text = "Selecionar arquivo", AutoSize = true };
+        _clearIncludePathsButton = new Button { Text = "Limpar lista", AutoSize = true };
         addFolderButton.Click += (_, _) => AddIncludeFolder();
         addFileButton.Click += (_, _) => AddIncludeFile();
+        _clearIncludePathsButton.Click += (_, _) => _includePathsTextBox.Clear();
         includeActions.Controls.Add(addFolderButton);
         includeActions.Controls.Add(addFileButton);
+        includeActions.Controls.Add(_clearIncludePathsButton);
+
+        var includeHintLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(0, 6, 0, 0),
+            Text = "Adicione quantos volumes, pastas ou arquivos precisar. Cada item sera salvo separadamente."
+        };
+
         content.Controls.Add(includeActions);
+        content.Controls.Add(includeHintLabel);
+        content.Controls.Add(_protectTokenCheckBox);
+        content.Controls.Add(_enableTrayAutostartCheckBox);
+        content.Controls.Add(_launchTrayAfterInstallCheckBox);
+        content.Controls.Add(_startServiceCheckBox);
 
         content.Controls.Add(actionPanel);
 
@@ -219,18 +235,34 @@ internal sealed class InstallerForm : Form
 
         AppendOutput("Instalador GUI inicializado.");
         AppendOutput($"Pasta inicial do pacote: {packageLayout.PackageRoot}");
+        _controlPlaneUrlTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
+        _agentTokenTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
+        _hostIdTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         SetAdvancedVisibility(show: false);
-        ValidateCurrentInput(showSuccessMessage: false);
     }
 
     private void SetAdvancedVisibility(bool show)
     {
+        SetRowVisible(_packageRootTextBox, show);
+        SetRowVisible(_settingsOutputTextBox, show);
+        SetRowVisible(_installDirectoryTextBox, show);
+        SetRowVisible(_stateDirectoryTextBox, show);
+        SetRowVisible(_customerIdTextBox, show);
+        SetRowVisible(_hostIdTextBox, show);
         SetRowVisible(_awsRegionTextBox, show);
         SetRowVisible(_bucketTextBox, show);
         SetRowVisible(_prefixTextBox, show);
         SetRowVisible(_credentialTargetTextBox, show);
         SetRowVisible(_excludePathsTextBox, show);
+        _protectTokenCheckBox.Visible = show;
+        _enableTrayAutostartCheckBox.Visible = show;
+        _launchTrayAfterInstallCheckBox.Visible = show;
         _startServiceCheckBox.Visible = show;
+        _validateButton.Visible = show;
+        _saveSettingsButton.Visible = show;
+        _testAwsButton.Visible = show;
+        _openPackageButton.Visible = show;
+        _openInstallDirButton.Visible = show;
     }
 
     private static void SetRowVisible(TextBox textBox, bool visible)
@@ -309,6 +341,7 @@ internal sealed class InstallerForm : Form
         {
             SetBusy(true);
             AppendOutput("Iniciando instalacao do Agent...");
+            await EnsureEnrollmentAsync(logSuccess: true);
 
             var validationErrors = ValidateCurrentInput(showSuccessMessage: false);
             if (validationErrors.Count > 0)
@@ -545,6 +578,44 @@ internal sealed class InstallerForm : Form
         return model;
     }
 
+    private void ResetEnrollmentContext()
+    {
+        _customerIdTextBox.Text = string.Empty;
+        _expectedAwsAccountId = null;
+    }
+
+    private async System.Threading.Tasks.Task EnsureEnrollmentAsync(bool logSuccess)
+    {
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var ping = await ControlPlanePingTester.PingAsync(_controlPlaneUrlTextBox.Text, _agentTokenTextBox.Text, cts.Token);
+        AppendOutput($"Ping ControlPlane: {(ping.Success ? "OK" : "FALHOU")} - {ping.Message}");
+        if (!ping.Success)
+        {
+            throw new InvalidOperationException("Falha ao conectar no ControlPlane com o token informado.");
+        }
+
+        var hostId = string.IsNullOrWhiteSpace(_hostIdTextBox.Text)
+            ? Environment.MachineName
+            : _hostIdTextBox.Text.Trim();
+        var hostname = Environment.MachineName;
+        var osVersion = Environment.OSVersion.VersionString;
+
+        var enroll = await ControlPlanePingTester.EnrollAsync(_controlPlaneUrlTextBox.Text, _agentTokenTextBox.Text, hostId, hostname, osVersion, cts.Token);
+        AppendOutput($"Enroll: {(enroll.Success ? "OK" : "FALHOU")} - {enroll.Message}");
+        if (!enroll.Success)
+        {
+            throw new InvalidOperationException("Falha ao registrar o host no ControlPlane.");
+        }
+
+        _customerIdTextBox.Text = enroll.CustomerId ?? string.Empty;
+        _hostIdTextBox.Text = enroll.HostId ?? hostId;
+        _expectedAwsAccountId = enroll.ExpectedAwsAccountId;
+        if (logSuccess && !string.IsNullOrWhiteSpace(_expectedAwsAccountId))
+        {
+            AppendOutput($"Conta AWS esperada (painel): {_expectedAwsAccountId}");
+        }
+    }
+
     private void UpdateDerivedPaths()
     {
         if (string.IsNullOrWhiteSpace(_packageRootTextBox.Text))
@@ -695,30 +766,7 @@ internal sealed class InstallerForm : Form
         {
             SetBusy(true);
             AppendOutput("Testando ControlPlane (ping + enroll)...");
-            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var result = await ControlPlanePingTester.PingAsync(_controlPlaneUrlTextBox.Text, _agentTokenTextBox.Text, cts.Token);
-            AppendOutput($"Ping ControlPlane: {(result.Success ? "OK" : "FALHOU")} - {result.Message}");
-            if (!result.Success)
-            {
-                return;
-            }
-
-            var hostId = _hostIdTextBox.Text;
-            var hostname = Environment.MachineName;
-            var osVersion = Environment.OSVersion.VersionString;
-
-            var enroll = await ControlPlanePingTester.EnrollAsync(_controlPlaneUrlTextBox.Text, _agentTokenTextBox.Text, hostId, hostname, osVersion, cts.Token);
-            AppendOutput($"Enroll: {(enroll.Success ? "OK" : "FALHOU")} - {enroll.Message}");
-            if (enroll.Success)
-            {
-                _customerIdTextBox.Text = enroll.CustomerId ?? string.Empty;
-                _hostIdTextBox.Text = enroll.HostId ?? hostId;
-                _expectedAwsAccountId = enroll.ExpectedAwsAccountId;
-                if (!string.IsNullOrWhiteSpace(_expectedAwsAccountId))
-                {
-                    AppendOutput($"Conta AWS esperada (painel): {_expectedAwsAccountId}");
-                }
-            }
+            await EnsureEnrollmentAsync(logSuccess: true);
         }
         catch (Exception ex)
         {
