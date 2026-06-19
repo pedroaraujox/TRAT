@@ -21,9 +21,25 @@ internal sealed class ResolvedAwsCredentials
 
 internal static class AwsCredentialResolver
 {
-    public static ResolvedAwsCredentials ResolveOrThrow(string? targetName)
+    public static ResolvedAwsCredentials ResolveOrThrow(string? targetName, string? dpapiProtectedCredential)
     {
-        var failures = new List<string>(capacity: 2);
+        var failures = new List<string>(capacity: 3);
+
+        if (!string.IsNullOrWhiteSpace(dpapiProtectedCredential))
+        {
+            try
+            {
+                var keys = ReadProtectedAwsKeysOrThrow(dpapiProtectedCredential!.Trim());
+                return new ResolvedAwsCredentials(
+                    new BasicAWSCredentials(keys.AccessKeyId, keys.SecretAccessKey),
+                    source: "DpapiLocalMachine",
+                    reference: "agent.settings.json");
+            }
+            catch (Exception ex)
+            {
+                failures.Add("DpapiLocalMachine: " + ex.GetType().Name);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(targetName))
         {
@@ -63,5 +79,24 @@ internal static class AwsCredentialResolver
 
         throw new InvalidOperationException(
             "Nenhuma credencial AWS valida foi encontrada. Fontes tentadas: " + string.Join(" | ", failures));
+    }
+
+    private static AwsAccessKeyPair ReadProtectedAwsKeysOrThrow(string protectedBase64)
+    {
+        var raw = DpapiSecretProtector.UnprotectBase64OrThrow(protectedBase64);
+        var parts = raw.Split(new[] { '\n' }, 2, StringSplitOptions.None);
+        if (parts.Length != 2)
+        {
+            throw new InvalidOperationException("Formato invalido da credencial AWS protegida. Esperado: AccessKeyId\\nSecretAccessKey.");
+        }
+
+        var accessKeyId = parts[0].Trim();
+        var secretAccessKey = parts[1].Trim();
+        if (string.IsNullOrWhiteSpace(accessKeyId) || string.IsNullOrWhiteSpace(secretAccessKey))
+        {
+            throw new InvalidOperationException("Credencial AWS protegida invalida (campos vazios).");
+        }
+
+        return new AwsAccessKeyPair(accessKeyId, secretAccessKey);
     }
 }

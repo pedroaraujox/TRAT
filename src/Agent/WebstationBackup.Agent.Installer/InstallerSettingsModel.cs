@@ -14,6 +14,7 @@ internal sealed class InstallerSettingsModel
     public string? AwsRegion { get; set; }
     public string? S3BucketName { get; set; }
     public string? S3KeyPrefix { get; set; }
+    public string? AwsCredentialDpapiProtected { get; set; }
     public string? AwsCredentialTargetName { get; set; }
 
     [JsonPropertyName("IncludePaths")]

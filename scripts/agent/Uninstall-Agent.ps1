@@ -9,6 +9,50 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$startupValueName = "WebstationBackupAgentTray"
+$uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
+$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "Webstation Backup"
+
+function Stop-TrayProcessIfExists {
+    param(
+        [string]$InstallDir
+    )
+
+    $expectedTrayPath = Join-Path (Join-Path $InstallDir "tray") "WebstationBackup.Agent.Tray.exe"
+    $trayProcesses = Get-Process -Name "WebstationBackup.Agent.Tray" -ErrorAction SilentlyContinue
+    foreach ($process in $trayProcesses) {
+        try {
+            $processPath = $null
+            try {
+                $processPath = $process.Path
+            } catch {
+            }
+
+            if ([string]::IsNullOrWhiteSpace($processPath)) {
+                continue
+            }
+
+            if ((Test-Path $expectedTrayPath) -and
+                [string]::Equals(
+                    [System.IO.Path]::GetFullPath($processPath),
+                    [System.IO.Path]::GetFullPath($expectedTrayPath),
+                    [System.StringComparison]::OrdinalIgnoreCase)) {
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                $process.WaitForExit(30000)
+            }
+        } catch {
+            throw "Falha ao encerrar o Tray App instalado. $($_.Exception.Message)"
+        }
+    }
+}
+
+function Remove-TrayStartupRegistration {
+    $runKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    if (Test-Path $runKeyPath) {
+        Remove-ItemProperty -Path $runKeyPath -Name $startupValueName -ErrorAction SilentlyContinue
+    }
+}
+
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -18,6 +62,8 @@ function Assert-Administrator {
 }
 
 Assert-Administrator
+
+Stop-TrayProcessIfExists -InstallDir $InstallDir
 
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($null -ne $service) {
@@ -39,8 +85,18 @@ if ($null -ne $service) {
     }
 }
 
+Remove-TrayStartupRegistration
+
 if (Test-Path $InstallDir) {
     Remove-Item -Path $InstallDir -Recurse -Force
+}
+
+if (Test-Path $uninstallKeyPath) {
+    Remove-Item -Path $uninstallKeyPath -Recurse -Force
+}
+
+if (Test-Path $startMenuFolder) {
+    Remove-Item -Path $startMenuFolder -Recurse -Force
 }
 
 if ($RemoveState.IsPresent -and (Test-Path $StateDir)) {

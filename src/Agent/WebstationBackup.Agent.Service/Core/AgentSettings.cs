@@ -16,6 +16,7 @@ internal sealed class AgentSettings
     public string? AwsRegion { get; init; }
     public string? S3BucketName { get; init; }
     public string? S3KeyPrefix { get; init; }
+    public string? AwsCredentialDpapiProtected { get; init; }
     public string? AwsCredentialTargetName { get; init; }
     public string[] IncludePaths { get; init; } = Array.Empty<string>();
     public string[] ExcludePaths { get; init; } = Array.Empty<string>();
@@ -52,6 +53,7 @@ internal sealed class AgentSettings
             AwsRegion = settings.AwsRegion,
             S3BucketName = settings.S3BucketName,
             S3KeyPrefix = settings.S3KeyPrefix,
+            AwsCredentialDpapiProtected = settings.AwsCredentialDpapiProtected,
             AwsCredentialTargetName = settings.AwsCredentialTargetName,
             IncludePaths = settings.IncludePaths ?? Array.Empty<string>(),
             ExcludePaths = settings.ExcludePaths ?? Array.Empty<string>()

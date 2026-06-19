@@ -5,6 +5,7 @@
 - `project.rules.json`: regras operacionais do agent.
 - `Install-Agent.ps1`: instala ou atualiza o agent como servico Windows.
 - `Uninstall-Agent.ps1`: remove o servico Windows do agent.
+- `Update-Agent.ps1`: aplica atualizacao do agent a partir de um pacote ja baixado, preservando a configuracao local.
 - `bin\`: binarios do `WebstationBackup.Agent.Service`.
 - `tray\`: aplicativo de bandeja do Windows para status local do agent.
 - `installer\`: instalador GUI para configurar o agent e disparar a instalacao com elevacao.
@@ -19,9 +20,10 @@
 1. Execute `Launch-Agent-Installer.cmd`.
 2. Preencha os campos do host, valide e salve `agent.settings.json`.
 3. Instale o agent pela GUI; a elevacao administrativa sera solicitada apenas nessa etapa.
-4. Rode primeiro em modo console/dry-run antes de iniciar o servico real.
-5. So habilite execucao real com upload apos validacao conjunta.
-6. Execute `Launch-Agent-Tray.cmd` para deixar o icone do agent na bandeja do Windows.
+4. O instalador cria atalhos no menu Iniciar, registra desinstalacao no Windows e pode iniciar o servico ao final.
+5. Rode primeiro em modo console/dry-run antes de iniciar o servico real.
+6. So habilite execucao real com upload apos validacao conjunta.
+7. O `Tray App` passa a funcionar como aplicativo instalado; atualizacoes devem substituir a versao anterior sem exigir fechamento manual do icone oculto.
 
 ## Regra operacional
 - Apos qualquer mudanca de codigo, configuracao ou empacotamento, reexecute o `ControlPlane` antes de validar o ambiente.
@@ -31,13 +33,16 @@
 ## Segredos
 - O instalador salva o `AgentToken` como `AgentTokenDpapiProtected` (DPAPI LocalMachine) por padrao, evitando token em texto puro no arquivo.
 - O servico consegue descriptografar esse token no proprio host, mesmo rodando como `LocalSystem` ou outro usuario local.
+- O instalador tambem pode salvar a credencial AWS local como `AwsCredentialDpapiProtected` (DPAPI LocalMachine), permitindo que o servico valide e execute upload mesmo quando roda como `LocalSystem`.
 
 ## Arquitetura recomendada
 - O `Windows Service` executa backup, heartbeat, prechecks e upload em segundo plano.
 - O `Tray App` mostra status local, abre o painel e facilita suporte sem depender de janela aberta.
 - Fechar a janela do `Tray App` apenas oculta a interface; o icone continua na bandeja.
+- A instalacao registra atalhos do menu Iniciar e entrada de desinstalacao para o host se comportar como aplicativo instalado de verdade.
 
 ## Observacao sobre credenciais AWS
 - `aws configure` normalmente grava credenciais no perfil do seu usuario (nao no LocalSystem).
 - Se o servico rodar como LocalSystem, o precheck AWS pode falhar mesmo que o `aws configure` do seu usuario esteja OK.
-- Para teste real como servico, prefira instalar o servico com `-ServiceCredential` apontando para um usuario que tenha acesso as credenciais (ou use Windows Credential Manager conforme politica do produto).
+- Para o MVP atual, prefira informar `AWS Access Key` e `AWS Secret Key` diretamente no instalador GUI; elas serao gravadas protegidas por maquina via DPAPI e o servico conseguira usa-las sem depender do perfil do usuario.
+- O uso de `Windows Credential Manager` ou de uma conta de servico dedicada continua compativel, mas deixa de ser obrigatorio para o teste real do MVP.

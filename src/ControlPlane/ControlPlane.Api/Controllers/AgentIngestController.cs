@@ -200,19 +200,24 @@ public sealed class AgentIngestController(
             return Forbid();
         }
 
-        var request = await db.AgentRunRequests
+        var nowUtc = DateTimeOffset.UtcNow;
+        var reclaimClaimedBeforeUtc = nowUtc.AddMinutes(-10);
+        var request = (await db.AgentRunRequests
             .Where(r => r.CustomerId == normalizedCustomerId &&
                         r.HostId == normalizedHostId &&
-                        r.State == "QUEUED")
+                        (r.State == "QUEUED" || r.State == "CLAIMED"))
+            .ToListAsync(ct))
+            .Where(r => r.State == "QUEUED" ||
+                        (r.State == "CLAIMED" && r.ClaimedAtUtc != null && r.ClaimedAtUtc < reclaimClaimedBeforeUtc))
             .OrderBy(r => r.RequestedAtUtc)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefault();
         if (request is null)
         {
             return NoContent();
         }
 
         request.State = "CLAIMED";
-        request.ClaimedAtUtc = DateTimeOffset.UtcNow;
+        request.ClaimedAtUtc = nowUtc;
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(

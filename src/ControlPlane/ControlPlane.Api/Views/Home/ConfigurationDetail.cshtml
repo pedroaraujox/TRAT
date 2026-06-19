@@ -86,6 +86,10 @@
         {
             <div class="error-banner">Vinculo de politica bloqueado: @Model.Configuration.OperationalStatusMessage</div>
         }
+        else if (!Model.Configuration.PrecheckCredentialOk)
+        {
+            <div class="status-banner">AWS local ainda pendente: @Model.Configuration.OperationalStatusMessage</div>
+        }
         <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.Configuration.Id)/policy" class="form-grid compact-form">
             @Html.AntiForgeryToken()
             <input type="hidden" name="returnUrl" value="@returnUrl" />
@@ -185,7 +189,7 @@
                 <input type="hidden" name="CustomerId" value="@Model.BootstrapPolicyDraft.CustomerId" />
                 <input type="hidden" name="HostId" value="@Model.BootstrapPolicyDraft.HostId" />
                 <input type="hidden" name="ScopeType" value="@Model.BootstrapPolicyDraft.ScopeType" />
-                <input type="hidden" name="Enabled" value="@Model.BootstrapPolicyDraft.Enabled" />
+                <input type="hidden" name="Enabled" value="@(Model.BootstrapPolicyDraft.Enabled ? "true" : "false")" />
 
                 <div class="form-field full-width">
                     <label for="Name">Nome da politica</label>

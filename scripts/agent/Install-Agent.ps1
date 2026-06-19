@@ -14,6 +14,190 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$productName = "Webstation Backup Agent"
+$publisherName = "Webstation"
+$uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
+$startupValueName = "WebstationBackupAgentTray"
+$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "Webstation Backup"
+
+function Stop-TrayProcessIfExists {
+    param(
+        [string]$InstallDir
+    )
+
+    $expectedTrayPath = Join-Path (Join-Path $InstallDir "tray") "WebstationBackup.Agent.Tray.exe"
+    if (-not (Test-Path $expectedTrayPath)) {
+        return
+    }
+
+    $normalizedTrayPath = [System.IO.Path]::GetFullPath($expectedTrayPath)
+    $trayProcesses = Get-Process -Name "WebstationBackup.Agent.Tray" -ErrorAction SilentlyContinue
+    foreach ($process in $trayProcesses) {
+        try {
+            $processPath = $null
+            try {
+                $processPath = $process.Path
+            } catch {
+            }
+
+            if ([string]::IsNullOrWhiteSpace($processPath)) {
+                continue
+            }
+
+            $normalizedProcessPath = [System.IO.Path]::GetFullPath($processPath)
+            if (-not [string]::Equals($normalizedProcessPath, $normalizedTrayPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            $process.WaitForExit(30000)
+        } catch {
+            throw "Falha ao encerrar o Tray App instalado em '$expectedTrayPath'. $($_.Exception.Message)"
+        }
+    }
+}
+
+function New-ShortcutFile {
+    param(
+        [string]$ShortcutPath,
+        [string]$TargetPath,
+        [string]$Arguments,
+        [string]$WorkingDirectory,
+        [string]$Description,
+        [string]$IconLocation
+    )
+
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($ShortcutPath)
+    $shortcut.TargetPath = $TargetPath
+    if (-not [string]::IsNullOrWhiteSpace($Arguments)) {
+        $shortcut.Arguments = $Arguments
+    }
+    if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        $shortcut.WorkingDirectory = $WorkingDirectory
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Description)) {
+        $shortcut.Description = $Description
+    }
+    if (-not [string]::IsNullOrWhiteSpace($IconLocation)) {
+        $shortcut.IconLocation = $IconLocation
+    }
+    $shortcut.Save()
+}
+
+function Register-StartMenuShortcuts {
+    param(
+        [string]$InstallDir,
+        [string]$StateDir
+    )
+
+    $trayExePath = Join-Path (Join-Path $InstallDir "tray") "WebstationBackup.Agent.Tray.exe"
+    $uninstallScriptPath = Join-Path (Join-Path $StateDir "tools") "Uninstall-Agent.ps1"
+
+    New-Item -ItemType Directory -Force -Path $startMenuFolder | Out-Null
+
+    New-ShortcutFile `
+        -ShortcutPath (Join-Path $startMenuFolder "Webstation Backup Agent.lnk") `
+        -TargetPath $trayExePath `
+        -Arguments "" `
+        -WorkingDirectory (Split-Path -Parent $trayExePath) `
+        -Description "Abrir status local do Webstation Backup Agent." `
+        -IconLocation $trayExePath
+
+    if (Test-Path $uninstallScriptPath) {
+        New-ShortcutFile `
+            -ShortcutPath (Join-Path $startMenuFolder "Desinstalar Webstation Backup Agent.lnk") `
+            -TargetPath "powershell.exe" `
+            -Arguments ('-ExecutionPolicy Bypass -File "{0}"' -f $uninstallScriptPath) `
+            -WorkingDirectory (Split-Path -Parent $uninstallScriptPath) `
+            -Description "Desinstalar o Webstation Backup Agent mantendo os dados locais por padrao." `
+            -IconLocation "powershell.exe"
+    }
+}
+
+function Register-UninstallEntry {
+    param(
+        [string]$InstallDir,
+        [string]$StateDir,
+        [string]$DisplayVersion
+    )
+
+    $uninstallScriptPath = Join-Path (Join-Path $StateDir "tools") "Uninstall-Agent.ps1"
+    New-Item -Path $uninstallKeyPath -Force | Out-Null
+    Set-ItemProperty -Path $uninstallKeyPath -Name "DisplayName" -Value $productName
+    Set-ItemProperty -Path $uninstallKeyPath -Name "DisplayVersion" -Value $DisplayVersion
+    Set-ItemProperty -Path $uninstallKeyPath -Name "Publisher" -Value $publisherName
+    Set-ItemProperty -Path $uninstallKeyPath -Name "InstallLocation" -Value $InstallDir
+    Set-ItemProperty -Path $uninstallKeyPath -Name "DisplayIcon" -Value (Join-Path (Join-Path $InstallDir "tray") "WebstationBackup.Agent.Tray.exe")
+    Set-ItemProperty -Path $uninstallKeyPath -Name "UninstallString" -Value ('powershell.exe -ExecutionPolicy Bypass -File "{0}"' -f $uninstallScriptPath)
+    Set-ItemProperty -Path $uninstallKeyPath -Name "QuietUninstallString" -Value ('powershell.exe -ExecutionPolicy Bypass -File "{0}"' -f $uninstallScriptPath)
+    Set-ItemProperty -Path $uninstallKeyPath -Name "NoModify" -Value 1 -Type DWord
+    Set-ItemProperty -Path $uninstallKeyPath -Name "NoRepair" -Value 1 -Type DWord
+}
+
+function Write-InstallationMetadata {
+    param(
+        [string]$InstallDir,
+        [string]$StateDir,
+        [string]$DisplayVersion
+    )
+
+    $metadata = [ordered]@{
+        productName = $productName
+        publisher = $publisherName
+        version = $DisplayVersion
+        installedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+        installDir = $InstallDir
+        stateDir = $StateDir
+        serviceName = $ServiceName
+        serviceDisplayName = $ServiceDisplayName
+        serviceExecutablePath = (Join-Path $InstallDir "WebstationBackup.Agent.Service.exe")
+        trayExecutablePath = (Join-Path (Join-Path $InstallDir "tray") "WebstationBackup.Agent.Tray.exe")
+        uninstallScriptPath = (Join-Path (Join-Path $StateDir "tools") "Uninstall-Agent.ps1")
+        updateScriptPath = (Join-Path (Join-Path $StateDir "tools") "Update-Agent.ps1")
+    }
+
+    $metadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $StateDir "agent.installation.json") -Encoding UTF8
+}
+
+function Copy-MaintenanceScripts {
+    param(
+        [string]$PackageRoot,
+        [string]$StateDir
+    )
+
+    $toolsDir = Join-Path $StateDir "tools"
+    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+
+    foreach ($scriptName in @("Install-Agent.ps1", "Uninstall-Agent.ps1", "Update-Agent.ps1")) {
+        $sourcePath = Join-Path $PackageRoot $scriptName
+        if (Test-Path $sourcePath) {
+            Copy-Item -Path $sourcePath -Destination (Join-Path $toolsDir $scriptName) -Force
+        }
+    }
+}
+
+function Get-AgentDisplayVersion {
+    param(
+        [string]$ExecutablePath
+    )
+
+    if (-not (Test-Path $ExecutablePath)) {
+        return "1.0.0"
+    }
+
+    $versionInfo = (Get-Item $ExecutablePath).VersionInfo
+    if (-not [string]::IsNullOrWhiteSpace($versionInfo.ProductVersion)) {
+        return $versionInfo.ProductVersion
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($versionInfo.FileVersion)) {
+        return $versionInfo.FileVersion
+    }
+
+    return "1.0.0"
+}
+
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -43,25 +227,43 @@ function Stop-ServiceIfExists {
     }
 }
 
-function Remove-ServiceIfExists {
-    param([string]$Name)
+function Ensure-ServiceInstalled {
+    param(
+        [string]$Name,
+        [string]$DisplayName,
+        [string]$BinaryPath,
+        [pscredential]$Credential
+    )
 
     $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if ($null -eq $service) {
+        if ($null -ne $Credential) {
+            New-Service `
+                -Name $Name `
+                -DisplayName $DisplayName `
+                -BinaryPathName ('"{0}"' -f $BinaryPath) `
+                -StartupType Automatic `
+                -Description "Webstation Backup Agent" `
+                -Credential $Credential
+        } else {
+            New-Service `
+                -Name $Name `
+                -DisplayName $DisplayName `
+                -BinaryPathName ('"{0}"' -f $BinaryPath) `
+                -StartupType Automatic `
+                -Description "Webstation Backup Agent"
+        }
+
         return
     }
 
-    Stop-ServiceIfExists -Name $Name
-    sc.exe delete $Name | Out-Null
+    Set-Service -Name $Name -DisplayName $DisplayName -StartupType Automatic
+    sc.exe description $Name "Webstation Backup Agent" | Out-Null
 
-    $deadline = (Get-Date).AddSeconds(30)
-    do {
-        Start-Sleep -Milliseconds 500
-        $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
-    } while ($null -ne $service -and (Get-Date) -lt $deadline)
-
-    if ($null -ne $service) {
-        throw "O servico '$Name' nao foi removido dentro do tempo esperado."
+    if ($null -ne $Credential) {
+        $username = $Credential.UserName
+        $password = $Credential.GetNetworkCredential().Password
+        sc.exe config $Name obj= $username password= $password | Out-Null
     }
 }
 
@@ -87,6 +289,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 
 Stop-ServiceIfExists -Name $ServiceName
+Stop-TrayProcessIfExists -InstallDir $InstallDir
 
 if ($useEmbeddedBinLayout) {
     Copy-Item -Path (Join-Path $binSourceDir "*") -Destination $InstallDir -Recurse -Force
@@ -110,6 +313,8 @@ if (Test-Path (Join-Path $traySourceDir "WebstationBackup.Agent.Tray.exe")) {
     New-Item -ItemType Directory -Force -Path $trayInstallDir | Out-Null
     Copy-Item -Path (Join-Path $traySourceDir "*") -Destination $trayInstallDir -Recurse -Force
 }
+
+Copy-MaintenanceScripts -PackageRoot $resolvedPackageRoot -StateDir $StateDir
 
 $resolvedRulesSource = if ([string]::IsNullOrWhiteSpace($RulesSourcePath)) {
     Join-Path $resolvedPackageRoot "project.rules.json"
@@ -135,25 +340,17 @@ if (-not [string]::IsNullOrWhiteSpace($SettingsSourcePath)) {
     Copy-Item -Path $templateSource -Destination (Join-Path $StateDir "agent.settings.json") -Force
 }
 
-Remove-ServiceIfExists -Name $ServiceName
-
 $agentExeInstalled = Join-Path $InstallDir "WebstationBackup.Agent.Service.exe"
-if ($null -ne $ServiceCredential) {
-    New-Service `
-        -Name $ServiceName `
-        -DisplayName $ServiceDisplayName `
-        -BinaryPathName ('"{0}"' -f $agentExeInstalled) `
-        -StartupType Automatic `
-        -Description "Webstation Backup Agent" `
-        -Credential $ServiceCredential
-} else {
-    New-Service `
-        -Name $ServiceName `
-        -DisplayName $ServiceDisplayName `
-        -BinaryPathName ('"{0}"' -f $agentExeInstalled) `
-        -StartupType Automatic `
-        -Description "Webstation Backup Agent"
-}
+$displayVersion = Get-AgentDisplayVersion -ExecutablePath $agentExeInstalled
+Ensure-ServiceInstalled `
+    -Name $ServiceName `
+    -DisplayName $ServiceDisplayName `
+    -BinaryPath $agentExeInstalled `
+    -Credential $ServiceCredential
+
+Register-StartMenuShortcuts -InstallDir $InstallDir -StateDir $StateDir
+Register-UninstallEntry -InstallDir $InstallDir -StateDir $StateDir -DisplayVersion $displayVersion
+Write-InstallationMetadata -InstallDir $InstallDir -StateDir $StateDir -DisplayVersion $displayVersion
 
 if ($StartService.IsPresent) {
     Start-Service -Name $ServiceName
@@ -162,6 +359,8 @@ if ($StartService.IsPresent) {
 Write-Host "Agent instalado com sucesso."
 Write-Host ("Binarios: {0}" -f $InstallDir)
 Write-Host ("Estado/configuracao: {0}" -f $StateDir)
+Write-Host ("Versao instalada: {0}" -f $displayVersion)
+Write-Host ("Atalhos do menu Iniciar: {0}" -f $startMenuFolder)
 
 if (-not $StartService.IsPresent) {
     Write-Host "O servico nao foi iniciado automaticamente."

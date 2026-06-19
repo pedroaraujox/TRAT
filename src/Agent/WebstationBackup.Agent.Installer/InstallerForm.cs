@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Windows.Forms;
@@ -25,8 +26,11 @@ internal sealed class InstallerForm : Form
     private readonly TextBox _bucketTextBox;
     private readonly TextBox _prefixTextBox;
     private readonly TextBox _credentialTargetTextBox;
+    private readonly TextBox _awsAccessKeyIdTextBox;
+    private readonly TextBox _awsSecretAccessKeyTextBox;
     private readonly TextBox _includePathsTextBox;
     private readonly TextBox _excludePathsTextBox;
+    private readonly CheckBox _protectAwsCredentialCheckBox;
     private readonly CheckBox _showAdvancedCheckBox;
     private readonly CheckBox _startServiceCheckBox;
     private readonly CheckBox _enableTrayAutostartCheckBox;
@@ -65,7 +69,7 @@ internal sealed class InstallerForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Text = "Preencha a URL do ControlPlane, o token do cliente e os caminhos de backup. O Agent sera instalado para rodar em segundo plano neste host.",
+            Text = "Preencha a URL do ControlPlane, o token do cliente e os caminhos de backup. O Agent sera instalado como aplicativo do Windows, com servico persistente, bandeja e fluxo de atualizacao sem precisar abrir exe manualmente.",
             Font = new Font(SystemFonts.MessageBoxFont ?? Control.DefaultFont, FontStyle.Bold)
         };
 
@@ -99,8 +103,10 @@ internal sealed class InstallerForm : Form
         _bucketTextBox = AddTextRow(configurationPanel, 9, "Bucket", string.Empty, CreateSpacerButton(configurationPanel));
         _prefixTextBox = AddTextRow(configurationPanel, 10, "Prefixo", string.Empty, CreateSpacerButton(configurationPanel));
         _credentialTargetTextBox = AddTextRow(configurationPanel, 11, "Credential target", string.Empty, CreateSpacerButton(configurationPanel));
-        _includePathsTextBox = AddMultilineRow(configurationPanel, 12, "Caminhos de backup", string.Empty);
-        _excludePathsTextBox = AddMultilineRow(configurationPanel, 13, "Exclusoes", string.Empty);
+        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 12, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
+        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 13, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _includePathsTextBox = AddMultilineRow(configurationPanel, 14, "Caminhos de backup", string.Empty);
+        _excludePathsTextBox = AddMultilineRow(configurationPanel, 15, "Exclusoes", string.Empty);
 
         _customerIdTextBox.ReadOnly = true;
 
@@ -111,6 +117,15 @@ internal sealed class InstallerForm : Form
             Checked = true,
             Dock = DockStyle.Top,
             Padding = new Padding(0, 12, 0, 0)
+        };
+
+        _protectAwsCredentialCheckBox = new CheckBox
+        {
+            Text = "Salvar credencial AWS protegida por maquina (DPAPI - LocalMachine, recomendado para servico Windows)",
+            AutoSize = true,
+            Checked = true,
+            Dock = DockStyle.Top,
+            Padding = new Padding(0, 6, 0, 0)
         };
 
         _showAdvancedCheckBox = new CheckBox
@@ -127,7 +142,7 @@ internal sealed class InstallerForm : Form
         {
             Text = "Iniciar servico ao final da instalacao",
             AutoSize = true,
-            Checked = false,
+            Checked = true,
             Dock = DockStyle.Top,
             Padding = new Padding(0, 12, 0, 0)
         };
@@ -160,7 +175,7 @@ internal sealed class InstallerForm : Form
 
         _validateButton = new Button { Text = "Validar", AutoSize = true };
         _saveSettingsButton = new Button { Text = "Salvar settings", AutoSize = true };
-        _installButton = new Button { Text = "Instalar e iniciar", AutoSize = true };
+        _installButton = new Button { Text = "Instalar / atualizar aplicativo", AutoSize = true };
         _testControlPlaneButton = new Button { Text = "Testar acesso", AutoSize = true };
         _testAwsButton = new Button { Text = "Testar AWS (CLI)", AutoSize = true };
         _openPackageButton = new Button { Text = "Abrir pacote", AutoSize = true };
@@ -213,6 +228,7 @@ internal sealed class InstallerForm : Form
         content.Controls.Add(includeActions);
         content.Controls.Add(includeHintLabel);
         content.Controls.Add(_protectTokenCheckBox);
+        content.Controls.Add(_protectAwsCredentialCheckBox);
         content.Controls.Add(_enableTrayAutostartCheckBox);
         content.Controls.Add(_launchTrayAfterInstallCheckBox);
         content.Controls.Add(_startServiceCheckBox);
@@ -253,8 +269,11 @@ internal sealed class InstallerForm : Form
         SetRowVisible(_bucketTextBox, show);
         SetRowVisible(_prefixTextBox, show);
         SetRowVisible(_credentialTargetTextBox, show);
+        SetRowVisible(_awsAccessKeyIdTextBox, show);
+        SetRowVisible(_awsSecretAccessKeyTextBox, show);
         SetRowVisible(_excludePathsTextBox, show);
         _protectTokenCheckBox.Visible = show;
+        _protectAwsCredentialCheckBox.Visible = show;
         _enableTrayAutostartCheckBox.Visible = show;
         _launchTrayAfterInstallCheckBox.Visible = show;
         _startServiceCheckBox.Visible = show;
@@ -340,7 +359,7 @@ internal sealed class InstallerForm : Form
         try
         {
             SetBusy(true);
-            AppendOutput("Iniciando instalacao do Agent...");
+            AppendOutput("Iniciando instalacao/atualizacao do Agent...");
             await EnsureEnrollmentAsync(logSuccess: true);
 
             var validationErrors = ValidateCurrentInput(showSuccessMessage: false);
@@ -378,7 +397,7 @@ internal sealed class InstallerForm : Form
             ApplyTrayPreferencesAfterInstall();
 
             MessageBox.Show(
-                "Instalacao concluida com sucesso.",
+                "Instalacao concluida com sucesso. O Agent agora fica instalado no Windows e futuras atualizacoes podem substituir a versao anterior sem fechar o Tray App manualmente.",
                 "Webstation Backup Agent Installer",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -434,7 +453,12 @@ internal sealed class InstallerForm : Form
     {
         var model = BuildModel(applyTokenProtection: true);
         var layout = InstallerPackagePaths.Resolve(_packageRootTextBox.Text);
-        var errors = InstallerValidation.Validate(model, layout, _settingsOutputTextBox.Text.Trim());
+        var errors = InstallerValidation.Validate(model, layout, _settingsOutputTextBox.Text.Trim()).ToList();
+        var awsSecretInputError = ValidateAwsSecretInput();
+        if (awsSecretInputError is not null)
+        {
+            errors.Add(awsSecretInputError);
+        }
 
         if (errors.Count == 0)
         {
@@ -475,7 +499,12 @@ internal sealed class InstallerForm : Form
     {
         var model = BuildModel(applyTokenProtection: true);
         var layout = InstallerPackagePaths.Resolve(_packageRootTextBox.Text);
-        var errors = InstallerValidation.Validate(model, layout, _settingsOutputTextBox.Text.Trim());
+        var errors = InstallerValidation.Validate(model, layout, _settingsOutputTextBox.Text.Trim()).ToList();
+        var awsSecretInputError = ValidateAwsSecretInput();
+        if (awsSecretInputError is not null)
+        {
+            errors.Add(awsSecretInputError);
+        }
         if (errors.Count > 0)
         {
             throw new InvalidOperationException("Corrija os erros de validacao antes de salvar o settings.");
@@ -575,7 +604,36 @@ internal sealed class InstallerForm : Form
             }
         }
 
+        if (applyTokenProtection && _protectAwsCredentialCheckBox.Checked)
+        {
+            var accessKeyId = _awsAccessKeyIdTextBox.Text.Trim();
+            var secretAccessKey = _awsSecretAccessKeyTextBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(accessKeyId) && !string.IsNullOrWhiteSpace(secretAccessKey))
+            {
+                model.AwsCredentialDpapiProtected = DpapiSecretProtector.ProtectToBase64OrThrow(accessKeyId + "\n" + secretAccessKey);
+            }
+        }
+
         return model;
+    }
+
+    private string? ValidateAwsSecretInput()
+    {
+        var accessKeyId = _awsAccessKeyIdTextBox.Text.Trim();
+        var secretAccessKey = _awsSecretAccessKeyTextBox.Text.Trim();
+        var hasAccessKeyId = !string.IsNullOrWhiteSpace(accessKeyId);
+        var hasSecretAccessKey = !string.IsNullOrWhiteSpace(secretAccessKey);
+        if (hasAccessKeyId != hasSecretAccessKey)
+        {
+            return "Informe AWS Access Key e AWS Secret Key juntos, ou deixe ambos vazios.";
+        }
+
+        if ((hasAccessKeyId || hasSecretAccessKey) && !_protectAwsCredentialCheckBox.Checked)
+        {
+            return "Para este MVP, a credencial AWS local informada no instalador deve ser protegida por maquina (DPAPI).";
+        }
+
+        return null;
     }
 
     private void ResetEnrollmentContext()

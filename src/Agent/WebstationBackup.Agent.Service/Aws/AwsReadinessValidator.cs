@@ -36,15 +36,10 @@ internal sealed class AwsReadinessValidator
             throw new ArgumentNullException(nameof(logger));
         }
 
-        if (string.IsNullOrWhiteSpace(settings.AwsCredentialTargetName))
-        {
-            return Failed("Credenciais AWS nao configuradas no host (AwsCredentialTargetName vazio).");
-        }
-
         ResolvedAwsCredentials resolved;
         try
         {
-            resolved = AwsCredentialResolver.ResolveOrThrow(settings.AwsCredentialTargetName);
+            resolved = AwsCredentialResolver.ResolveOrThrow(settings.AwsCredentialTargetName, settings.AwsCredentialDpapiProtected);
         }
         catch (Exception ex)
         {

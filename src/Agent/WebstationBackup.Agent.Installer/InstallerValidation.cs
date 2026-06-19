@@ -63,13 +63,16 @@ internal static class InstallerValidation
             errors.Add("ControlPlaneBaseUrl invalido. Informe uma URL absoluta HTTP ou HTTPS.");
         }
 
-        var anyAwsValue =
+        var anyAwsDestinationValue =
             !string.IsNullOrWhiteSpace(model.AwsRegion) ||
             !string.IsNullOrWhiteSpace(model.S3BucketName) ||
-            !string.IsNullOrWhiteSpace(model.S3KeyPrefix) ||
+            !string.IsNullOrWhiteSpace(model.S3KeyPrefix);
+
+        var anyAwsCredentialValue =
+            !string.IsNullOrWhiteSpace(model.AwsCredentialDpapiProtected) ||
             !string.IsNullOrWhiteSpace(model.AwsCredentialTargetName);
 
-        if (anyAwsValue)
+        if (anyAwsDestinationValue)
         {
             if (string.IsNullOrWhiteSpace(model.AwsRegion) || !RegionRegex.IsMatch(model.AwsRegion.Trim()))
             {
@@ -85,11 +88,13 @@ internal static class InstallerValidation
             {
                 errors.Add("S3KeyPrefix nao pode ficar vazio.");
             }
+        }
 
-            if (string.IsNullOrWhiteSpace(model.AwsCredentialTargetName))
-            {
-                errors.Add("AwsCredentialTargetName nao pode ficar vazio.");
-            }
+        if (anyAwsCredentialValue &&
+            string.IsNullOrWhiteSpace(model.AwsCredentialDpapiProtected) &&
+            string.IsNullOrWhiteSpace(model.AwsCredentialTargetName))
+        {
+            errors.Add("Informe uma credencial AWS local protegida ou um AwsCredentialTargetName.");
         }
 
         if (string.IsNullOrWhiteSpace(settingsOutputPath))

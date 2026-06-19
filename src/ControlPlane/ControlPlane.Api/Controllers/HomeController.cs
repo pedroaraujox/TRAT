@@ -409,6 +409,7 @@ public sealed class HomeController(
             : await db.Jobs.Where(j => j.CustomerId == customerId).ToListAsync(ct);
         var alerts = await db.Alerts.Where(a => a.CustomerId == customerId).ToListAsync(ct);
         var configurations = await db.AgentConfigurations.Where(c => c.CustomerId == customerId).ToListAsync(ct);
+        var runRequests = await db.AgentRunRequests.Where(r => r.CustomerId == customerId).ToListAsync(ct);
         var policyChangeEvents = policyIds.Count == 0
             ? []
             : await db.PolicyChangeEvents.Where(e => policyIds.Contains(e.PolicyId)).ToListAsync(ct);
@@ -433,6 +434,11 @@ public sealed class HomeController(
             if (configurations.Count > 0)
             {
                 db.AgentConfigurations.RemoveRange(configurations);
+            }
+
+            if (runRequests.Count > 0)
+            {
+                db.AgentRunRequests.RemoveRange(runRequests);
             }
 
             if (policyChangeEvents.Count > 0)
@@ -469,12 +475,13 @@ public sealed class HomeController(
 
         TryRemoveEnrollmentTokenFromSession(customerId);
         logger.LogInformation(
-            "Customer {CustomerId} deleted with dependencies. Hosts={HostCount}, Jobs={JobCount}, Alerts={AlertCount}, Configurations={ConfigurationCount}, Policies={PolicyCount}, PolicyEvents={PolicyEventCount}, Artifacts={ArtifactCount}",
+            "Customer {CustomerId} deleted with dependencies. Hosts={HostCount}, Jobs={JobCount}, Alerts={AlertCount}, Configurations={ConfigurationCount}, RunRequests={RunRequestCount}, Policies={PolicyCount}, PolicyEvents={PolicyEventCount}, Artifacts={ArtifactCount}",
             customerId,
             hosts.Count,
             jobs.Count,
             alerts.Count,
             configurations.Count,
+            runRequests.Count,
             policies.Count,
             policyChangeEvents.Count,
             artifacts.Count);

@@ -67,6 +67,7 @@ internal static class AgentWorker
         public string? AwsRegion { get; init; }
         public string? S3BucketName { get; init; }
         public string? S3KeyPrefix { get; init; }
+        public string? AwsCredentialDpapiProtected { get; init; }
         public string? AwsCredentialTargetName { get; init; }
     }
 
@@ -367,7 +368,7 @@ internal static class AgentWorker
             precheckDiskOk = diskOk,
             precheckCredentialOk = credOk,
             stagingPath,
-            credentialTargetName = string.IsNullOrWhiteSpace(targetSettings.AwsCredentialTargetName) ? "N/A" : targetSettings.AwsCredentialTargetName,
+            credentialTargetName = ResolveCredentialReference(targetSettings),
             uploadMode = dryRun ? "dry-run" : "direct-s3",
             timestampUtc = now,
             precheckAtUtc = now,
@@ -447,6 +448,7 @@ internal static class AgentWorker
             AwsRegion = NormalizeOptional(effectivePolicy.AwsRegion) ?? NormalizeOptional(settings.AwsRegion),
             S3BucketName = NormalizeOptional(effectivePolicy.S3BucketName) ?? NormalizeOptional(settings.S3BucketName),
             S3KeyPrefix = NormalizeOptional(effectivePolicy.S3KeyPrefix) ?? NormalizeOptional(settings.S3KeyPrefix),
+            AwsCredentialDpapiProtected = NormalizeOptional(settings.AwsCredentialDpapiProtected),
             AwsCredentialTargetName = NormalizeOptional(settings.AwsCredentialTargetName)
         };
     }
@@ -464,10 +466,23 @@ internal static class AgentWorker
             AwsRegion = targetSettings.AwsRegion,
             S3BucketName = targetSettings.S3BucketName,
             S3KeyPrefix = targetSettings.S3KeyPrefix,
+            AwsCredentialDpapiProtected = targetSettings.AwsCredentialDpapiProtected,
             AwsCredentialTargetName = targetSettings.AwsCredentialTargetName,
             IncludePaths = baseSettings.IncludePaths,
             ExcludePaths = baseSettings.ExcludePaths
         };
+    }
+
+    private static string ResolveCredentialReference(ExecutionTargetSettings targetSettings)
+    {
+        if (!string.IsNullOrWhiteSpace(targetSettings.AwsCredentialDpapiProtected))
+        {
+            return "DPAPI:LocalMachine";
+        }
+
+        return string.IsNullOrWhiteSpace(targetSettings.AwsCredentialTargetName)
+            ? "N/A"
+            : targetSettings.AwsCredentialTargetName!;
     }
 
     private static string? NormalizeOptional(string? value)
@@ -599,7 +614,9 @@ internal static class AgentWorker
             }
             else
             {
-                var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(targetSettings.AwsCredentialTargetName);
+                var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(
+                    targetSettings.AwsCredentialTargetName,
+                    targetSettings.AwsCredentialDpapiProtected);
                 logger.Info("Credenciais AWS resolvidas para upload", new Dictionary<string, object?>
                 {
                     ["credentialSource"] = resolvedCredentials.Source,

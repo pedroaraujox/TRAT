@@ -21,8 +21,11 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromHours(8);
 });
 
-var sqlitePath = builder.Configuration["ControlPlane:Database:SqlitePath"] ?? "data/controlplane.db";
-Directory.CreateDirectory(Path.GetDirectoryName(sqlitePath) ?? "data");
+var configuredSqlitePath = builder.Configuration["ControlPlane:Database:SqlitePath"] ?? "data/controlplane.db";
+var sqlitePath = Path.IsPathRooted(configuredSqlitePath)
+    ? configuredSqlitePath
+    : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, configuredSqlitePath));
+Directory.CreateDirectory(Path.GetDirectoryName(sqlitePath) ?? Path.Combine(builder.Environment.ContentRootPath, "data"));
 
 var csb = new SqliteConnectionStringBuilder
 {
@@ -39,7 +42,11 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
     await SchemaBootstrapper.EnsureExtendedSchemaAsync(db);
-    await DemoDataSeeder.SeedAsync(db);
+    var enableDemoData = builder.Configuration.GetValue<bool>("ControlPlane:Seed:EnableDemoData");
+    if (enableDemoData)
+    {
+        await DemoDataSeeder.SeedAsync(db);
+    }
 }
 
 app.UseStaticFiles();

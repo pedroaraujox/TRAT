@@ -61,6 +61,7 @@ internal static class Program
                     AwsRegion = loaded.AwsRegion,
                     S3BucketName = loaded.S3BucketName,
                     S3KeyPrefix = loaded.S3KeyPrefix,
+                    AwsCredentialDpapiProtected = loaded.AwsCredentialDpapiProtected,
                     AwsCredentialTargetName = loaded.AwsCredentialTargetName,
                     IncludePaths = includeOverrides.Count > 0 ? includeOverrides.ToArray() : loaded.IncludePaths,
                     ExcludePaths = excludeOverrides.Count > 0 ? excludeOverrides.ToArray() : loaded.ExcludePaths

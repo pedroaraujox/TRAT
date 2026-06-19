@@ -20,6 +20,7 @@ $trayLauncherPath = Join-Path $repoRoot "deploy\agent\Launch-Agent-Tray.cmd"
 $installerLauncherPath = Join-Path $repoRoot "deploy\agent\Launch-Agent-Installer.cmd"
 $installScriptPath = Join-Path $repoRoot "scripts\agent\Install-Agent.ps1"
 $uninstallScriptPath = Join-Path $repoRoot "scripts\agent\Uninstall-Agent.ps1"
+$updateScriptPath = Join-Path $repoRoot "scripts\agent\Update-Agent.ps1"
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
 $packageDir = Join-Path $outputRoot "WebstationBackup.Agent.Package"
 $stagingDir = $packageDir
@@ -63,6 +64,7 @@ Copy-Item -Path $trayLauncherPath -Destination (Join-Path $stagingDir "Launch-Ag
 Copy-Item -Path $installerLauncherPath -Destination (Join-Path $stagingDir "Launch-Agent-Installer.cmd") -Force
 Copy-Item -Path $installScriptPath -Destination (Join-Path $stagingDir "Install-Agent.ps1") -Force
 Copy-Item -Path $uninstallScriptPath -Destination (Join-Path $stagingDir "Uninstall-Agent.ps1") -Force
+Copy-Item -Path $updateScriptPath -Destination (Join-Path $stagingDir "Update-Agent.ps1") -Force
 
 Copy-Item -Path (Join-Path $installerDir "WebstationBackup.Agent.Installer.exe") -Destination (Join-Path $stagingDir "WebstationBackup.Agent.Setup.exe") -Force
 

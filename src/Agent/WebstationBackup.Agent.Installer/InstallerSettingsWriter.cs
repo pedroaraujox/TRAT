@@ -31,6 +31,7 @@ internal static class InstallerSettingsWriter
             AwsRegion = string.IsNullOrWhiteSpace(model.AwsRegion) ? null : model.AwsRegion.Trim(),
             S3BucketName = string.IsNullOrWhiteSpace(model.S3BucketName) ? null : model.S3BucketName.Trim(),
             S3KeyPrefix = string.IsNullOrWhiteSpace(model.S3KeyPrefix) ? null : NormalizePrefix(model.S3KeyPrefix),
+            AwsCredentialDpapiProtected = string.IsNullOrWhiteSpace(model.AwsCredentialDpapiProtected) ? null : model.AwsCredentialDpapiProtected.Trim(),
             AwsCredentialTargetName = string.IsNullOrWhiteSpace(model.AwsCredentialTargetName) ? null : model.AwsCredentialTargetName.Trim(),
             IncludePaths = model.IncludePaths,
             ExcludePaths = model.ExcludePaths

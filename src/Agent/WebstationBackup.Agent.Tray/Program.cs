@@ -1,15 +1,24 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace WebstationBackup.Agent.Tray;
 
 internal static class Program
 {
+    private const string SingleInstanceMutexName = @"Local\WebstationBackupAgentTray";
+
     [STAThread]
     private static void Main()
     {
+        using var singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
+        if (!createdNew)
+        {
+            return;
+        }
+
         Application.ThreadException += (_, args) => LogUnhandledException(args.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, args) => LogUnhandledException(args.ExceptionObject as Exception);
 
