@@ -1,0 +1,72 @@
+@model PanelUsersPageViewModel
+@{
+    ViewData["Title"] = "Usuarios";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Usuarios do painel</h1>
+        <p>Crie, edite e remova acessos do produto.</p>
+    </div>
+    <div class="page-actions">
+        <a class="button secondary" href="/admin/panel">Voltar ao painel</a>
+        <a class="button primary" href="/admin/panel/users/new">Novo usuario</a>
+    </div>
+</div>
+
+@if (TempData["StatusMessage"] is string statusMessage)
+{
+    <section class="panel">
+        <div class="status-banner">@statusMessage</div>
+    </section>
+}
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <section class="panel">
+        <div class="error-banner">@errorMessage</div>
+    </section>
+}
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Lista de usuarios</h2>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Perfil</th>
+                    <th>Status</th>
+                    <th>Ultimo login</th>
+                    <th>Acoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in Model.Users)
+                {
+                    <tr>
+                        <td>@user.DisplayName</td>
+                        <td>@user.Email</td>
+                        <td>@user.Role</td>
+                        <td>@(user.IsActive ? "Ativo" : "Inativo")</td>
+                        <td>@(user.LastLoginAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                        <td>
+                            <div class="inline-actions">
+                                <a class="button secondary small" href="/admin/panel/users/@Uri.EscapeDataString(user.Id)/edit">Editar</a>
+                                @if (!string.Equals(Model.CurrentUser.UserId, user.Id, StringComparison.Ordinal))
+                                {
+                                    <form method="post" action="/admin/panel/users/@Uri.EscapeDataString(user.Id)/delete" class="inline-form">
+                                        @Html.AntiForgeryToken()
+                                        <button class="button danger small" type="submit" onclick="return confirm('Deseja remover este usuario?');">Excluir</button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

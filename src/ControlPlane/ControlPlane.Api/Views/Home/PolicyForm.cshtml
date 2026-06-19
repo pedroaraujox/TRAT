@@ -2,6 +2,17 @@
 @{
     ViewData["Title"] = Model.IsEditMode ? "Editar Politica" : "Nova Politica";
     var postUrl = Model.IsEditMode ? $"/admin/policies/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit" : "/admin/policies/new";
+    var selectedDays = new HashSet<string>(Model.ScheduleDays, StringComparer.OrdinalIgnoreCase);
+    var dayOptions = new[]
+    {
+        new { Value = "MON", Label = "Segunda" },
+        new { Value = "TUE", Label = "Terca" },
+        new { Value = "WED", Label = "Quarta" },
+        new { Value = "THU", Label = "Quinta" },
+        new { Value = "FRI", Label = "Sexta" },
+        new { Value = "SAT", Label = "Sabado" },
+        new { Value = "SUN", Label = "Domingo" }
+    };
 }
 
 <div class="page-header">
@@ -55,7 +66,7 @@
         </div>
         <div class="form-field">
             <label for="StartTimeLocal">Horario inicial</label>
-            <input id="StartTimeLocal" name="StartTimeLocal" value="@Model.StartTimeLocal" placeholder="22:00" required />
+            <input id="StartTimeLocal" name="StartTimeLocal" type="time" value="@Model.StartTimeLocal" required />
         </div>
         <div class="form-field full-width">
             <label for="IncludePathsCsv">Paths de inclusao</label>
@@ -78,8 +89,17 @@
             <input id="S3KeyPrefix" name="S3KeyPrefix" value="@Model.S3KeyPrefix" placeholder="clientes/ep/webstation-01" />
         </div>
         <div class="form-field full-width">
-            <label for="ScheduleDaysCsv">Dias da agenda</label>
-            <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.ScheduleDaysCsv" placeholder="MON,TUE,WED,THU,FRI" required />
+            <label>Dias da agenda</label>
+            <div class="checkbox-grid">
+                @foreach (var day in dayOptions)
+                {
+                    <label class="checkbox-chip">
+                        <input type="checkbox" name="ScheduleDays" value="@day.Value" checked="@selectedDays.Contains(day.Value)" />
+                        <span>@day.Label</span>
+                    </label>
+                }
+            </div>
+            <input type="hidden" name="ScheduleDaysCsv" value="@Model.ScheduleDaysCsv" />
         </div>
         <div class="form-field">
             <label for="MaxRuntimeMinutes">Janela maxima (min)</label>
@@ -94,11 +114,14 @@
             <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" value="@Model.NetworkLimitMbit" required />
         </div>
         <div class="form-field">
-            <label for="Enabled">Status</label>
-            <select id="Enabled" name="Enabled">
-                <option value="true" selected="@Model.Enabled">Ativa</option>
-                <option value="false" selected="@(!Model.Enabled)">Desativada</option>
-            </select>
+            <input type="hidden" name="Enabled" value="false" />
+            <label class="toggle-row" for="Enabled">
+                <span>Status</span>
+                <span class="switch">
+                    <input id="Enabled" name="Enabled" type="checkbox" value="true" checked="@Model.Enabled" />
+                    <span class="switch-slider"></span>
+                </span>
+            </label>
         </div>
         @if (Model.IsEditMode)
         {

@@ -85,4 +85,76 @@
       else if (href !== '/admin' && href.length > 1 && path.startsWith(href)) link.classList.add('active');
     }
   }
+
+  const bucketSelect = document.querySelector('[data-aws-bucket-select]');
+  const prefixSelect = document.querySelector('[data-aws-prefix-select]');
+  if (bucketSelect && prefixSelect) {
+    const endpoint = bucketSelect.getAttribute('data-prefix-endpoint') || '';
+    const expectedAccountId = bucketSelect.getAttribute('data-expected-account-id') || '';
+    const regionTargetSelector = bucketSelect.getAttribute('data-region-target') || '';
+    const regionTarget = regionTargetSelector ? document.querySelector(regionTargetSelector) : null;
+
+    const updatePrefixOptions = async () => {
+      const bucketName = bucketSelect.value || '';
+      const currentPrefix = prefixSelect.value || prefixSelect.getAttribute('data-current-prefix') || '';
+      if (!endpoint || !bucketName) {
+        return;
+      }
+
+      const url = new URL(endpoint, window.location.origin);
+      url.searchParams.set('expectedAccountId', expectedAccountId);
+      url.searchParams.set('bucketName', bucketName);
+
+      try {
+        const response = await fetch(url.toString(), {
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        if (!payload || !Array.isArray(payload.prefixes)) {
+          return;
+        }
+
+        prefixSelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Selecione um prefixo';
+        prefixSelect.appendChild(placeholder);
+
+        const seen = new Set();
+        for (const prefix of payload.prefixes) {
+          if (!prefix || seen.has(prefix)) continue;
+          const option = document.createElement('option');
+          option.value = prefix;
+          option.textContent = prefix;
+          if (prefix === currentPrefix) option.selected = true;
+          prefixSelect.appendChild(option);
+          seen.add(prefix);
+        }
+
+        if (currentPrefix && !seen.has(currentPrefix)) {
+          const custom = document.createElement('option');
+          custom.value = currentPrefix;
+          custom.textContent = currentPrefix;
+          custom.selected = true;
+          prefixSelect.appendChild(custom);
+        }
+
+        if (regionTarget && typeof payload.bucketRegion === 'string' && payload.bucketRegion) {
+          regionTarget.value = payload.bucketRegion;
+        }
+      } catch {
+      }
+    };
+
+    bucketSelect.addEventListener('change', () => {
+      prefixSelect.setAttribute('data-current-prefix', '');
+      updatePrefixOptions();
+    });
+  }
 })();

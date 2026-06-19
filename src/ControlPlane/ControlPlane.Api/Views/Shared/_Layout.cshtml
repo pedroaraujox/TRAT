@@ -1,3 +1,10 @@
+@using ControlPlane.Api.Security
+@{
+    var currentRole = Context.Session.GetString(PanelSecurityConstants.SessionUserRole);
+    var currentDisplayName = Context.Session.GetString(PanelSecurityConstants.SessionUserDisplayName) ?? "Usuario";
+    var currentEmail = Context.Session.GetString(PanelSecurityConstants.SessionUserEmail) ?? string.Empty;
+    var isAdmin = PanelSecurityConstants.IsAdminRole(currentRole);
+}
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -18,7 +25,17 @@
                 <a href="/admin"><span class="nav-icon">◎</span><span>Inicio</span></a>
                 <a href="/admin/customers"><span class="nav-icon">◫</span><span>Clientes</span></a>
                 <a href="/admin/hosts"><span class="nav-icon">▣</span><span>Hosts</span></a>
+                <a href="/admin/downloads"><span class="nav-icon">⇩</span><span>Download</span></a>
+                @if (isAdmin)
+                {
+                    <a href="/admin/panel"><span class="nav-icon">⚙</span><span>Painel</span></a>
+                }
             </nav>
+            <div class="sidebar-user">
+                <strong>@currentDisplayName</strong>
+                <span>@currentEmail</span>
+                <small>@(isAdmin ? "Administrador" : "Usuario comum")</small>
+            </div>
             <form method="post" action="/logout" class="logout-form">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="button danger full">Sair</button>
@@ -37,6 +54,11 @@
                     <div class="topbar-subtitle">Fluxo simplificado para onboarding e teste do Agent</div>
                 </div>
                 <div class="topbar-actions">
+                    <a class="button ghost" href="/admin/downloads">Download</a>
+                    @if (isAdmin)
+                    {
+                        <a class="button ghost" href="/admin/panel">Painel</a>
+                    }
                     <a class="button ghost" href="/admin/customers/new">Novo cliente</a>
                     <a class="button ghost" href="/admin">Inicio</a>
                 </div>

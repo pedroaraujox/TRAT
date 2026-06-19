@@ -39,6 +39,13 @@ internal static class InstallerValidation
             errors.Add("O pacote selecionado nao contem project.rules.json.");
         }
 
+        if (!File.Exists(layout.InstallScriptPath) &&
+            !File.Exists(layout.ServiceExecutablePath) &&
+            !File.Exists(layout.RulesPath))
+        {
+            errors.Add("Parece que apenas o Setup.exe foi executado sem o pacote completo. Baixe o pacote ZIP no painel, extraia todo o conteudo para uma pasta e execute o Setup.exe a partir dessa pasta extraida.");
+        }
+
         if (string.IsNullOrWhiteSpace(model.CustomerId) || !IdentifierRegex.IsMatch(model.CustomerId.Trim()))
         {
             errors.Add("CustomerId invalido. Use letras, numeros, ponto, underline ou hifen.");

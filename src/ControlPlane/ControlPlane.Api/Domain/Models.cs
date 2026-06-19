@@ -302,3 +302,35 @@ public sealed class AgentConfiguration
 
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
+
+public sealed class PanelUser
+{
+    [Key]
+    [MaxLength(64)]
+    public required string Id { get; init; }
+
+    [MaxLength(320)]
+    public required string Email { get; set; }
+
+    [MaxLength(160)]
+    public required string DisplayName { get; set; }
+
+    [MaxLength(24)]
+    public required string Role { get; set; }
+
+    [MaxLength(512)]
+    public required string PasswordHash { get; set; }
+
+    [MaxLength(256)]
+    public required string PasswordSalt { get; set; }
+
+    public int PasswordIterations { get; set; }
+
+    public bool IsActive { get; set; }
+
+    public DateTimeOffset? LastLoginAtUtc { get; set; }
+
+    public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    public DateTimeOffset? UpdatedAtUtc { get; set; }
+}

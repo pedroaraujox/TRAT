@@ -58,11 +58,28 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
 
         if (path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase))
         {
-            var expected = config["ControlPlane:Security:AdminToken"] ?? string.Empty;
-            var provided = ctx.Session.GetString("admin-token") ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(expected) || !ConstantTimeEquals(expected, provided))
+            var userId = ctx.Session.GetString(PanelSecurityConstants.SessionUserId);
+            if (string.IsNullOrWhiteSpace(userId))
             {
                 ctx.Response.Redirect("/login");
+                return;
+            }
+        }
+
+        if (path.StartsWith("/login", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(ctx.Session.GetString(PanelSecurityConstants.SessionUserId)))
+        {
+            ctx.Response.Redirect("/admin");
+            return;
+        }
+
+        if (path.StartsWith("/admin/panel", StringComparison.OrdinalIgnoreCase))
+        {
+            var role = ctx.Session.GetString(PanelSecurityConstants.SessionUserRole);
+            if (!PanelSecurityConstants.IsAdminRole(role))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await ctx.Response.WriteAsync("Forbidden");
                 return;
             }
         }

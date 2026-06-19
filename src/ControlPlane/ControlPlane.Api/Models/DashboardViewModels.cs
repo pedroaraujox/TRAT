@@ -231,6 +231,7 @@ public sealed record PolicyFormViewModel
     public string? S3BucketName { get; init; }
     public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
+    public IReadOnlyList<string> ScheduleDays { get; init; } = Array.Empty<string>();
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
     public int CpuLimitPercent { get; init; }
@@ -318,6 +319,7 @@ public sealed record BootstrapPolicyDraftViewModel
     public string? S3BucketName { get; init; }
     public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
+    public IReadOnlyList<string> ScheduleDays { get; init; } = Array.Empty<string>();
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
     public int CpuLimitPercent { get; init; }
@@ -334,6 +336,7 @@ public sealed class AwsIntegrationViewModel
     public string Message { get; init; } = string.Empty;
     public string? SelectedBucket { get; init; }
     public string? SelectedBucketRegion { get; init; }
+    public string? CurrentPrefix { get; set; }
     public IReadOnlyList<string> Buckets { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Prefixes { get; init; } = Array.Empty<string>();
 }
@@ -359,5 +362,66 @@ public sealed record PolicyChangeEventViewModel
 
 public sealed class LoginViewModel
 {
+    public string? Email { get; init; }
     public string? ErrorMessage { get; init; }
+}
+
+public sealed class PanelAdministrationViewModel
+{
+    public required PanelCurrentUserViewModel CurrentUser { get; init; }
+    public required AgentDownloadViewModel AgentDownload { get; init; }
+    public int UserCount { get; init; }
+    public int ActiveUserCount { get; init; }
+    public int AdminUserCount { get; init; }
+}
+
+public sealed class PanelUsersPageViewModel
+{
+    public required PanelCurrentUserViewModel CurrentUser { get; init; }
+    public required IReadOnlyList<PanelUserListItemViewModel> Users { get; init; }
+}
+
+public sealed record PanelUserListItemViewModel
+{
+    public required string Id { get; init; }
+    public required string Email { get; init; }
+    public required string DisplayName { get; init; }
+    public required string Role { get; init; }
+    public bool IsActive { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; }
+    public DateTimeOffset? UpdatedAtUtc { get; init; }
+    public DateTimeOffset? LastLoginAtUtc { get; init; }
+}
+
+public sealed record PanelUserFormViewModel
+{
+    public string? OriginalId { get; init; }
+    public required string Email { get; init; }
+    public required string DisplayName { get; init; }
+    public required string Role { get; init; }
+    public bool IsActive { get; init; }
+    public string? Password { get; init; }
+    public string? ConfirmPassword { get; init; }
+    public bool IsEditMode { get; init; }
+    public string? ErrorMessage { get; init; }
+}
+
+public sealed record PanelCurrentUserViewModel
+{
+    public required string UserId { get; init; }
+    public required string Email { get; init; }
+    public required string DisplayName { get; init; }
+    public required string Role { get; init; }
+    public bool IsAdmin { get; init; }
+}
+
+public sealed record AgentDownloadViewModel
+{
+    public bool IsAvailable { get; init; }
+    public required string Message { get; init; }
+    public required string SearchRoot { get; init; }
+    public string? Version { get; init; }
+    public DateTimeOffset? PublishedAtUtc { get; init; }
+    public bool HasSetupExe { get; init; }
+    public bool HasZip { get; init; }
 }

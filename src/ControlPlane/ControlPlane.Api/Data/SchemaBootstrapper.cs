@@ -105,6 +105,23 @@ public static class SchemaBootstrapper
 
         await db.Database.ExecuteSqlRawAsync(
             """
+            CREATE TABLE IF NOT EXISTS "PanelUsers" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PanelUsers" PRIMARY KEY,
+                "Email" TEXT NOT NULL,
+                "DisplayName" TEXT NOT NULL,
+                "Role" TEXT NOT NULL,
+                "PasswordHash" TEXT NOT NULL,
+                "PasswordSalt" TEXT NOT NULL,
+                "PasswordIterations" INTEGER NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "LastLoginAtUtc" TEXT NULL,
+                "CreatedAtUtc" TEXT NOT NULL,
+                "UpdatedAtUtc" TEXT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
             CREATE INDEX IF NOT EXISTS "IX_BackupPolicies_CustomerId_Name"
             ON "BackupPolicies" ("CustomerId", "Name");
             """);
@@ -119,6 +136,12 @@ public static class SchemaBootstrapper
             """
             CREATE INDEX IF NOT EXISTS "IX_AgentConfigurations_CustomerId_HostId"
             ON "AgentConfigurations" ("CustomerId", "HostId");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_PanelUsers_Email"
+            ON "PanelUsers" ("Email");
             """);
 
         await db.Database.ExecuteSqlRawAsync(

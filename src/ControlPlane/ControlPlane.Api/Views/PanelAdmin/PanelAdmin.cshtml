@@ -1,0 +1,59 @@
+@model PanelAdministrationViewModel
+@{
+    ViewData["Title"] = "Painel";
+}
+
+<div class="page-header">
+    <div>
+        <h1>Configuracoes do painel</h1>
+        <p>Area exclusiva do administrador para governanca do acesso e distribuicao do Agent.</p>
+    </div>
+    <div class="page-actions">
+        <a class="button ghost" href="/admin/panel/users">Gerenciar usuarios</a>
+        <a class="button primary" href="/admin/downloads">Downloads</a>
+    </div>
+</div>
+
+<section class="stats-grid">
+    <article class="stat-card">
+        <span>Usuario logado</span>
+        <strong>@Model.CurrentUser.DisplayName</strong>
+        <small>@Model.CurrentUser.Email</small>
+    </article>
+    <article class="stat-card">
+        <span>Usuarios</span>
+        <strong>@Model.UserCount</strong>
+        <small>@Model.ActiveUserCount ativos</small>
+    </article>
+    <article class="stat-card">
+        <span>Administradores</span>
+        <strong>@Model.AdminUserCount</strong>
+        <small>com acesso total</small>
+    </article>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Acesso ao painel</h2>
+        </div>
+        <div class="definition-grid">
+            <div><span>Perfil</span><strong>@Model.CurrentUser.Role</strong></div>
+            <div><span>Tipo de login</span><strong>E-mail e senha</strong></div>
+            <div class="wide"><span>Bootstrap inicial</span><strong>Admin inicial criado por configuracao segura no primeiro boot.</strong></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Agent atual</h2>
+        </div>
+        <div class="definition-grid">
+            <div><span>Status</span><strong>@(Model.AgentDownload.IsAvailable ? "Disponivel" : "Indisponivel")</strong></div>
+            <div><span>Versao</span><strong>@(Model.AgentDownload.Version ?? "-")</strong></div>
+            <div><span>Publicado em</span><strong>@(Model.AgentDownload.PublishedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+            <div class="wide"><span>Origem</span><strong>@Model.AgentDownload.SearchRoot</strong></div>
+            <div class="wide"><span>Mensagem</span><strong>@Model.AgentDownload.Message</strong></div>
+        </div>
+    </div>
+</section>

@@ -453,6 +453,7 @@ internal sealed class InstallerForm : Form
     {
         var model = BuildModel(applyTokenProtection: true);
         var layout = InstallerPackagePaths.Resolve(_packageRootTextBox.Text);
+        LogResolvedPackageLayout(layout);
         var errors = InstallerValidation.Validate(model, layout, _settingsOutputTextBox.Text.Trim()).ToList();
         var awsSecretInputError = ValidateAwsSecretInput();
         if (awsSecretInputError is not null)
@@ -493,6 +494,18 @@ internal sealed class InstallerForm : Form
         }
 
         return errors;
+    }
+
+    private void LogResolvedPackageLayout(PackageLayout layout)
+    {
+        #region debug-point installer-package-layout
+        AppendOutput($"[debug] BaseDirectory: {AppContext.BaseDirectory}");
+        AppendOutput($"[debug] PackageRoot resolvido: {layout.PackageRoot}");
+        AppendOutput($"[debug] Install script esperado: {layout.InstallScriptPath} | existe={File.Exists(layout.InstallScriptPath)}");
+        AppendOutput($"[debug] Service exe esperado: {layout.ServiceExecutablePath} | existe={File.Exists(layout.ServiceExecutablePath)}");
+        AppendOutput($"[debug] Rules esperado: {layout.RulesPath} | existe={File.Exists(layout.RulesPath)}");
+        AppendOutput($"[debug] Settings template esperado: {layout.SettingsTemplatePath} | existe={File.Exists(layout.SettingsTemplatePath)}");
+        #endregion
     }
 
     private string SaveSettings(bool showSuccessMessage)

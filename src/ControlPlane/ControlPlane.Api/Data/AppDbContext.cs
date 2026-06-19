@@ -14,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AgentRunRequest> AgentRunRequests => Set<AgentRunRequest>();
     public DbSet<PolicyChangeEvent> PolicyChangeEvents => Set<PolicyChangeEvent>();
     public DbSet<AgentConfiguration> AgentConfigurations => Set<AgentConfiguration>();
+    public DbSet<PanelUser> PanelUsers => Set<PanelUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,5 +45,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<AgentConfiguration>()
             .HasIndex(c => new { c.CustomerId, c.HostId })
             .IsUnique(false);
+
+        modelBuilder.Entity<PanelUser>()
+            .HasIndex(u => u.Email)
+            .IsUnique(true);
     }
 }

@@ -1,6 +1,7 @@
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Models;
+using ControlPlane.Api.Security;
 using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
@@ -12,8 +13,8 @@ namespace ControlPlane.Api.Controllers;
 
 public sealed class HomeController(
     AppDbContext db,
-    IConfiguration config,
     AwsDiscoveryService awsDiscoveryService,
+    PanelAuthenticationService panelAuthenticationService,
     HostOperationalStatusService hostOperationalStatusService,
     ILogger<HomeController> logger) : Controller
 {
@@ -27,18 +28,23 @@ public sealed class HomeController(
 
     [HttpPost("/login")]
     [ValidateAntiForgeryToken]
-    public IActionResult LoginPost([FromForm] string token)
+    public async Task<IActionResult> LoginPost([FromForm] string? email, [FromForm] string? password, CancellationToken ct)
     {
-        var expected = config["ControlPlane:Security:AdminToken"] ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(expected) || !string.Equals(expected, token, StringComparison.Ordinal))
+        var result = await panelAuthenticationService.AuthenticateAsync(email, password, ct);
+        if (!result.Success || result.Session is null)
         {
             return View("Login", new LoginViewModel
             {
-                ErrorMessage = "Token administrativo invalido."
+                Email = email?.Trim(),
+                ErrorMessage = result.ErrorMessage ?? "Falha ao autenticar."
             });
         }
 
-        HttpContext.Session.SetString("admin-token", token);
+        HttpContext.Session.SignInPanelUser(
+            result.Session.UserId,
+            result.Session.Email,
+            result.Session.DisplayName,
+            result.Session.Role);
         return Redirect("/admin");
     }
 
@@ -46,7 +52,7 @@ public sealed class HomeController(
     [ValidateAntiForgeryToken]
     public IActionResult Logout()
     {
-        HttpContext.Session.Remove("admin-token");
+        HttpContext.Session.SignOutPanelUser();
         return Redirect("/login");
     }
 
@@ -701,6 +707,7 @@ public sealed class HomeController(
             S3BucketName = string.Empty,
             S3KeyPrefix = string.Empty,
             ScheduleDaysCsv = "TUE,FRI",
+            ScheduleDays = SplitCsvTokens("TUE,FRI"),
             StartTimeLocal = "22:00",
             MaxRuntimeMinutes = 720,
             CpuLimitPercent = 35,
@@ -714,46 +721,47 @@ public sealed class HomeController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreatePolicy([FromForm] PolicyFormViewModel form, CancellationToken ct)
     {
-        var error = ValidatePolicyForm(form, false);
+        var normalizedForm = NormalizePolicyForm(form);
+        var error = ValidatePolicyForm(normalizedForm, false);
         if (error is not null)
         {
-            return View("PolicyForm", form with { ErrorMessage = error, IsEditMode = false });
+            return View("PolicyForm", normalizedForm with { ErrorMessage = error, IsEditMode = false });
         }
 
-        var exists = await db.BackupPolicies.AnyAsync(p => p.Id == form.Id.Trim(), ct);
+        var exists = await db.BackupPolicies.AnyAsync(p => p.Id == normalizedForm.Id.Trim(), ct);
         if (exists)
         {
-            return View("PolicyForm", form with { ErrorMessage = "Ja existe uma politica com este ID.", IsEditMode = false });
+            return View("PolicyForm", normalizedForm with { ErrorMessage = "Ja existe uma politica com este ID.", IsEditMode = false });
         }
 
         var now = DateTimeOffset.UtcNow;
-        var normalizedPolicyKind = NormalizePolicyKind(form.PolicyKind, fallback: "operational");
+        var normalizedPolicyKind = NormalizePolicyKind(normalizedForm.PolicyKind, fallback: "operational");
         db.BackupPolicies.Add(new BackupPolicy
         {
-            Id = form.Id.Trim(),
-            CustomerId = form.CustomerId.Trim(),
-            HostId = string.IsNullOrWhiteSpace(form.HostId) ? null : form.HostId.Trim(),
-            Name = form.Name.Trim(),
+            Id = normalizedForm.Id.Trim(),
+            CustomerId = normalizedForm.CustomerId.Trim(),
+            HostId = string.IsNullOrWhiteSpace(normalizedForm.HostId) ? null : normalizedForm.HostId.Trim(),
+            Name = normalizedForm.Name.Trim(),
             PolicyKind = normalizedPolicyKind,
-            OriginHostId = string.IsNullOrWhiteSpace(form.OriginHostId) ? null : form.OriginHostId.Trim(),
-            ScopeType = form.ScopeType.Trim(),
-            IncludePathsCsv = form.IncludePathsCsv.Trim(),
-            ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim(),
-            AwsRegion = string.IsNullOrWhiteSpace(form.AwsRegion) ? null : form.AwsRegion.Trim(),
-            S3BucketName = string.IsNullOrWhiteSpace(form.S3BucketName) ? null : form.S3BucketName.Trim(),
-            S3KeyPrefix = string.IsNullOrWhiteSpace(form.S3KeyPrefix) ? null : form.S3KeyPrefix.Trim().Trim('/'),
-            ScheduleDaysCsv = form.ScheduleDaysCsv.Trim(),
-            StartTimeLocal = form.StartTimeLocal.Trim(),
-            MaxRuntimeMinutes = form.MaxRuntimeMinutes,
-            CpuLimitPercent = form.CpuLimitPercent,
-            NetworkLimitMbit = form.NetworkLimitMbit,
-            Enabled = form.Enabled,
+            OriginHostId = string.IsNullOrWhiteSpace(normalizedForm.OriginHostId) ? null : normalizedForm.OriginHostId.Trim(),
+            ScopeType = normalizedForm.ScopeType.Trim(),
+            IncludePathsCsv = normalizedForm.IncludePathsCsv.Trim(),
+            ExcludePathsCsv = string.IsNullOrWhiteSpace(normalizedForm.ExcludePathsCsv) ? null : normalizedForm.ExcludePathsCsv.Trim(),
+            AwsRegion = string.IsNullOrWhiteSpace(normalizedForm.AwsRegion) ? null : normalizedForm.AwsRegion.Trim(),
+            S3BucketName = string.IsNullOrWhiteSpace(normalizedForm.S3BucketName) ? null : normalizedForm.S3BucketName.Trim(),
+            S3KeyPrefix = string.IsNullOrWhiteSpace(normalizedForm.S3KeyPrefix) ? null : normalizedForm.S3KeyPrefix.Trim().Trim('/'),
+            ScheduleDaysCsv = normalizedForm.ScheduleDaysCsv.Trim(),
+            StartTimeLocal = normalizedForm.StartTimeLocal.Trim(),
+            MaxRuntimeMinutes = normalizedForm.MaxRuntimeMinutes,
+            CpuLimitPercent = normalizedForm.CpuLimitPercent,
+            NetworkLimitMbit = normalizedForm.NetworkLimitMbit,
+            Enabled = normalizedForm.Enabled,
             LastChangedAtUtc = now,
             CreatedAtUtc = now
         });
 
         db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(
-            policyId: form.Id.Trim(),
+            policyId: normalizedForm.Id.Trim(),
             eventType: "policy_created",
             message: normalizedPolicyKind == "bootstrap"
                 ? "Politica bootstrap criada manualmente."
@@ -795,6 +803,7 @@ public sealed class HomeController(
             S3BucketName = policy.S3BucketName,
             S3KeyPrefix = policy.S3KeyPrefix,
             ScheduleDaysCsv = policy.ScheduleDaysCsv,
+            ScheduleDays = SplitCsvTokens(policy.ScheduleDaysCsv),
             StartTimeLocal = policy.StartTimeLocal,
             MaxRuntimeMinutes = policy.MaxRuntimeMinutes,
             CpuLimitPercent = policy.CpuLimitPercent,
@@ -815,10 +824,11 @@ public sealed class HomeController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> EditPolicyPost(string id, [FromForm] PolicyFormViewModel form, CancellationToken ct)
     {
-        var error = ValidatePolicyForm(form, true);
+        var normalizedForm = NormalizePolicyForm(form) with { OriginalId = id, IsEditMode = true };
+        var error = ValidatePolicyForm(normalizedForm, true);
         if (error is not null)
         {
-            return View("PolicyForm", form with { ErrorMessage = error, OriginalId = id, IsEditMode = true });
+            return View("PolicyForm", normalizedForm with { ErrorMessage = error, OriginalId = id, IsEditMode = true });
         }
 
         var policy = await db.BackupPolicies.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -829,25 +839,25 @@ public sealed class HomeController(
 
         var previousKind = NormalizePolicyKind(policy.PolicyKind, fallback: "operational");
         var previousEnabled = policy.Enabled;
-        var normalizedPolicyKind = NormalizePolicyKind(form.PolicyKind, fallback: previousKind);
+        var normalizedPolicyKind = NormalizePolicyKind(normalizedForm.PolicyKind, fallback: previousKind);
 
-        policy.CustomerId = form.CustomerId.Trim();
-        policy.HostId = string.IsNullOrWhiteSpace(form.HostId) ? null : form.HostId.Trim();
-        policy.Name = form.Name.Trim();
+        policy.CustomerId = normalizedForm.CustomerId.Trim();
+        policy.HostId = string.IsNullOrWhiteSpace(normalizedForm.HostId) ? null : normalizedForm.HostId.Trim();
+        policy.Name = normalizedForm.Name.Trim();
         policy.PolicyKind = normalizedPolicyKind;
-        policy.OriginHostId = string.IsNullOrWhiteSpace(form.OriginHostId) ? null : form.OriginHostId.Trim();
-        policy.ScopeType = form.ScopeType.Trim();
-        policy.IncludePathsCsv = form.IncludePathsCsv.Trim();
-        policy.ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim();
-        policy.AwsRegion = string.IsNullOrWhiteSpace(form.AwsRegion) ? null : form.AwsRegion.Trim();
-        policy.S3BucketName = string.IsNullOrWhiteSpace(form.S3BucketName) ? null : form.S3BucketName.Trim();
-        policy.S3KeyPrefix = string.IsNullOrWhiteSpace(form.S3KeyPrefix) ? null : form.S3KeyPrefix.Trim().Trim('/');
-        policy.ScheduleDaysCsv = form.ScheduleDaysCsv.Trim();
-        policy.StartTimeLocal = form.StartTimeLocal.Trim();
-        policy.MaxRuntimeMinutes = form.MaxRuntimeMinutes;
-        policy.CpuLimitPercent = form.CpuLimitPercent;
-        policy.NetworkLimitMbit = form.NetworkLimitMbit;
-        policy.Enabled = form.Enabled;
+        policy.OriginHostId = string.IsNullOrWhiteSpace(normalizedForm.OriginHostId) ? null : normalizedForm.OriginHostId.Trim();
+        policy.ScopeType = normalizedForm.ScopeType.Trim();
+        policy.IncludePathsCsv = normalizedForm.IncludePathsCsv.Trim();
+        policy.ExcludePathsCsv = string.IsNullOrWhiteSpace(normalizedForm.ExcludePathsCsv) ? null : normalizedForm.ExcludePathsCsv.Trim();
+        policy.AwsRegion = string.IsNullOrWhiteSpace(normalizedForm.AwsRegion) ? null : normalizedForm.AwsRegion.Trim();
+        policy.S3BucketName = string.IsNullOrWhiteSpace(normalizedForm.S3BucketName) ? null : normalizedForm.S3BucketName.Trim();
+        policy.S3KeyPrefix = string.IsNullOrWhiteSpace(normalizedForm.S3KeyPrefix) ? null : normalizedForm.S3KeyPrefix.Trim().Trim('/');
+        policy.ScheduleDaysCsv = normalizedForm.ScheduleDaysCsv.Trim();
+        policy.StartTimeLocal = normalizedForm.StartTimeLocal.Trim();
+        policy.MaxRuntimeMinutes = normalizedForm.MaxRuntimeMinutes;
+        policy.CpuLimitPercent = normalizedForm.CpuLimitPercent;
+        policy.NetworkLimitMbit = normalizedForm.NetworkLimitMbit;
+        policy.Enabled = normalizedForm.Enabled;
         policy.LastChangedAtUtc = DateTimeOffset.UtcNow;
 
         db.PolicyChangeEvents.Add(BuildPolicyChangeEvent(
@@ -895,6 +905,19 @@ public sealed class HomeController(
         }
 
         return View("ConfigurationDetail", model);
+    }
+
+    [HttpGet("/admin/aws/prefix-options")]
+    public async Task<IActionResult> AwsPrefixOptions([FromQuery] string? expectedAccountId, [FromQuery] string? bucketName, CancellationToken ct)
+    {
+        var result = await awsDiscoveryService.ListPrefixesForBucketAsync(expectedAccountId, bucketName, ct);
+        return Json(new
+        {
+            success = result.Success,
+            bucketRegion = result.BucketRegion,
+            prefixes = result.Prefixes,
+            message = result.Message
+        });
     }
 
     [HttpPost("/admin/configurations/{id}/policy")]
@@ -1131,7 +1154,7 @@ public sealed class HomeController(
             HostId = configuration.HostId,
             TriggerType = "manual_controlplane",
             State = "QUEUED",
-            RequestedBy = "controlplane-admin",
+            RequestedBy = HttpContext.GetCurrentPanelUser()?.Email ?? "controlplane-user",
             RequestedAtUtc = DateTimeOffset.UtcNow
         });
 
@@ -1321,6 +1344,32 @@ public sealed class HomeController(
         }
 
         return null;
+    }
+
+    private static PolicyFormViewModel NormalizePolicyForm(PolicyFormViewModel form)
+    {
+        var scheduleDaysCsv = NormalizeScheduleDays(form.ScheduleDays, form.ScheduleDaysCsv, fallback: "TUE,FRI");
+        return form with
+        {
+            Id = string.IsNullOrWhiteSpace(form.Id) ? string.Empty : form.Id.Trim(),
+            CustomerId = string.IsNullOrWhiteSpace(form.CustomerId) ? string.Empty : form.CustomerId.Trim(),
+            HostId = NormalizeOptionalValue(form.HostId),
+            Name = string.IsNullOrWhiteSpace(form.Name) ? string.Empty : form.Name.Trim(),
+            PolicyKind = NormalizePolicyKind(form.PolicyKind, fallback: "operational"),
+            OriginHostId = NormalizeOptionalValue(form.OriginHostId),
+            ScopeType = string.IsNullOrWhiteSpace(form.ScopeType) ? "customer" : form.ScopeType.Trim(),
+            IncludePathsCsv = NormalizePathCsv(form.IncludePathsCsv) ?? string.Empty,
+            ExcludePathsCsv = NormalizePathCsv(form.ExcludePathsCsv),
+            AwsRegion = NormalizeOptionalValue(form.AwsRegion),
+            S3BucketName = NormalizeOptionalValue(form.S3BucketName),
+            S3KeyPrefix = NormalizePrefix(form.S3KeyPrefix),
+            ScheduleDaysCsv = scheduleDaysCsv,
+            ScheduleDays = SplitCsvTokens(scheduleDaysCsv),
+            StartTimeLocal = NormalizeScheduleTime(form.StartTimeLocal, fallback: "22:00"),
+            MaxRuntimeMinutes = ClampPositive(form.MaxRuntimeMinutes, fallback: 720),
+            CpuLimitPercent = ClampRange(form.CpuLimitPercent, min: 1, max: 100, fallback: 35),
+            NetworkLimitMbit = ClampRange(form.NetworkLimitMbit, min: 1, max: 100_000, fallback: 80)
+        };
     }
 
     private static string? ValidatePolicyForm(PolicyFormViewModel form, bool isEditMode)
@@ -1655,6 +1704,7 @@ public sealed class HomeController(
             customers.TryGetValue(configEntity.CustomerId, out var customer) ? customer.AwsAccountId : null,
             boundPolicy?.S3BucketName,
             ct);
+        awsIntegration.CurrentPrefix = boundPolicy?.S3KeyPrefix;
 
         return new AgentConfigurationDetailViewModel
         {
@@ -1710,11 +1760,12 @@ public sealed class HomeController(
             S3BucketName = boundPolicy?.S3BucketName ?? awsIntegration.SelectedBucket,
             S3KeyPrefix = boundPolicy?.S3KeyPrefix ?? $"{configuration.CustomerId}/{configuration.HostId}",
             ScheduleDaysCsv = boundPolicy?.ScheduleDaysCsv ?? "TUE,FRI",
+            ScheduleDays = SplitCsvTokens(boundPolicy?.ScheduleDaysCsv ?? "TUE,FRI"),
             StartTimeLocal = boundPolicy?.StartTimeLocal ?? "22:00",
             MaxRuntimeMinutes = boundPolicy?.MaxRuntimeMinutes ?? 720,
             CpuLimitPercent = boundPolicy?.CpuLimitPercent ?? 35,
             NetworkLimitMbit = boundPolicy?.NetworkLimitMbit ?? 80,
-            Enabled = true,
+            Enabled = boundPolicy?.Enabled ?? true,
             HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
         };
     }
@@ -1747,7 +1798,8 @@ public sealed class HomeController(
             AwsRegion = NormalizeOptionalValue(form.AwsRegion),
             S3BucketName = NormalizeOptionalValue(form.S3BucketName),
             S3KeyPrefix = NormalizePrefix(form.S3KeyPrefix),
-            ScheduleDaysCsv = NormalizeUpperTokenCsv(form.ScheduleDaysCsv, fallback: "TUE,FRI"),
+            ScheduleDaysCsv = NormalizeScheduleDays(form.ScheduleDays, form.ScheduleDaysCsv, fallback: "TUE,FRI"),
+            ScheduleDays = SplitCsvTokens(NormalizeScheduleDays(form.ScheduleDays, form.ScheduleDaysCsv, fallback: "TUE,FRI")),
             StartTimeLocal = NormalizeScheduleTime(form.StartTimeLocal, fallback: "22:00"),
             MaxRuntimeMinutes = ClampPositive(form.MaxRuntimeMinutes, fallback: 720),
             CpuLimitPercent = ClampRange(form.CpuLimitPercent, min: 1, max: 100, fallback: 35),
@@ -1768,6 +1820,7 @@ public sealed class HomeController(
             Message = discovery.Message,
             SelectedBucket = discovery.SelectedBucket,
             SelectedBucketRegion = discovery.SelectedBucketRegion,
+            CurrentPrefix = null,
             Buckets = discovery.Buckets.Select(b => b.Name).ToArray(),
             Prefixes = discovery.Prefixes
         };
@@ -1952,6 +2005,31 @@ public sealed class HomeController(
             .ToArray();
 
         return values.Length == 0 ? fallback : string.Join(",", values);
+    }
+
+    private static string NormalizeScheduleDays(IReadOnlyList<string>? selectedDays, string? csv, string fallback)
+    {
+        if (selectedDays is not null && selectedDays.Count > 0)
+        {
+            return NormalizeUpperTokenCsv(string.Join(",", selectedDays), fallback);
+        }
+
+        return NormalizeUpperTokenCsv(csv, fallback);
+    }
+
+    private static IReadOnlyList<string> SplitCsvTokens(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+        {
+            return Array.Empty<string>();
+        }
+
+        return csv
+            .Split(new[] { ',', ';', ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim().ToUpperInvariant())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string NormalizeScheduleTime(string? value, string fallback)

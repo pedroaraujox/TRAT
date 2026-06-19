@@ -95,6 +95,39 @@ public sealed class AwsDiscoveryService(ILogger<AwsDiscoveryService> logger)
         }
     }
 
+    public async Task<AwsBucketPrefixesResult> ListPrefixesForBucketAsync(string? expectedAccountId, string? bucketName, CancellationToken ct)
+    {
+        var normalizedBucket = Normalize(bucketName);
+        if (string.IsNullOrWhiteSpace(normalizedBucket))
+        {
+            return new AwsBucketPrefixesResult(false, null, Array.Empty<string>(), "Bucket nao informado.");
+        }
+
+        try
+        {
+            var credentials = FallbackCredentialsFactory.GetCredentials();
+            var region = RegionEndpoint.USEast1;
+            using var sts = new AmazonSecurityTokenServiceClient(credentials, region);
+            var identity = await sts.GetCallerIdentityAsync(new GetCallerIdentityRequest(), ct);
+            var normalizedExpectedAccountId = Normalize(expectedAccountId);
+            if (!string.IsNullOrWhiteSpace(normalizedExpectedAccountId) &&
+                !string.Equals(identity.Account, normalizedExpectedAccountId, StringComparison.Ordinal))
+            {
+                return new AwsBucketPrefixesResult(false, null, Array.Empty<string>(), "Conta AWS divergente para listar prefixos.");
+            }
+
+            using var s3 = new AmazonS3Client(credentials, region);
+            var bucketRegion = await GetBucketRegionAsync(s3, normalizedBucket, region.SystemName, ct);
+            var prefixes = await ListPrefixesAsync(s3, normalizedBucket, ct);
+            return new AwsBucketPrefixesResult(true, bucketRegion, prefixes, "Prefixos carregados com sucesso.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "AWS prefix discovery failed for bucket {Bucket}", normalizedBucket);
+            return new AwsBucketPrefixesResult(false, null, Array.Empty<string>(), "Falha ao listar prefixos do bucket selecionado.");
+        }
+    }
+
     private static async Task<IReadOnlyList<string>> ListPrefixesAsync(IAmazonS3 s3, string bucketName, CancellationToken ct)
     {
         var response = await s3.ListObjectsV2Async(new ListObjectsV2Request
@@ -137,3 +170,9 @@ public sealed class AwsDiscoveryService(ILogger<AwsDiscoveryService> logger)
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }
+
+public sealed record AwsBucketPrefixesResult(
+    bool Success,
+    string? BucketRegion,
+    IReadOnlyList<string> Prefixes,
+    string Message);

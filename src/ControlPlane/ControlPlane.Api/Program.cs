@@ -12,12 +12,18 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<SmtpEmailSender>();
 builder.Services.AddSingleton<AwsDiscoveryService>();
 builder.Services.AddSingleton<HostOperationalStatusService>();
+builder.Services.AddSingleton<AgentPackageCatalogService>();
+builder.Services.AddScoped<PanelPasswordHasher>();
+builder.Services.AddScoped<PanelAuthenticationService>();
+builder.Services.AddScoped<PanelBootstrapService>();
 builder.Services.AddScoped<PolicyResolutionService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.IdleTimeout = TimeSpan.FromHours(8);
 });
 
@@ -42,6 +48,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.EnsureCreatedAsync();
     await SchemaBootstrapper.EnsureExtendedSchemaAsync(db);
+    var panelBootstrap = scope.ServiceProvider.GetRequiredService<PanelBootstrapService>();
+    await panelBootstrap.EnsureBootstrapAdminAsync(CancellationToken.None);
     var enableDemoData = builder.Configuration.GetValue<bool>("ControlPlane:Seed:EnableDemoData");
     if (enableDemoData)
     {

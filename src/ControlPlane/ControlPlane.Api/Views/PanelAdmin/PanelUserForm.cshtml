@@ -1,0 +1,65 @@
+@model PanelUserFormViewModel
+@{
+    ViewData["Title"] = Model.IsEditMode ? "Editar Usuario" : "Novo Usuario";
+    var postUrl = Model.IsEditMode
+        ? $"/admin/panel/users/{Uri.EscapeDataString(Model.OriginalId ?? string.Empty)}/edit"
+        : "/admin/panel/users/new";
+}
+
+<div class="page-header">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>Gerencie o acesso ao painel por perfil e credencial.</p>
+    </div>
+</div>
+
+<section class="panel narrow-panel">
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="error-banner">@Model.ErrorMessage</div>
+    }
+
+    <form method="post" action="@postUrl" class="form-grid">
+        @Html.AntiForgeryToken()
+        <div class="form-field">
+            <label for="DisplayName">Nome</label>
+            <input id="DisplayName" name="DisplayName" value="@Model.DisplayName" required />
+        </div>
+        <div class="form-field">
+            <label for="Email">E-mail</label>
+            <input id="Email" name="Email" type="email" value="@Model.Email" autocomplete="username" required />
+        </div>
+        <div class="form-field">
+            <label for="Role">Perfil</label>
+            <select id="Role" name="Role">
+                <option value="operator" selected="@(Model.Role == "operator")">Usuario comum</option>
+                <option value="admin" selected="@(Model.Role == "admin")">Administrador</option>
+            </select>
+        </div>
+        <div class="form-field">
+            <input type="hidden" name="IsActive" value="false" />
+            <label class="toggle-row" for="IsActive">
+                <span>Status</span>
+                <span class="switch">
+                    <input id="IsActive" name="IsActive" type="checkbox" value="true" checked="@Model.IsActive" />
+                    <span class="switch-slider"></span>
+                </span>
+            </label>
+        </div>
+        <div class="form-field">
+            <label for="Password">Senha @(Model.IsEditMode ? "(opcional)" : string.Empty)</label>
+            <input id="Password" name="Password" type="password" autocomplete="new-password" />
+        </div>
+        <div class="form-field">
+            <label for="ConfirmPassword">Confirmar senha</label>
+            <input id="ConfirmPassword" name="ConfirmPassword" type="password" autocomplete="new-password" />
+        </div>
+        <div class="form-field full-width">
+            <span class="form-help">Use perfil administrador apenas para usuarios que precisam gerenciar configuracoes do painel e acessos.</span>
+        </div>
+        <div class="form-actions">
+            <a class="button secondary" href="/admin/panel/users">Cancelar</a>
+            <button class="button primary" type="submit">Salvar usuario</button>
+        </div>
+    </form>
+</section>

@@ -2,6 +2,17 @@
 @{
     ViewData["Title"] = $"Configuracao {Model.Configuration.Hostname ?? Model.Configuration.HostId}";
     var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+    var selectedDays = new HashSet<string>(Model.BootstrapPolicyDraft.ScheduleDays, StringComparer.OrdinalIgnoreCase);
+    var dayOptions = new[]
+    {
+        new { Value = "MON", Label = "Segunda" },
+        new { Value = "TUE", Label = "Terca" },
+        new { Value = "WED", Label = "Quarta" },
+        new { Value = "THU", Label = "Quinta" },
+        new { Value = "FRI", Label = "Sexta" },
+        new { Value = "SAT", Label = "Sabado" },
+        new { Value = "SUN", Label = "Domingo" }
+    };
 }
 
 <div class="page-header">
@@ -189,7 +200,6 @@
                 <input type="hidden" name="CustomerId" value="@Model.BootstrapPolicyDraft.CustomerId" />
                 <input type="hidden" name="HostId" value="@Model.BootstrapPolicyDraft.HostId" />
                 <input type="hidden" name="ScopeType" value="@Model.BootstrapPolicyDraft.ScopeType" />
-                <input type="hidden" name="Enabled" value="@(Model.BootstrapPolicyDraft.Enabled ? "true" : "false")" />
 
                 <div class="form-field full-width">
                     <label for="Name">Nome da politica</label>
@@ -209,31 +219,58 @@
                 </div>
                 <div class="form-field">
                     <label for="S3BucketName">Bucket S3</label>
-                    <input id="S3BucketName" name="S3BucketName" list="bucket-options" value="@Model.BootstrapPolicyDraft.S3BucketName" placeholder="bucket-backup" />
-                    <datalist id="bucket-options">
+                    <select id="S3BucketName"
+                            name="S3BucketName"
+                            data-aws-bucket-select
+                            data-expected-account-id="@Model.AwsIntegration.ExpectedAccountId"
+                            data-prefix-endpoint="/admin/aws/prefix-options"
+                            data-region-target="#AwsRegion"
+                            data-prefix-target="#S3KeyPrefix">
+                        @if (string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3BucketName))
+                        {
+                            <option value="">Selecione um bucket</option>
+                        }
                         @foreach (var bucket in Model.AwsIntegration.Buckets)
                         {
-                            <option value="@bucket"></option>
+                            <option value="@bucket" selected="@(string.Equals(bucket, Model.BootstrapPolicyDraft.S3BucketName, StringComparison.OrdinalIgnoreCase))">@bucket</option>
                         }
-                    </datalist>
+                    </select>
                 </div>
                 <div class="form-field full-width">
                     <label for="S3KeyPrefix">Pasta/prefixo no bucket</label>
-                    <input id="S3KeyPrefix" name="S3KeyPrefix" list="prefix-options" value="@Model.BootstrapPolicyDraft.S3KeyPrefix" placeholder="clientes/ep/webstation-01" />
-                    <datalist id="prefix-options">
+                    <select id="S3KeyPrefix" name="S3KeyPrefix" data-aws-prefix-select data-current-prefix="@Model.BootstrapPolicyDraft.S3KeyPrefix">
+                        @if (string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3KeyPrefix))
+                        {
+                            <option value="">Selecione um prefixo</option>
+                        }
                         @foreach (var prefix in Model.AwsIntegration.Prefixes)
                         {
-                            <option value="@prefix"></option>
+                            <option value="@prefix" selected="@(string.Equals(prefix, Model.BootstrapPolicyDraft.S3KeyPrefix, StringComparison.OrdinalIgnoreCase))">@prefix</option>
                         }
-                    </datalist>
+                        @if (!string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3KeyPrefix) &&
+                             !Model.AwsIntegration.Prefixes.Contains(Model.BootstrapPolicyDraft.S3KeyPrefix, StringComparer.OrdinalIgnoreCase))
+                        {
+                            <option value="@Model.BootstrapPolicyDraft.S3KeyPrefix" selected="selected">@Model.BootstrapPolicyDraft.S3KeyPrefix</option>
+                        }
+                    </select>
+                    <span class="form-help">Ao trocar o bucket, a lista de prefixos e a regiao sao atualizadas automaticamente.</span>
                 </div>
-                <div class="form-field">
-                    <label for="ScheduleDaysCsv">Dias</label>
-                    <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.BootstrapPolicyDraft.ScheduleDaysCsv" />
+                <div class="form-field full-width">
+                    <label>Dias</label>
+                    <div class="checkbox-grid">
+                        @foreach (var day in dayOptions)
+                        {
+                            <label class="checkbox-chip">
+                                <input type="checkbox" name="ScheduleDays" value="@day.Value" checked="@selectedDays.Contains(day.Value)" />
+                                <span>@day.Label</span>
+                            </label>
+                        }
+                    </div>
+                    <input type="hidden" name="ScheduleDaysCsv" value="@Model.BootstrapPolicyDraft.ScheduleDaysCsv" />
                 </div>
                 <div class="form-field">
                     <label for="StartTimeLocal">Horario</label>
-                    <input id="StartTimeLocal" name="StartTimeLocal" value="@Model.BootstrapPolicyDraft.StartTimeLocal" />
+                    <input id="StartTimeLocal" name="StartTimeLocal" type="time" value="@Model.BootstrapPolicyDraft.StartTimeLocal" />
                 </div>
                 <div class="form-field">
                     <label for="MaxRuntimeMinutes">Max runtime (min)</label>
@@ -246,6 +283,17 @@
                 <div class="form-field">
                     <label for="NetworkLimitMbit">Rede max (Mbit)</label>
                     <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" min="1" value="@Model.BootstrapPolicyDraft.NetworkLimitMbit" />
+                </div>
+                <div class="form-field">
+                    <input type="hidden" name="Enabled" value="false" />
+                    <label class="toggle-row" for="Enabled">
+                        <span>Backup do host</span>
+                        <span class="switch">
+                            <input id="Enabled" name="Enabled" type="checkbox" value="true" checked="@Model.BootstrapPolicyDraft.Enabled" />
+                            <span class="switch-slider"></span>
+                        </span>
+                    </label>
+                    <span class="form-help">Use o botao on/off para habilitar ou desabilitar o backup deste host.</span>
                 </div>
                 <div class="form-field full-width">
                     <span class="form-help">O caminho nasce no host, mas bucket, pasta, agenda e limites ficam centralizados no ControlPlane.</span>

@@ -16,10 +16,10 @@
         <div class="login-card">
             <div class="brand">
                 <div class="brand-title">Webstation Backup</div>
-                <div class="brand-subtitle">Acesso administrativo</div>
+                <div class="brand-subtitle">Acesso ao painel</div>
             </div>
             <h1>Entrar</h1>
-            <p>Use o token administrativo para acessar o painel.</p>
+            <p>Use seu e-mail e senha para acessar o painel.</p>
         @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
         {
             <div class="error-banner">@Model.ErrorMessage</div>
@@ -27,8 +27,12 @@
             <form method="post" action="/login" class="login-form">
                 @Html.AntiForgeryToken()
                 <div class="form-field full-width">
-                    <label for="token">Token</label>
-                    <input id="token" name="token" type="password" autocomplete="off" required />
+                    <label for="email">E-mail</label>
+                    <input id="email" name="email" type="email" value="@Model.Email" autocomplete="username" required />
+                </div>
+                <div class="form-field full-width">
+                    <label for="password">Senha</label>
+                    <input id="password" name="password" type="password" autocomplete="current-password" required />
                 </div>
                 <button class="button primary full" type="submit">Entrar</button>
             </form>
