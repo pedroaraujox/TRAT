@@ -151,6 +151,7 @@ public sealed class HomeControllerPolicyAssignmentTests
         var controller = new HomeController(
             db,
             BuildConfiguration(),
+            new AwsDiscoveryService(NullLogger<AwsDiscoveryService>.Instance),
             new HostOperationalStatusService(),
             NullLogger<HomeController>.Instance)
         {

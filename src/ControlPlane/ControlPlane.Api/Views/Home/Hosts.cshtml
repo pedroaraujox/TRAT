@@ -6,10 +6,7 @@
 <div class="page-header">
     <div>
         <h1>Hosts</h1>
-        <p>Status operacional de heartbeat e sistema operacional.</p>
-    </div>
-    <div class="page-actions">
-        <a class="button primary" href="/admin/hosts/new">Novo host</a>
+        <p>Confirme aqui se o Agent instalou, apareceu e manteve heartbeat.</p>
     </div>
 </div>
 
@@ -44,12 +41,9 @@
                 <tr>
                     <th>Host</th>
                     <th>Cliente</th>
-                    <th>SO</th>
                     <th>Ultimo Heartbeat</th>
-                    <th>Prontidao</th>
+                    <th>Status</th>
                     <th>Servico</th>
-                    <th>Politica</th>
-                    <th>Prechecks</th>
                     <th></th>
                 </tr>
             </thead>
@@ -57,7 +51,7 @@
                 @if (Model.Hosts.Count == 0)
                 {
                     <tr>
-                        <td colspan="9">Nenhum host encontrado.</td>
+                        <td colspan="6">Nenhum host encontrado.</td>
                     </tr>
                 }
                 else
@@ -67,28 +61,16 @@
                         <tr>
                             <td>@host.Hostname</td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
-                            <td>@host.OsVersion</td>
                             <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
                             <td>
                                 <div class="status-stack">
                                     <span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span>
-                                    <div class="status-detail">Heartbeat: @host.HeartbeatStatus</div>
-                                    <div class="status-detail">@host.OperationalStatusMessage</div>
+                                    <div class="status-detail">@host.HeartbeatStatus</div>
                                 </div>
                             </td>
                             <td>@(host.ServiceStatus ?? "-")</td>
-                            <td>@(host.AssignedPolicyName ?? "-")</td>
-                            <td>@($"{BoolText(host.PrecheckTlsOk)} / {BoolText(host.PrecheckDiskOk)} / {BoolText(host.PrecheckCredentialOk)}")</td>
                             <td class="actions-cell">
-                                <a href="/admin/hosts/@Uri.EscapeDataString(host.Id)/edit">Editar</a>
-                                @if (!string.IsNullOrWhiteSpace(host.ConfigurationId))
-                                {
-                                    <a href="/admin/configurations/@Uri.EscapeDataString(host.ConfigurationId)">Configuracao</a>
-                                }
-                                else
-                                {
-                                    <span class="muted-text">Sem config</span>
-                                }
+                                <a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">Abrir cliente</a>
                             </td>
                         </tr>
                     }
@@ -97,7 +79,3 @@
         </table>
     </div>
 </section>
-
-@functions {
-    private static string BoolText(bool? value) => value.HasValue ? (value.Value ? "OK" : "Falhou") : "-";
-}

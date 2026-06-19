@@ -2,6 +2,7 @@ using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Models;
 using ControlPlane.Api.Services;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -12,6 +13,7 @@ namespace ControlPlane.Api.Controllers;
 public sealed class HomeController(
     AppDbContext db,
     IConfiguration config,
+    AwsDiscoveryService awsDiscoveryService,
     HostOperationalStatusService hostOperationalStatusService,
     ILogger<HomeController> logger) : Controller
 {
@@ -247,6 +249,12 @@ public sealed class HomeController(
             .Where(p => p.CustomerId == id)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
+        var selectedBucket = policies
+            .Where(p => !string.IsNullOrWhiteSpace(p.S3BucketName))
+            .OrderByDescending(p => p.LastChangedAtUtc ?? p.CreatedAtUtc)
+            .Select(p => p.S3BucketName!.Trim())
+            .FirstOrDefault();
+        var awsIntegration = await BuildAwsIntegrationViewModelAsync(customer.AwsAccountId, selectedBucket, ct);
 
         return View("CustomerDetail", new CustomerDetailViewModel
         {
@@ -260,6 +268,7 @@ public sealed class HomeController(
                 IsEditMode = true
             },
             EnrollmentTokenOneTime = string.IsNullOrWhiteSpace(enrollmentToken) ? null : enrollmentToken,
+            AwsIntegration = awsIntegration,
             Hosts = hosts.Select(h => MapHost(h, customerMap, configsByHostId, policyMap)).ToArray(),
             Jobs = jobs.Select(j => MapJob(j, customerMap, hostsById)).ToArray(),
             Alerts = alerts.Select(a => MapAlert(a, customerMap, hostsById)).ToArray(),
@@ -294,6 +303,17 @@ public sealed class HomeController(
     private static string BuildEnrollmentTokenSessionKey(string customerId)
     {
         return EnrollmentTokenSessionKeyPrefix + customerId.Trim().ToLowerInvariant();
+    }
+
+    private void TryRemoveEnrollmentTokenFromSession(string customerId)
+    {
+        var session = HttpContext.Features.Get<ISessionFeature>()?.Session;
+        if (session is null)
+        {
+            return;
+        }
+
+        session.Remove(BuildEnrollmentTokenSessionKey(customerId));
     }
 
     private static string GenerateEnrollmentToken()
@@ -352,6 +372,115 @@ public sealed class HomeController(
 
         await db.SaveChangesAsync(ct);
         return Redirect($"/admin/customers/{Uri.EscapeDataString(id)}");
+    }
+
+    [HttpPost("/admin/customers/{id}/delete")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteCustomer(string id, [FromForm] string? returnUrl, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            TempData["ErrorMessage"] = "Cliente invalido.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/customers");
+        }
+
+        var customerId = id.Trim();
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId, ct);
+        if (customer is null)
+        {
+            TempData["ErrorMessage"] = "Cliente nao encontrado.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/customers");
+        }
+
+        var jobIds = await db.Jobs
+            .Where(j => j.CustomerId == customerId)
+            .Select(j => j.Id)
+            .ToListAsync(ct);
+        var policyIds = await db.BackupPolicies
+            .Where(p => p.CustomerId == customerId)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+
+        var artifacts = jobIds.Count == 0
+            ? []
+            : await db.Artifacts.Where(a => jobIds.Contains(a.JobId)).ToListAsync(ct);
+        var jobs = jobIds.Count == 0
+            ? []
+            : await db.Jobs.Where(j => j.CustomerId == customerId).ToListAsync(ct);
+        var alerts = await db.Alerts.Where(a => a.CustomerId == customerId).ToListAsync(ct);
+        var configurations = await db.AgentConfigurations.Where(c => c.CustomerId == customerId).ToListAsync(ct);
+        var policyChangeEvents = policyIds.Count == 0
+            ? []
+            : await db.PolicyChangeEvents.Where(e => policyIds.Contains(e.PolicyId)).ToListAsync(ct);
+        var policies = policyIds.Count == 0
+            ? []
+            : await db.BackupPolicies.Where(p => p.CustomerId == customerId).ToListAsync(ct);
+        var hosts = await db.Hosts.Where(h => h.CustomerId == customerId).ToListAsync(ct);
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            if (artifacts.Count > 0)
+            {
+                db.Artifacts.RemoveRange(artifacts);
+            }
+
+            if (alerts.Count > 0)
+            {
+                db.Alerts.RemoveRange(alerts);
+            }
+
+            if (configurations.Count > 0)
+            {
+                db.AgentConfigurations.RemoveRange(configurations);
+            }
+
+            if (policyChangeEvents.Count > 0)
+            {
+                db.PolicyChangeEvents.RemoveRange(policyChangeEvents);
+            }
+
+            if (policies.Count > 0)
+            {
+                db.BackupPolicies.RemoveRange(policies);
+            }
+
+            if (jobs.Count > 0)
+            {
+                db.Jobs.RemoveRange(jobs);
+            }
+
+            if (hosts.Count > 0)
+            {
+                db.Hosts.RemoveRange(hosts);
+            }
+
+            db.Customers.Remove(customer);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync(ct);
+            logger.LogError(ex, "Customer {CustomerId} deletion failed", customerId);
+            TempData["ErrorMessage"] = "Falha ao excluir o cliente.";
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/customers/{Uri.EscapeDataString(customerId)}");
+        }
+
+        TryRemoveEnrollmentTokenFromSession(customerId);
+        logger.LogInformation(
+            "Customer {CustomerId} deleted with dependencies. Hosts={HostCount}, Jobs={JobCount}, Alerts={AlertCount}, Configurations={ConfigurationCount}, Policies={PolicyCount}, PolicyEvents={PolicyEventCount}, Artifacts={ArtifactCount}",
+            customerId,
+            hosts.Count,
+            jobs.Count,
+            alerts.Count,
+            configurations.Count,
+            policies.Count,
+            policyChangeEvents.Count,
+            artifacts.Count);
+
+        TempData["StatusMessage"] = "Cliente excluido com sucesso.";
+        return RedirectToLocalOrDefault(returnUrl, "/admin/customers");
     }
 
     [HttpGet("/admin/hosts")]
@@ -561,6 +690,9 @@ public sealed class HomeController(
             ScopeType = "customer",
             IncludePathsCsv = string.Empty,
             ExcludePathsCsv = string.Empty,
+            AwsRegion = string.Empty,
+            S3BucketName = string.Empty,
+            S3KeyPrefix = string.Empty,
             ScheduleDaysCsv = "TUE,FRI",
             StartTimeLocal = "22:00",
             MaxRuntimeMinutes = 720,
@@ -600,6 +732,9 @@ public sealed class HomeController(
             ScopeType = form.ScopeType.Trim(),
             IncludePathsCsv = form.IncludePathsCsv.Trim(),
             ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim(),
+            AwsRegion = string.IsNullOrWhiteSpace(form.AwsRegion) ? null : form.AwsRegion.Trim(),
+            S3BucketName = string.IsNullOrWhiteSpace(form.S3BucketName) ? null : form.S3BucketName.Trim(),
+            S3KeyPrefix = string.IsNullOrWhiteSpace(form.S3KeyPrefix) ? null : form.S3KeyPrefix.Trim().Trim('/'),
             ScheduleDaysCsv = form.ScheduleDaysCsv.Trim(),
             StartTimeLocal = form.StartTimeLocal.Trim(),
             MaxRuntimeMinutes = form.MaxRuntimeMinutes,
@@ -649,6 +784,9 @@ public sealed class HomeController(
             ScopeType = policy.ScopeType,
             IncludePathsCsv = policy.IncludePathsCsv,
             ExcludePathsCsv = policy.ExcludePathsCsv,
+            AwsRegion = policy.AwsRegion,
+            S3BucketName = policy.S3BucketName,
+            S3KeyPrefix = policy.S3KeyPrefix,
             ScheduleDaysCsv = policy.ScheduleDaysCsv,
             StartTimeLocal = policy.StartTimeLocal,
             MaxRuntimeMinutes = policy.MaxRuntimeMinutes,
@@ -694,6 +832,9 @@ public sealed class HomeController(
         policy.ScopeType = form.ScopeType.Trim();
         policy.IncludePathsCsv = form.IncludePathsCsv.Trim();
         policy.ExcludePathsCsv = string.IsNullOrWhiteSpace(form.ExcludePathsCsv) ? null : form.ExcludePathsCsv.Trim();
+        policy.AwsRegion = string.IsNullOrWhiteSpace(form.AwsRegion) ? null : form.AwsRegion.Trim();
+        policy.S3BucketName = string.IsNullOrWhiteSpace(form.S3BucketName) ? null : form.S3BucketName.Trim();
+        policy.S3KeyPrefix = string.IsNullOrWhiteSpace(form.S3KeyPrefix) ? null : form.S3KeyPrefix.Trim().Trim('/');
         policy.ScheduleDaysCsv = form.ScheduleDaysCsv.Trim();
         policy.StartTimeLocal = form.StartTimeLocal.Trim();
         policy.MaxRuntimeMinutes = form.MaxRuntimeMinutes;
@@ -856,6 +997,9 @@ public sealed class HomeController(
             ScopeType = bootstrapForm.ScopeType,
             IncludePathsCsv = bootstrapForm.IncludePathsCsv,
             ExcludePathsCsv = bootstrapForm.ExcludePathsCsv,
+            AwsRegion = bootstrapForm.AwsRegion,
+            S3BucketName = bootstrapForm.S3BucketName,
+            S3KeyPrefix = bootstrapForm.S3KeyPrefix,
             ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv,
             StartTimeLocal = bootstrapForm.StartTimeLocal,
             MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes,
@@ -887,6 +1031,9 @@ public sealed class HomeController(
                 ScopeType = bootstrapForm.ScopeType,
                 IncludePathsCsv = bootstrapForm.IncludePathsCsv,
                 ExcludePathsCsv = bootstrapForm.ExcludePathsCsv,
+                AwsRegion = bootstrapForm.AwsRegion,
+                S3BucketName = bootstrapForm.S3BucketName,
+                S3KeyPrefix = bootstrapForm.S3KeyPrefix,
                 ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv,
                 StartTimeLocal = bootstrapForm.StartTimeLocal,
                 MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes,
@@ -910,6 +1057,9 @@ public sealed class HomeController(
             policy.ScopeType = bootstrapForm.ScopeType;
             policy.IncludePathsCsv = bootstrapForm.IncludePathsCsv;
             policy.ExcludePathsCsv = bootstrapForm.ExcludePathsCsv;
+            policy.AwsRegion = bootstrapForm.AwsRegion;
+            policy.S3BucketName = bootstrapForm.S3BucketName;
+            policy.S3KeyPrefix = bootstrapForm.S3KeyPrefix;
             policy.ScheduleDaysCsv = bootstrapForm.ScheduleDaysCsv;
             policy.StartTimeLocal = bootstrapForm.StartTimeLocal;
             policy.MaxRuntimeMinutes = bootstrapForm.MaxRuntimeMinutes;
@@ -940,6 +1090,46 @@ public sealed class HomeController(
             id,
             readiness.IsReadyForPolicyAssignment);
 
+        return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+    }
+
+    [HttpPost("/admin/configurations/{id}/run-now")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QueueRunNow(string id, [FromForm] string? returnUrl, CancellationToken ct)
+    {
+        var configuration = await db.AgentConfigurations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (configuration is null)
+        {
+            TempData["ErrorMessage"] = "Configuracao nao encontrada.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/configurations");
+        }
+
+        var pendingRequest = (await db.AgentRunRequests.AsNoTracking()
+            .Where(r => r.CustomerId == configuration.CustomerId &&
+                        r.HostId == configuration.HostId &&
+                        (r.State == "QUEUED" || r.State == "CLAIMED"))
+            .ToListAsync(ct))
+            .OrderByDescending(r => r.RequestedAtUtc)
+            .FirstOrDefault();
+        if (pendingRequest is not null)
+        {
+            TempData["ErrorMessage"] = "Ja existe uma execucao manual pendente para este host.";
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+        }
+
+        db.AgentRunRequests.Add(new AgentRunRequest
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            CustomerId = configuration.CustomerId,
+            HostId = configuration.HostId,
+            TriggerType = "manual_controlplane",
+            State = "QUEUED",
+            RequestedBy = "controlplane-admin",
+            RequestedAtUtc = DateTimeOffset.UtcNow
+        });
+
+        await db.SaveChangesAsync(ct);
+        TempData["StatusMessage"] = "Execucao manual enfileirada. O Agent vai consumir a requisicao no proximo ciclo.";
         return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
     }
 
@@ -1160,6 +1350,21 @@ public sealed class HomeController(
         {
             return "HostId e obrigatorio para politicas por host.";
         }
+        if (!string.IsNullOrWhiteSpace(form.AwsRegion) || !string.IsNullOrWhiteSpace(form.S3BucketName) || !string.IsNullOrWhiteSpace(form.S3KeyPrefix))
+        {
+            if (string.IsNullOrWhiteSpace(form.AwsRegion))
+            {
+                return "AwsRegion e obrigatoria quando houver destino S3.";
+            }
+            if (string.IsNullOrWhiteSpace(form.S3BucketName))
+            {
+                return "Bucket S3 e obrigatorio quando houver destino S3.";
+            }
+            if (string.IsNullOrWhiteSpace(form.S3KeyPrefix))
+            {
+                return "Pasta/prefixo S3 e obrigatorio quando houver destino S3.";
+            }
+        }
         if (form.MaxRuntimeMinutes <= 0 || form.CpuLimitPercent <= 0 || form.NetworkLimitMbit <= 0)
         {
             return "Runtime, CPU e rede devem ser maiores que zero.";
@@ -1293,6 +1498,9 @@ public sealed class HomeController(
             ScopeType = policy.ScopeType,
             IncludePathsCsv = policy.IncludePathsCsv,
             ExcludePathsCsv = policy.ExcludePathsCsv,
+            AwsRegion = policy.AwsRegion,
+            S3BucketName = policy.S3BucketName,
+            S3KeyPrefix = policy.S3KeyPrefix,
             ScheduleDaysCsv = policy.ScheduleDaysCsv,
             StartTimeLocal = policy.StartTimeLocal,
             MaxRuntimeMinutes = policy.MaxRuntimeMinutes,
@@ -1427,16 +1635,28 @@ public sealed class HomeController(
             .OrderByDescending(j => j.StartedAtUtc)
             .Take(20)
             .ToArray();
+        var latestRunRequest = (await db.AgentRunRequests.AsNoTracking()
+            .Where(r => r.CustomerId == configEntity.CustomerId && r.HostId == configEntity.HostId)
+            .ToListAsync(ct))
+            .OrderByDescending(r => r.RequestedAtUtc)
+            .FirstOrDefault();
 
         hosts.TryGetValue(configEntity.HostId, out var host);
         var mappedConfiguration = MapAgentConfiguration(configEntity, customers, hosts, policies);
+        var boundPolicy = ResolveBoundPolicy(configEntity, policies);
+        var awsIntegration = await BuildAwsIntegrationViewModelAsync(
+            customers.TryGetValue(configEntity.CustomerId, out var customer) ? customer.AwsAccountId : null,
+            boundPolicy?.S3BucketName,
+            ct);
 
         return new AgentConfigurationDetailViewModel
         {
             Configuration = mappedConfiguration,
+            AwsIntegration = awsIntegration,
+            LatestRunRequest = MapRunRequest(latestRunRequest),
             RecentJobs = jobs.Select(j => MapJob(j, customers, hosts)).ToArray(),
             PolicyOptions = await BuildPolicyOptionsAsync(configEntity.CustomerId, configEntity.HostId, ct),
-            BootstrapPolicyDraft = BuildBootstrapPolicyDraft(configEntity, host, mappedConfiguration)
+            BootstrapPolicyDraft = BuildBootstrapPolicyDraft(configEntity, host, mappedConfiguration, boundPolicy, awsIntegration)
         };
     }
 
@@ -1462,7 +1682,9 @@ public sealed class HomeController(
     private static BootstrapPolicyDraftViewModel BuildBootstrapPolicyDraft(
         AgentConfiguration configuration,
         ControlPlane.Api.Domain.Host? host,
-        AgentConfigurationListItemViewModel mappedConfiguration)
+        AgentConfigurationListItemViewModel mappedConfiguration,
+        BackupPolicy? boundPolicy,
+        AwsIntegrationViewModel awsIntegration)
     {
         var includePathsCsv = NormalizePathCsv(host?.BootstrapIncludePathsCsv);
         var excludePathsCsv = NormalizePathCsv(host?.BootstrapExcludePathsCsv);
@@ -1477,11 +1699,14 @@ public sealed class HomeController(
             HostId = configuration.HostId,
             IncludePathsCsv = includePathsCsv ?? string.Empty,
             ExcludePathsCsv = excludePathsCsv,
-            ScheduleDaysCsv = "TUE,FRI",
-            StartTimeLocal = "22:00",
-            MaxRuntimeMinutes = 720,
-            CpuLimitPercent = 35,
-            NetworkLimitMbit = 80,
+            AwsRegion = boundPolicy?.AwsRegion ?? awsIntegration.SelectedBucketRegion,
+            S3BucketName = boundPolicy?.S3BucketName ?? awsIntegration.SelectedBucket,
+            S3KeyPrefix = boundPolicy?.S3KeyPrefix ?? $"{configuration.CustomerId}/{configuration.HostId}",
+            ScheduleDaysCsv = boundPolicy?.ScheduleDaysCsv ?? "TUE,FRI",
+            StartTimeLocal = boundPolicy?.StartTimeLocal ?? "22:00",
+            MaxRuntimeMinutes = boundPolicy?.MaxRuntimeMinutes ?? 720,
+            CpuLimitPercent = boundPolicy?.CpuLimitPercent ?? 35,
+            NetworkLimitMbit = boundPolicy?.NetworkLimitMbit ?? 80,
             Enabled = true,
             HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
         };
@@ -1512,6 +1737,9 @@ public sealed class HomeController(
             HostId = configuration.HostId,
             IncludePathsCsv = includePathsCsv ?? string.Empty,
             ExcludePathsCsv = excludePathsCsv,
+            AwsRegion = NormalizeOptionalValue(form.AwsRegion),
+            S3BucketName = NormalizeOptionalValue(form.S3BucketName),
+            S3KeyPrefix = NormalizePrefix(form.S3KeyPrefix),
             ScheduleDaysCsv = NormalizeUpperTokenCsv(form.ScheduleDaysCsv, fallback: "TUE,FRI"),
             StartTimeLocal = NormalizeScheduleTime(form.StartTimeLocal, fallback: "22:00"),
             MaxRuntimeMinutes = ClampPositive(form.MaxRuntimeMinutes, fallback: 720),
@@ -1520,6 +1748,74 @@ public sealed class HomeController(
             Enabled = form.Enabled,
             HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
         };
+    }
+
+    private async Task<AwsIntegrationViewModel> BuildAwsIntegrationViewModelAsync(string? expectedAccountId, string? selectedBucket, CancellationToken ct)
+    {
+        var discovery = await awsDiscoveryService.DiscoverAsync(expectedAccountId, selectedBucket, ct);
+        return new AwsIntegrationViewModel
+        {
+            IsConnected = discovery.IsConnected,
+            ExpectedAccountId = discovery.ExpectedAccountId,
+            ResolvedAccountId = discovery.ResolvedAccountId,
+            Message = discovery.Message,
+            SelectedBucket = discovery.SelectedBucket,
+            SelectedBucketRegion = discovery.SelectedBucketRegion,
+            Buckets = discovery.Buckets.Select(b => b.Name).ToArray(),
+            Prefixes = discovery.Prefixes
+        };
+    }
+
+    private static HostRunRequestViewModel? MapRunRequest(AgentRunRequest? request)
+    {
+        if (request is null)
+        {
+            return null;
+        }
+
+        return new HostRunRequestViewModel
+        {
+            Id = request.Id,
+            State = request.State,
+            TriggerType = request.TriggerType,
+            RequestedAtUtc = request.RequestedAtUtc,
+            ClaimedAtUtc = request.ClaimedAtUtc,
+            CompletedAtUtc = request.CompletedAtUtc,
+            JobId = request.JobId,
+            FailureMessage = request.FailureMessage
+        };
+    }
+
+    private static BackupPolicy? ResolveBoundPolicy(AgentConfiguration configuration, IReadOnlyDictionary<string, BackupPolicy> policies)
+    {
+        if (!string.IsNullOrWhiteSpace(configuration.PolicyId) &&
+            policies.TryGetValue(configuration.PolicyId, out var assignedPolicy))
+        {
+            return assignedPolicy;
+        }
+
+        if (!string.IsNullOrWhiteSpace(configuration.EffectivePolicyId) &&
+            policies.TryGetValue(configuration.EffectivePolicyId, out var effectivePolicy))
+        {
+            return effectivePolicy;
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeOptionalValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? NormalizePrefix(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().Trim('/');
     }
 
     private static string BuildBootstrapPolicyId(string customerId, string hostId)

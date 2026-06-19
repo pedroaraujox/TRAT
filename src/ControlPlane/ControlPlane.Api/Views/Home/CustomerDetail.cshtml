@@ -11,10 +11,24 @@
     <div class="page-actions">
         <a class="button secondary" href="/admin/customers">Voltar</a>
         <a class="button primary" href="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/edit">Editar cliente</a>
+        <form method="post" action="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/delete" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este cliente e todos os dados relacionados?');">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="/admin/customers" />
+            <button type="submit" class="button danger">Excluir cliente</button>
+        </form>
     </div>
 </div>
 
 <section class="panel">
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+    @if (TempData["ErrorMessage"] is string errorMessage)
+    {
+        <div class="error-banner">@errorMessage</div>
+    }
+
     <div class="panel-header">
         <h2>Token do Agent</h2>
     </div>
@@ -36,13 +50,60 @@
     </div>
 </section>
 
+<section class="panel">
+    <div class="panel-header">
+        <h2>AWS no ControlPlane</h2>
+    </div>
+    <div style="padding: 12px 14px;">
+        <p>@Model.AwsIntegration.Message</p>
+        <div class="definition-grid">
+            <div><span>Conta esperada</span><strong>@(Model.AwsIntegration.ExpectedAccountId ?? "-")</strong></div>
+            <div><span>Conta conectada</span><strong>@(Model.AwsIntegration.ResolvedAccountId ?? "-")</strong></div>
+            <div><span>Status</span><strong>@(Model.AwsIntegration.IsConnected ? "Conectada" : "Nao conectada")</strong></div>
+            <div><span>Bucket selecionado</span><strong>@(Model.AwsIntegration.SelectedBucket ?? "-")</strong></div>
+        </div>
+        <div style="margin-top: 12px;">
+            <strong>Buckets visiveis</strong>
+            @if (Model.AwsIntegration.Buckets.Count == 0)
+            {
+                <p>Nenhum bucket visivel no contexto atual do ControlPlane.</p>
+            }
+            else
+            {
+                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
+                    @foreach (var bucket in Model.AwsIntegration.Buckets)
+                    {
+                        <span class="badge ready">@bucket</span>
+                    }
+                </div>
+            }
+        </div>
+        <div style="margin-top: 12px;">
+            <strong>Pastas/prefixos encontrados</strong>
+            @if (Model.AwsIntegration.Prefixes.Count == 0)
+            {
+                <p>Nenhuma pasta/prefixo encontrado para o bucket atual.</p>
+            }
+            else
+            {
+                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
+                    @foreach (var prefix in Model.AwsIntegration.Prefixes)
+                    {
+                        <span class="badge warning">@prefix</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
 <section class="stats-grid">
     <div class="stat-card">
         <span>Hosts</span>
         <strong>@Model.Hosts.Count</strong>
     </div>
     <div class="stat-card">
-        <span>Jobs Recentes</span>
+        <span>Jobs</span>
         <strong>@Model.Jobs.Count</strong>
     </div>
     <div class="stat-card">
@@ -50,182 +111,55 @@
         <strong>@Model.Alerts.Count</strong>
     </div>
     <div class="stat-card">
-        <span>Politicas</span>
-        <strong>@Model.Policies.Count</strong>
-    </div>
-    <div class="stat-card">
-        <span>Emails</span>
-        <strong class="small-stat">@(string.IsNullOrWhiteSpace(Model.Customer.NotificationEmailsCsv) ? "-" : Model.Customer.NotificationEmailsCsv)</strong>
-    </div>
-</section>
-
-<section class="split-grid">
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Hosts do cliente</h2>
-        </div>
-        <div class="table-wrap">
-        <table class="table responsive-table rt-customer-hosts">
-            <thead>
-                <tr>
-                    <th>Host</th>
-                    <th>SO</th>
-                    <th>Heartbeat</th>
-                    <th>Status</th>
-                    <th>Bootstrap</th>
-                    <th>Servico</th>
-                    <th>Politica</th>
-                    <th>Prechecks</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (Model.Hosts.Count == 0)
-                {
-                    <tr>
-                        <td colspan="9">Nenhum host encontrado.</td>
-                    </tr>
-                }
-                else
-                {
-                    @foreach (var host in Model.Hosts)
-                    {
-                        <tr>
-                            <td>@host.Hostname</td>
-                            <td>@host.OsVersion</td>
-                            <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
-                            <td><span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span></td>
-                            <td>
-                                <div class="status-stack">
-                                    <span class="badge @host.BootstrapStatusCssClass">@host.BootstrapStatusLabel</span>
-                                    <div class="status-detail">@host.BootstrapStatusMessage</div>
-                                </div>
-                            </td>
-                            <td>@(host.ServiceStatus ?? "-")</td>
-                            <td>@(host.AssignedPolicyName ?? "-")</td>
-                            <td>@($"{BoolText(host.PrecheckTlsOk)} / {BoolText(host.PrecheckDiskOk)} / {BoolText(host.PrecheckCredentialOk)}")</td>
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(host.ConfigurationId))
-                                {
-                                    <a href="/admin/configurations/@Uri.EscapeDataString(host.ConfigurationId)">Abrir configuracao</a>
-                                }
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-        </div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Alertas recentes</h2>
-        </div>
-        <div class="table-wrap">
-        <table class="table responsive-table rt-customer-alerts">
-            <thead>
-                <tr>
-                    <th>Severidade</th>
-                    <th>Mensagem</th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (Model.Alerts.Count == 0)
-                {
-                    <tr>
-                        <td colspan="2">Nenhum alerta.</td>
-                    </tr>
-                }
-                else
-                {
-                    @foreach (var alert in Model.Alerts)
-                    {
-                        <tr>
-                            <td><span class="badge @alert.Severity.ToLowerInvariant()">@alert.Severity</span></td>
-                            <td>@alert.Message</td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-        </div>
+        <span>Token novo</span>
+        <strong>@(string.IsNullOrWhiteSpace(Model.EnrollmentTokenOneTime) ? "Nao" : "Sim")</strong>
     </div>
 </section>
 
 <section class="panel">
     <div class="panel-header">
-        <h2>Politicas do cliente</h2>
-        <a class="button ghost" href="/admin/policies?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir politicas</a>
+        <h2>Hosts do cliente</h2>
+        <a class="button ghost" href="/admin/hosts?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir tela de hosts</a>
     </div>
     <div class="table-wrap">
-    <table class="table responsive-table rt-customer-policies">
+    <table class="table responsive-table rt-customer-hosts">
         <thead>
             <tr>
-                <th>Nome</th>
-                <th>Escopo</th>
-                <th>Agenda</th>
-                <th>Paths</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            @if (Model.Policies.Count == 0)
-            {
-                <tr>
-                    <td colspan="5">Nenhuma politica cadastrada.</td>
-                </tr>
-            }
-            else
-            {
-                @foreach (var policy in Model.Policies)
-                {
-                    <tr>
-                        <td>@policy.Name</td>
-                        <td>@(policy.ScopeType == "host" ? $"Host: {policy.Hostname ?? policy.HostId}" : "Cliente")</td>
-                        <td>@policy.ScheduleDaysCsv @policy.StartTimeLocal</td>
-                        <td>@policy.IncludePathsCsv</td>
-                        <td><span class="badge @(policy.Enabled ? "succeeded" : "offline")">@(policy.Enabled ? "Ativa" : "Desativada")</span></td>
-                    </tr>
-                }
-            }
-        </tbody>
-    </table>
-    </div>
-</section>
-
-<section class="panel">
-    <div class="panel-header">
-        <h2>Jobs recentes</h2>
-    </div>
-    <div class="table-wrap">
-    <table class="table responsive-table rt-customer-jobs">
-        <thead>
-            <tr>
-                <th>Job</th>
                 <th>Host</th>
+                <th>SO</th>
+                <th>Heartbeat</th>
                 <th>Status</th>
-                <th>Inicio</th>
-                <th>Enviado</th>
+                <th>Servico</th>
+                <th>Acao</th>
             </tr>
         </thead>
         <tbody>
-            @if (Model.Jobs.Count == 0)
+            @if (Model.Hosts.Count == 0)
             {
                 <tr>
-                    <td colspan="5">Nenhum job encontrado.</td>
+                    <td colspan="6">Nenhum host encontrado para este cliente.</td>
                 </tr>
             }
             else
             {
-                @foreach (var job in Model.Jobs)
+                @foreach (var host in Model.Hosts)
                 {
                     <tr>
-                        <td><a href="/admin/jobs/@Uri.EscapeDataString(job.Id)">@job.Id</a></td>
-                        <td>@(job.Hostname ?? job.HostId)</td>
-                        <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
-                        <td>@job.StartedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                        <td>@($"{job.UploadedItems:N0} / {FormatBytes(job.UploadedBytes)}")</td>
+                        <td>@host.Hostname</td>
+                        <td>@host.OsVersion</td>
+                        <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                        <td><span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span></td>
+                        <td>@(host.ServiceStatus ?? "-")</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(host.ConfigurationId))
+                            {
+                                <a class="button ghost" href="/admin/configurations/@Uri.EscapeDataString(host.ConfigurationId!)">Configurar host</a>
+                            }
+                            else
+                            {
+                                <span>-</span>
+                            }
+                        </td>
                     </tr>
                 }
             }
@@ -234,20 +168,11 @@
     </div>
 </section>
 
-@functions {
-    private static string BoolText(bool? value) => value.HasValue ? (value.Value ? "OK" : "Falhou") : "-";
-
-    private static string FormatBytes(long value)
-    {
-        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-        double size = value;
-        var index = 0;
-        while (size >= 1024 && index < suffixes.Length - 1)
-        {
-            size /= 1024;
-            index++;
-        }
-
-        return $"{size:N1} {suffixes[index]}";
-    }
-}
+<section class="panel">
+    <div class="panel-header">
+        <h2>Observacao</h2>
+    </div>
+    <div style="padding: 12px 14px;">
+        <p>Neste MVP, o Agent continua sendo o motor de execucao. O caminho do backup nasce no host, mas bucket, pasta, agenda e execucao manual passam a ser configurados pelo ControlPlane na tela de configuracao do host.</p>
+    </div>
+</section>

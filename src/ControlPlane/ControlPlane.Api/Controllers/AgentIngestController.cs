@@ -22,6 +22,7 @@ public sealed class AgentIngestController(
 {
     public sealed record AgentEnrollRequest(string HostId, string Hostname, string OsVersion);
     public sealed record AgentEnrollResponse(string CustomerId, string HostId, string ExpectedAwsAccountId);
+    public sealed record PendingRunRequestResponse(string RunRequestId, string TriggerType, DateTimeOffset RequestedAtUtc);
 
     public sealed record AgentBootstrapPathsRequest(string HostId, string[] IncludePaths, string[] ExcludePaths);
 
@@ -178,6 +179,51 @@ public sealed class AgentIngestController(
         return Ok(response);
     }
 
+    [HttpGet("run-request/next")]
+    public async Task<IActionResult> NextRunRequest([FromQuery] string customerId, [FromQuery] string hostId, CancellationToken ct)
+    {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(customerId) || string.IsNullOrWhiteSpace(hostId))
+        {
+            return BadRequest("CustomerId e HostId sao obrigatorios.");
+        }
+
+        var normalizedCustomerId = customerId.Trim();
+        var normalizedHostId = hostId.Trim();
+        if (!string.Equals(normalizedCustomerId, authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        var request = await db.AgentRunRequests
+            .Where(r => r.CustomerId == normalizedCustomerId &&
+                        r.HostId == normalizedHostId &&
+                        r.State == "QUEUED")
+            .OrderBy(r => r.RequestedAtUtc)
+            .FirstOrDefaultAsync(ct);
+        if (request is null)
+        {
+            return NoContent();
+        }
+
+        request.State = "CLAIMED";
+        request.ClaimedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "Run request claimed: customer={CustomerId} host={HostId} runRequestId={RunRequestId}",
+            normalizedCustomerId,
+            normalizedHostId,
+            request.Id);
+
+        return Ok(new PendingRunRequestResponse(request.Id, request.TriggerType, request.RequestedAtUtc));
+    }
+
     [HttpPost("heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] AgentHeartbeatRequest request, CancellationToken ct)
     {
@@ -270,6 +316,19 @@ public sealed class AgentIngestController(
             StartedAtUtc = request.StartedAtUtc
         });
 
+        if (!string.IsNullOrWhiteSpace(request.RunRequestId))
+        {
+            var runRequest = await db.AgentRunRequests.FirstOrDefaultAsync(
+                r => r.Id == request.RunRequestId && r.CustomerId == request.CustomerId && r.HostId == request.HostId,
+                ct);
+            if (runRequest is not null)
+            {
+                runRequest.State = "RUNNING";
+                runRequest.JobId = request.JobId;
+                runRequest.ClaimedAtUtc ??= request.StartedAtUtc;
+            }
+        }
+
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Job iniciado: customer={CustomerId} host={HostId} job={JobId}", request.CustomerId, request.HostId, request.JobId);
         return Ok();
@@ -342,6 +401,22 @@ public sealed class AgentIngestController(
         job.UploadedItems = report.UploadedItems;
         job.FailureCode = report.FailureCode;
         job.FailureMessage = report.FailureMessage;
+
+        if (!string.IsNullOrWhiteSpace(report.RunRequestId))
+        {
+            var runRequest = await db.AgentRunRequests.FirstOrDefaultAsync(
+                r => r.Id == report.RunRequestId && r.CustomerId == customerId && r.HostId == hostId,
+                ct);
+            if (runRequest is not null)
+            {
+                runRequest.JobId = jobId;
+                runRequest.CompletedAtUtc = report.FinishedAtUtc;
+                runRequest.FailureMessage = TrimToMaxLengthOrNull(report.FailureMessage, 2000);
+                runRequest.State = string.Equals(report.FinalState, "SUCCEEDED", StringComparison.OrdinalIgnoreCase)
+                    ? "COMPLETED"
+                    : "FAILED";
+            }
+        }
 
         foreach (var a in report.Artifacts)
         {

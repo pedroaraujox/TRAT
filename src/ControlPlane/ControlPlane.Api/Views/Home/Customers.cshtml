@@ -6,12 +6,21 @@
 <div class="page-header">
     <div>
         <h1>Clientes</h1>
-        <p>Inventario de clientes monitorados pelo painel.</p>
+        <p>Cadastre o cliente, copie o token e use no Agent.</p>
     </div>
-    <a class="primary-button" href="/admin/customers/new">Novo cliente</a>
+    <a class="button primary" href="/admin/customers/new">Novo cliente</a>
 </div>
 
 <section class="panel">
+    @if (TempData["StatusMessage"] is string statusMessage)
+    {
+        <div class="status-banner">@statusMessage</div>
+    }
+    @if (TempData["ErrorMessage"] is string errorMessage)
+    {
+        <div class="error-banner">@errorMessage</div>
+    }
+
     <form method="get" action="/admin/customers" class="filters">
         <input type="text" name="q" value="@Model.Search" placeholder="Buscar por ID, nome ou conta AWS" />
         <button type="submit" class="button primary">Filtrar</button>
@@ -24,10 +33,6 @@
                     <th>Nome</th>
                     <th>Conta AWS</th>
                     <th>Hosts</th>
-                    <th>Jobs</th>
-                    <th>Alertas</th>
-                    <th>Emails</th>
-                    <th>Criado em</th>
                     <th></th>
                 </tr>
             </thead>
@@ -35,7 +40,7 @@
                 @if (Model.Customers.Count == 0)
                 {
                     <tr>
-                        <td colspan="9">Nenhum cliente encontrado.</td>
+                        <td colspan="5">Nenhum cliente encontrado.</td>
                     </tr>
                 }
                 else
@@ -47,11 +52,15 @@
                             <td><a href="/admin/customers/@Uri.EscapeDataString(customer.Id)">@customer.Name</a></td>
                             <td>@customer.AwsAccountId</td>
                             <td>@customer.HostCount</td>
-                            <td>@customer.JobCount</td>
-                            <td>@customer.ActiveAlertCount</td>
-                            <td>@(customer.NotificationEmailsCsv ?? "-")</td>
-                            <td>@customer.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                            <td><a href="/admin/customers/@Uri.EscapeDataString(customer.Id)/edit">Editar</a></td>
+                            <td class="actions-cell">
+                                <a href="/admin/customers/@Uri.EscapeDataString(customer.Id)">Abrir</a>
+                                <a href="/admin/customers/@Uri.EscapeDataString(customer.Id)/edit">Editar</a>
+                                <form method="post" action="/admin/customers/@Uri.EscapeDataString(customer.Id)/delete" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este cliente e todos os dados relacionados?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="returnUrl" value="/admin/customers" />
+                                    <button type="submit" class="button danger">Excluir</button>
+                                </form>
+                            </td>
                         </tr>
                     }
                 }

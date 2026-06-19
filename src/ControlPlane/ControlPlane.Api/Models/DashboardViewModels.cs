@@ -106,6 +106,7 @@ public sealed class CustomerDetailViewModel
 {
     public required CustomerFormViewModel Customer { get; init; }
     public string? EnrollmentTokenOneTime { get; init; }
+    public required AwsIntegrationViewModel AwsIntegration { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
     public required IReadOnlyList<JobRowViewModel> Jobs { get; init; }
     public required IReadOnlyList<AlertRowViewModel> Alerts { get; init; }
@@ -201,6 +202,9 @@ public sealed class PolicyListItemViewModel
     public required string ScopeType { get; init; }
     public required string IncludePathsCsv { get; init; }
     public string? ExcludePathsCsv { get; init; }
+    public string? AwsRegion { get; init; }
+    public string? S3BucketName { get; init; }
+    public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
@@ -223,6 +227,9 @@ public sealed record PolicyFormViewModel
     public required string ScopeType { get; init; }
     public required string IncludePathsCsv { get; init; }
     public string? ExcludePathsCsv { get; init; }
+    public string? AwsRegion { get; init; }
+    public string? S3BucketName { get; init; }
+    public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
@@ -285,6 +292,8 @@ public sealed class AgentConfigurationListItemViewModel
 public sealed class AgentConfigurationDetailViewModel
 {
     public required AgentConfigurationListItemViewModel Configuration { get; init; }
+    public required AwsIntegrationViewModel AwsIntegration { get; init; }
+    public HostRunRequestViewModel? LatestRunRequest { get; init; }
     public required IReadOnlyList<JobRowViewModel> RecentJobs { get; init; }
     public required IReadOnlyList<PolicyOptionViewModel> PolicyOptions { get; init; }
     public required BootstrapPolicyDraftViewModel BootstrapPolicyDraft { get; init; }
@@ -305,6 +314,9 @@ public sealed record BootstrapPolicyDraftViewModel
     public required string HostId { get; init; }
     public required string IncludePathsCsv { get; init; }
     public string? ExcludePathsCsv { get; init; }
+    public string? AwsRegion { get; init; }
+    public string? S3BucketName { get; init; }
+    public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
@@ -312,6 +324,30 @@ public sealed record BootstrapPolicyDraftViewModel
     public int NetworkLimitMbit { get; init; }
     public bool Enabled { get; init; }
     public bool HasBootstrapPaths { get; init; }
+}
+
+public sealed class AwsIntegrationViewModel
+{
+    public bool IsConnected { get; init; }
+    public string? ExpectedAccountId { get; init; }
+    public string? ResolvedAccountId { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public string? SelectedBucket { get; init; }
+    public string? SelectedBucketRegion { get; init; }
+    public IReadOnlyList<string> Buckets { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Prefixes { get; init; } = Array.Empty<string>();
+}
+
+public sealed class HostRunRequestViewModel
+{
+    public required string Id { get; init; }
+    public required string State { get; init; }
+    public required string TriggerType { get; init; }
+    public DateTimeOffset RequestedAtUtc { get; init; }
+    public DateTimeOffset? ClaimedAtUtc { get; init; }
+    public DateTimeOffset? CompletedAtUtc { get; init; }
+    public string? JobId { get; init; }
+    public string? FailureMessage { get; init; }
 }
 
 public sealed record PolicyChangeEventViewModel

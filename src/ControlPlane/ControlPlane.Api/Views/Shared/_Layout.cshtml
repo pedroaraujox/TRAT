@@ -12,16 +12,12 @@
         <aside class="sidebar" aria-label="Navegacao">
             <div class="brand">
                 <div class="brand-title">Webstation Backup</div>
-                <div class="brand-subtitle">Painel Administrativo</div>
+                <div class="brand-subtitle">MVP de teste</div>
             </div>
             <nav class="nav">
-                <a href="/admin"><span class="nav-icon">◎</span><span>Dashboard</span></a>
+                <a href="/admin"><span class="nav-icon">◎</span><span>Inicio</span></a>
                 <a href="/admin/customers"><span class="nav-icon">◫</span><span>Clientes</span></a>
                 <a href="/admin/hosts"><span class="nav-icon">▣</span><span>Hosts</span></a>
-                <a href="/admin/policies"><span class="nav-icon">◩</span><span>Politicas</span></a>
-                <a href="/admin/configurations"><span class="nav-icon">◨</span><span>Configuracoes</span></a>
-                <a href="/admin/jobs"><span class="nav-icon">◉</span><span>Jobs</span></a>
-                <a href="/admin/alerts"><span class="nav-icon">▲</span><span>Alertas</span></a>
             </nav>
             <form method="post" action="/logout" class="logout-form">
                 @Html.AntiForgeryToken()
@@ -38,13 +34,11 @@
                 </button>
                 <div class="topbar-title-group">
                     <div class="topbar-title">@ViewData["Title"]</div>
-                    <div class="topbar-subtitle">Controle operacional dos backups Webstation</div>
+                    <div class="topbar-subtitle">Fluxo simplificado para onboarding e teste do Agent</div>
                 </div>
                 <div class="topbar-actions">
-                    <button class="button ghost" type="button" data-theme-toggle aria-label="Alternar tema">
-                        <span data-theme-label>Tema</span>
-                    </button>
-                    <a class="button ghost" href="/admin">Home</a>
+                    <a class="button ghost" href="/admin/customers/new">Novo cliente</a>
+                    <a class="button ghost" href="/admin">Inicio</a>
                 </div>
             </header>
 

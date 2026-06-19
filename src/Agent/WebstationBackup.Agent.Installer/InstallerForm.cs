@@ -65,7 +65,7 @@ internal sealed class InstallerForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Text = "Instalador com GUI do Webstation Backup Agent. O servico roda em segundo plano; esta tela configura e instala o host.",
+            Text = "Preencha a URL do ControlPlane, o token do cliente e os caminhos de backup. O Agent sera instalado para rodar em segundo plano neste host.",
             Font = new Font(SystemFonts.MessageBoxFont ?? Control.DefaultFont, FontStyle.Bold)
         };
 
@@ -160,8 +160,8 @@ internal sealed class InstallerForm : Form
 
         _validateButton = new Button { Text = "Validar", AutoSize = true };
         _saveSettingsButton = new Button { Text = "Salvar settings", AutoSize = true };
-        _installButton = new Button { Text = "Instalar Agent", AutoSize = true };
-        _testControlPlaneButton = new Button { Text = "Testar conexao", AutoSize = true };
+        _installButton = new Button { Text = "Instalar e iniciar", AutoSize = true };
+        _testControlPlaneButton = new Button { Text = "Testar acesso", AutoSize = true };
         _testAwsButton = new Button { Text = "Testar AWS (CLI)", AutoSize = true };
         _openPackageButton = new Button { Text = "Abrir pacote", AutoSize = true };
         _openInstallDirButton = new Button { Text = "Abrir pasta destino", AutoSize = true };
@@ -207,7 +207,7 @@ internal sealed class InstallerForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             Padding = new Padding(0, 6, 0, 0),
-            Text = "Adicione quantos volumes, pastas ou arquivos precisar. Cada item sera salvo separadamente."
+            Text = "Adicione quantos volumes, pastas ou arquivos precisar. O Agent instalara o host e depois executara em segundo plano."
         };
 
         content.Controls.Add(includeActions);

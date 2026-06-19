@@ -3,6 +3,18 @@
   "product": {
     "name": "Webstation Backup",
     "component": "Agent + Control Plane",
+    "operations": {
+      "afterAnyChange": {
+        "restartControlPlane": true,
+        "rerunAffectedAgent": true,
+        "rerunDryRunBeforeRealServiceStart": true,
+        "notes": [
+          "Apos qualquer mudanca de codigo, configuracao ou empacotamento, o ambiente deve ser reexecutado antes de validacao funcional.",
+          "No host afetado, executar dry-run do Agent antes de liberar execucao real do servico.",
+          "Nao considerar teste concluido sem revalidar painel, onboarding e telemetria basica apos a mudanca."
+        ]
+      }
+    },
     "supportPolicy": {
       "windowsServer": {
         "minimumSupportedMajor": 2012,

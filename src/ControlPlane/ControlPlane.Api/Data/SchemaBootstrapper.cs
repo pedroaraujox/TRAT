@@ -11,6 +11,9 @@ public static class SchemaBootstrapper
         await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapExcludePathsCsv", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "PolicyKind", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "OriginHostId", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "AwsRegion", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "S3BucketName", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "S3KeyPrefix", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "BackupPolicies", columnName: "LastChangedAtUtc", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyId", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyName", columnTypeSql: "TEXT");
@@ -30,6 +33,9 @@ public static class SchemaBootstrapper
                 "OriginHostId" TEXT NULL,
                 "IncludePathsCsv" TEXT NOT NULL,
                 "ExcludePathsCsv" TEXT NULL,
+                "AwsRegion" TEXT NULL,
+                "S3BucketName" TEXT NULL,
+                "S3KeyPrefix" TEXT NULL,
                 "ScheduleDaysCsv" TEXT NOT NULL,
                 "StartTimeLocal" TEXT NOT NULL,
                 "MaxRuntimeMinutes" INTEGER NOT NULL,
@@ -49,6 +55,23 @@ public static class SchemaBootstrapper
                 "EventType" TEXT NOT NULL,
                 "Message" TEXT NOT NULL,
                 "CreatedAtUtc" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "AgentRunRequests" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_AgentRunRequests" PRIMARY KEY,
+                "CustomerId" TEXT NOT NULL,
+                "HostId" TEXT NOT NULL,
+                "TriggerType" TEXT NOT NULL,
+                "State" TEXT NOT NULL,
+                "RequestedBy" TEXT NOT NULL,
+                "RequestedAtUtc" TEXT NOT NULL,
+                "ClaimedAtUtc" TEXT NULL,
+                "CompletedAtUtc" TEXT NULL,
+                "JobId" TEXT NULL,
+                "FailureMessage" TEXT NULL
             );
             """);
 
@@ -84,6 +107,12 @@ public static class SchemaBootstrapper
             """
             CREATE INDEX IF NOT EXISTS "IX_BackupPolicies_CustomerId_Name"
             ON "BackupPolicies" ("CustomerId", "Name");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_AgentRunRequests_CustomerId_HostId_State_RequestedAtUtc"
+            ON "AgentRunRequests" ("CustomerId", "HostId", "State", "RequestedAtUtc");
             """);
 
         await db.Database.ExecuteSqlRawAsync(

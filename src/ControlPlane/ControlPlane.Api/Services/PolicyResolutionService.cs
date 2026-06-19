@@ -27,6 +27,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
                 PolicyLastChangedAtUtc: null,
                 IncludePaths: Array.Empty<string>(),
                 ExcludePaths: Array.Empty<string>(),
+                AwsRegion: null,
+                S3BucketName: null,
+                S3KeyPrefix: null,
                 ScheduleDaysOfWeek: Array.Empty<string>(),
                 ScheduleStartTimeLocal: string.Empty,
                 MaxRuntimeMinutes: 0,
@@ -56,6 +59,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
                 PolicyLastChangedAtUtc: null,
                 IncludePaths: Array.Empty<string>(),
                 ExcludePaths: Array.Empty<string>(),
+                AwsRegion: null,
+                S3BucketName: null,
+                S3KeyPrefix: null,
                 ScheduleDaysOfWeek: Array.Empty<string>(),
                 ScheduleStartTimeLocal: string.Empty,
                 MaxRuntimeMinutes: 0,
@@ -76,6 +82,9 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
             PolicyLastChangedAtUtc: resolution.Policy.LastChangedAtUtc ?? resolution.Policy.CreatedAtUtc,
             IncludePaths: includePaths,
             ExcludePaths: SplitPathList(resolution.Policy.ExcludePathsCsv),
+            AwsRegion: NormalizeOptional(resolution.Policy.AwsRegion),
+            S3BucketName: NormalizeOptional(resolution.Policy.S3BucketName),
+            S3KeyPrefix: NormalizeOptional(resolution.Policy.S3KeyPrefix),
             ScheduleDaysOfWeek: SplitTokenList(resolution.Policy.ScheduleDaysCsv),
             ScheduleStartTimeLocal: NormalizeScheduleTime(resolution.Policy.StartTimeLocal),
             MaxRuntimeMinutes: Clamp(resolution.Policy.MaxRuntimeMinutes, 1, 7 * 24 * 60, 720),
@@ -232,5 +241,10 @@ public sealed class PolicyResolutionService(AppDbContext db, ILogger<PolicyResol
         return string.Equals(value, "bootstrap", StringComparison.OrdinalIgnoreCase)
             ? "bootstrap"
             : "operational";
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

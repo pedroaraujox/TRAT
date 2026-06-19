@@ -55,6 +55,21 @@ internal sealed class AgentWorkerOptions
 
 internal static class AgentWorker
 {
+    private sealed class ManualRunContext
+    {
+        public required string RunRequestId { get; init; }
+        public required string TriggerType { get; init; }
+        public required DateTimeOffset RequestedAtUtc { get; init; }
+    }
+
+    private sealed class ExecutionTargetSettings
+    {
+        public string? AwsRegion { get; init; }
+        public string? S3BucketName { get; init; }
+        public string? S3KeyPrefix { get; init; }
+        public string? AwsCredentialTargetName { get; init; }
+    }
+
     public static async Task RunLoopAsync(AgentWorkerOptions options, CancellationToken ct)
     {
         var runtime = BootstrapOrThrow(options);
@@ -67,6 +82,14 @@ internal static class AgentWorker
                 var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
                 await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
                 await ReportConfigurationIfDueAsync(runtime, options.DryRun, effectivePolicy, ct);
+
+                var manualRun = await TryGetManualRunAsync(runtime, ct);
+                if (manualRun is not null)
+                {
+                    await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct, manualRun);
+                    await Task.Delay(nextRunDelay, ct);
+                    continue;
+                }
 
                 var eval = runtime.Schedule.Evaluate(
                     runtime.Rules.Defaults.Schedule.Enabled,
@@ -94,7 +117,7 @@ internal static class AgentWorker
                 state.LastAttemptAtUtc = DateTimeOffset.UtcNow;
                 runtime.StateStore.Save(state);
 
-                await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct);
+                await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct, manualRun: null);
             }
             catch (Exception ex)
             {
@@ -118,7 +141,8 @@ internal static class AgentWorker
         var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
         await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
         await ReportConfigurationAsync(runtime, options.DryRun, effectivePolicy, ct);
-        await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct);
+        var manualRun = await TryGetManualRunAsync(runtime, ct);
+        await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct, manualRun);
     }
 
     private sealed class Runtime
@@ -266,6 +290,7 @@ internal static class AgentWorker
         var tlsMode = "TLS1.2";
 
         var now = DateTimeOffset.UtcNow;
+        var targetSettings = BuildExecutionTargetSettings(settings, effectivePolicy);
 
         var precheckOk = true;
         var precheckMessages = new List<string>(capacity: 4);
@@ -298,7 +323,7 @@ internal static class AgentWorker
         string? awsCredentialSource = null;
         string? awsAccountId = null;
         string? bucketRegion = null;
-        if (dryRun && IsPlaceholderAwsConfiguration(settings))
+        if (dryRun && IsPlaceholderAwsConfiguration(targetSettings))
         {
             credOk = false;
             precheckOk = false;
@@ -307,7 +332,7 @@ internal static class AgentWorker
         else
         {
             var awsValidator = new AwsReadinessValidator();
-            var awsReadiness = await awsValidator.ValidateAsync(settings, logger, ct);
+            var awsReadiness = await awsValidator.ValidateAsync(BuildAgentSettingsForAwsValidation(settings, targetSettings), logger, ct);
             credOk = awsReadiness.CredentialOk;
             awsCredentialSource = awsReadiness.CredentialSource;
             awsAccountId = awsReadiness.AwsAccountId;
@@ -342,7 +367,7 @@ internal static class AgentWorker
             precheckDiskOk = diskOk,
             precheckCredentialOk = credOk,
             stagingPath,
-            credentialTargetName = string.IsNullOrWhiteSpace(settings.AwsCredentialTargetName) ? "N/A" : settings.AwsCredentialTargetName,
+            credentialTargetName = string.IsNullOrWhiteSpace(targetSettings.AwsCredentialTargetName) ? "N/A" : targetSettings.AwsCredentialTargetName,
             uploadMode = dryRun ? "dry-run" : "direct-s3",
             timestampUtc = now,
             precheckAtUtc = now,
@@ -392,6 +417,64 @@ internal static class AgentWorker
         return effectivePolicy;
     }
 
+    private static async Task<ManualRunContext?> TryGetManualRunAsync(Runtime runtime, CancellationToken ct)
+    {
+        var response = await runtime.ControlPlane.TryGetPendingRunRequestAsync(runtime.Settings.CustomerId, runtime.Settings.HostId, ct);
+        if (response is null || string.IsNullOrWhiteSpace(response.RunRequestId))
+        {
+            return null;
+        }
+
+        runtime.Logger.Info("Execucao manual recebida do ControlPlane", new Dictionary<string, object?>
+        {
+            ["runRequestId"] = response.RunRequestId,
+            ["triggerType"] = response.TriggerType,
+            ["requestedAtUtc"] = response.RequestedAtUtc
+        });
+
+        return new ManualRunContext
+        {
+            RunRequestId = response.RunRequestId.Trim(),
+            TriggerType = string.IsNullOrWhiteSpace(response.TriggerType) ? "manual_controlplane" : response.TriggerType.Trim(),
+            RequestedAtUtc = response.RequestedAtUtc
+        };
+    }
+
+    private static ExecutionTargetSettings BuildExecutionTargetSettings(AgentSettings settings, EffectiveRuntimePolicy effectivePolicy)
+    {
+        return new ExecutionTargetSettings
+        {
+            AwsRegion = NormalizeOptional(effectivePolicy.AwsRegion) ?? NormalizeOptional(settings.AwsRegion),
+            S3BucketName = NormalizeOptional(effectivePolicy.S3BucketName) ?? NormalizeOptional(settings.S3BucketName),
+            S3KeyPrefix = NormalizeOptional(effectivePolicy.S3KeyPrefix) ?? NormalizeOptional(settings.S3KeyPrefix),
+            AwsCredentialTargetName = NormalizeOptional(settings.AwsCredentialTargetName)
+        };
+    }
+
+    private static AgentSettings BuildAgentSettingsForAwsValidation(AgentSettings baseSettings, ExecutionTargetSettings targetSettings)
+    {
+        return new AgentSettings
+        {
+            CustomerId = baseSettings.CustomerId,
+            HostId = baseSettings.HostId,
+            ControlPlaneBaseUrl = baseSettings.ControlPlaneBaseUrl,
+            AgentToken = baseSettings.AgentToken,
+            AgentTokenDpapiProtected = baseSettings.AgentTokenDpapiProtected,
+            AgentTokenCredentialTargetName = baseSettings.AgentTokenCredentialTargetName,
+            AwsRegion = targetSettings.AwsRegion,
+            S3BucketName = targetSettings.S3BucketName,
+            S3KeyPrefix = targetSettings.S3KeyPrefix,
+            AwsCredentialTargetName = targetSettings.AwsCredentialTargetName,
+            IncludePaths = baseSettings.IncludePaths,
+            ExcludePaths = baseSettings.ExcludePaths
+        };
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+    }
+
     private static string GetAgentVersion()
     {
         try
@@ -418,13 +501,14 @@ internal static class AgentWorker
         }
     }
 
-    private static async Task ExecuteOneJobAsync(Runtime runtime, EffectiveRuntimePolicy effectivePolicy, bool dryRun, CancellationToken ct)
+    private static async Task ExecuteOneJobAsync(Runtime runtime, EffectiveRuntimePolicy effectivePolicy, bool dryRun, CancellationToken ct, ManualRunContext? manualRun)
     {
         var rules = runtime.Rules;
         var settings = runtime.Settings;
         var logger = runtime.Logger;
         var controlPlane = runtime.ControlPlane;
         var stateStore = runtime.StateStore;
+        var targetSettings = BuildExecutionTargetSettings(settings, effectivePolicy);
 
         if (!rules.SecurityAndSafety.Aws.NeverDeleteFromS3)
         {
@@ -433,14 +517,14 @@ internal static class AgentWorker
 
         PrecheckOrThrow(rules, settings);
 
-        if (!dryRun && !IsAwsConfigured(settings))
+        if (!dryRun && !IsAwsConfigured(targetSettings))
         {
             logger.Warn("Job bloqueado: configuracao AWS incompleta no host.", new Dictionary<string, object?>
             {
-                ["awsRegion"] = settings.AwsRegion,
-                ["bucket"] = settings.S3BucketName,
-                ["prefix"] = settings.S3KeyPrefix,
-                ["credentialTargetName"] = settings.AwsCredentialTargetName
+                ["awsRegion"] = targetSettings.AwsRegion,
+                ["bucket"] = targetSettings.S3BucketName,
+                ["prefix"] = targetSettings.S3KeyPrefix,
+                ["credentialTargetName"] = targetSettings.AwsCredentialTargetName
             });
             return;
         }
@@ -456,105 +540,118 @@ internal static class AgentWorker
         }
 
         var jobId = Guid.NewGuid().ToString("N");
+        BackupManifest? manifest = null;
+        string? manifestPath = null;
+        long uploadedBytes = 0;
+        long uploadedItems = 0;
+        var finalState = "FAILED";
+        string? failureCode = null;
+        string? failureMessage = null;
+
         await controlPlane.StartJobAsync(new
         {
             customerId = settings.CustomerId,
             hostId = settings.HostId,
             jobId,
-            startedAtUtc = DateTimeOffset.UtcNow
+            startedAtUtc = DateTimeOffset.UtcNow,
+            runRequestId = manualRun?.RunRequestId
         }, ct);
 
-        var scanner = new FileScanner();
-        var files = scanner.ScanFiles(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
-
-        var builder = new ManifestBuilder();
-        var manifest = builder.Build(jobId, settings, rules, files);
-
-        var manifestPath = builder.SaveToFile(manifest, runtime.StateDir);
-        logger.Info("Manifest gerado", new Dictionary<string, object?>
+        try
         {
-            ["jobId"] = jobId,
-            ["plannedBytes"] = manifest.PlannedBytes,
-            ["plannedItems"] = manifest.PlannedItems,
-            ["dryRun"] = dryRun,
-            ["policySource"] = effectivePolicy.Source,
-            ["policyId"] = effectivePolicy.PolicyId,
-            ["cpuLimitPercent"] = effectivePolicy.CpuLimitPercent,
-            ["networkLimitMbit"] = effectivePolicy.NetworkLimitMbit
-        });
+            var scanner = new FileScanner();
+            var files = scanner.ScanFiles(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
 
-        await controlPlane.ReportProgressAsync(new
-        {
-            customerId = settings.CustomerId,
-            hostId = settings.HostId,
-            jobId,
-            state = "SCANNING",
-            plannedBytes = manifest.PlannedBytes,
-            plannedItems = manifest.PlannedItems,
-            uploadedBytes = 0,
-            uploadedItems = 0,
-            timestampUtc = DateTimeOffset.UtcNow
-        }, ct);
+            var builder = new ManifestBuilder();
+            manifest = builder.Build(jobId, settings, rules, files);
 
-        long uploadedBytes = 0;
-        long uploadedItems = 0;
-
-        if (dryRun)
-        {
-            uploadedBytes = manifest.PlannedBytes;
-            uploadedItems = manifest.PlannedItems;
-        }
-        else
-        {
-            var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(settings.AwsCredentialTargetName!);
-            logger.Info("Credenciais AWS resolvidas para upload", new Dictionary<string, object?>
+            manifestPath = builder.SaveToFile(manifest, runtime.StateDir);
+            logger.Info("Manifest gerado", new Dictionary<string, object?>
             {
-                ["credentialSource"] = resolvedCredentials.Source,
-                ["credentialReference"] = resolvedCredentials.Reference
+                ["jobId"] = jobId,
+                ["plannedBytes"] = manifest.PlannedBytes,
+                ["plannedItems"] = manifest.PlannedItems,
+                ["dryRun"] = dryRun,
+                ["policySource"] = effectivePolicy.Source,
+                ["policyId"] = effectivePolicy.PolicyId,
+                ["cpuLimitPercent"] = effectivePolicy.CpuLimitPercent,
+                ["networkLimitMbit"] = effectivePolicy.NetworkLimitMbit,
+                ["triggerType"] = manualRun?.TriggerType ?? "scheduled"
             });
-            var uploader = new S3Uploader(settings.AwsRegion!, settings.S3BucketName!, settings.S3KeyPrefix!, resolvedCredentials.Credentials, logger);
 
-            foreach (var item in manifest.Items)
+            await controlPlane.ReportProgressAsync(new
             {
-                ct.ThrowIfCancellationRequested();
-                await uploader.UploadFileAndVerifyAsync(item.AbsolutePath, item.RelativePath, item.Sha256Base64, ct);
-                uploadedBytes += item.SizeBytes;
-                uploadedItems += 1;
+                customerId = settings.CustomerId,
+                hostId = settings.HostId,
+                jobId,
+                state = "SCANNING",
+                plannedBytes = manifest.PlannedBytes,
+                plannedItems = manifest.PlannedItems,
+                uploadedBytes = 0,
+                uploadedItems = 0,
+                timestampUtc = DateTimeOffset.UtcNow
+            }, ct);
 
-                if (uploadedItems % 100 == 0)
+            if (dryRun)
+            {
+                uploadedBytes = manifest.PlannedBytes;
+                uploadedItems = manifest.PlannedItems;
+            }
+            else
+            {
+                var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(targetSettings.AwsCredentialTargetName);
+                logger.Info("Credenciais AWS resolvidas para upload", new Dictionary<string, object?>
                 {
-                    await controlPlane.ReportProgressAsync(new
+                    ["credentialSource"] = resolvedCredentials.Source,
+                    ["credentialReference"] = resolvedCredentials.Reference
+                });
+                var uploader = new S3Uploader(targetSettings.AwsRegion!, targetSettings.S3BucketName!, targetSettings.S3KeyPrefix!, resolvedCredentials.Credentials, logger);
+
+                foreach (var item in manifest.Items)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await uploader.UploadFileAndVerifyAsync(item.AbsolutePath, item.RelativePath, item.Sha256Base64, ct);
+                    uploadedBytes += item.SizeBytes;
+                    uploadedItems += 1;
+
+                    if (uploadedItems % 100 == 0)
                     {
-                        customerId = settings.CustomerId,
-                        hostId = settings.HostId,
-                        jobId,
-                        state = "UPLOADING",
-                        plannedBytes = manifest.PlannedBytes,
-                        plannedItems = manifest.PlannedItems,
-                        uploadedBytes,
-                        uploadedItems,
-                        timestampUtc = DateTimeOffset.UtcNow
-                    }, ct);
+                        await controlPlane.ReportProgressAsync(new
+                        {
+                            customerId = settings.CustomerId,
+                            hostId = settings.HostId,
+                            jobId,
+                            state = "UPLOADING",
+                            plannedBytes = manifest.PlannedBytes,
+                            plannedItems = manifest.PlannedItems,
+                            uploadedBytes,
+                            uploadedItems,
+                            timestampUtc = DateTimeOffset.UtcNow
+                        }, ct);
+                    }
                 }
             }
+
+            finalState = "SUCCEEDED";
+            if (rules.JobDefinition.OkCriteria.BytesPlannedMustEqualBytesConfirmedOnS3 && uploadedBytes != manifest.PlannedBytes)
+            {
+                finalState = "FAILED";
+                failureCode = "BYTES_MISMATCH";
+                failureMessage = $"Bytes enviados ({uploadedBytes}) diferem do planejado ({manifest.PlannedBytes}).";
+            }
+
+            if (rules.JobDefinition.OkCriteria.CountPlannedMustEqualCountConfirmedOnS3 && uploadedItems != manifest.PlannedItems)
+            {
+                finalState = "FAILED";
+                failureCode = "ITEMS_MISMATCH";
+                failureMessage = $"Itens enviados ({uploadedItems}) diferem do planejado ({manifest.PlannedItems}).";
+            }
         }
-
-        var finalState = "SUCCEEDED";
-        string? failureCode = null;
-        string? failureMessage = null;
-
-        if (rules.JobDefinition.OkCriteria.BytesPlannedMustEqualBytesConfirmedOnS3 && uploadedBytes != manifest.PlannedBytes)
+        catch (Exception ex)
         {
-            finalState = "FAILED";
-            failureCode = "BYTES_MISMATCH";
-            failureMessage = $"Bytes enviados ({uploadedBytes}) diferem do planejado ({manifest.PlannedBytes}).";
-        }
-
-        if (rules.JobDefinition.OkCriteria.CountPlannedMustEqualCountConfirmedOnS3 && uploadedItems != manifest.PlannedItems)
-        {
-            finalState = "FAILED";
-            failureCode = "ITEMS_MISMATCH";
-            failureMessage = $"Itens enviados ({uploadedItems}) diferem do planejado ({manifest.PlannedItems}).";
+            failureCode = ex.GetType().Name.ToUpperInvariant();
+            failureMessage = ex.Message;
+            logger.Error("Execucao do job falhou.", ex);
         }
 
         await controlPlane.ReportFinalAsync(new
@@ -563,16 +660,19 @@ internal static class AgentWorker
             hostId = settings.HostId,
             jobId,
             finalState,
-            plannedBytes = manifest.PlannedBytes,
-            plannedItems = manifest.PlannedItems,
+            plannedBytes = manifest?.PlannedBytes ?? 0,
+            plannedItems = manifest?.PlannedItems ?? 0,
             uploadedBytes,
             uploadedItems,
             failureCode,
             failureMessage,
             finishedAtUtc = DateTimeOffset.UtcNow,
             artifacts = dryRun
-                ? new[] { new { type = "MANIFEST_LOCAL", location = manifestPath }, new { type = "DRY_RUN", location = "dry-run://no-upload" } }
-                : new[] { new { type = "MANIFEST_LOCAL", location = manifestPath } }
+                ? new[] { new { type = "MANIFEST_LOCAL", location = manifestPath ?? "N/A" }, new { type = "DRY_RUN", location = "dry-run://no-upload" } }
+                : manifestPath is null
+                    ? Array.Empty<object>()
+                    : new[] { new { type = "MANIFEST_LOCAL", location = manifestPath } },
+            runRequestId = manualRun?.RunRequestId
         }, ct);
 
         var state = stateStore.Load();
@@ -581,18 +681,17 @@ internal static class AgentWorker
         stateStore.Save(state);
     }
 
-    private static bool IsPlaceholderAwsConfiguration(AgentSettings settings)
+    private static bool IsPlaceholderAwsConfiguration(ExecutionTargetSettings settings)
     {
         return string.Equals(settings.AwsRegion ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(settings.S3BucketName ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(settings.AwsCredentialTargetName ?? string.Empty, "dry-run", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsAwsConfigured(AgentSettings settings)
+    private static bool IsAwsConfigured(ExecutionTargetSettings settings)
     {
         return !string.IsNullOrWhiteSpace(settings.AwsRegion) &&
                !string.IsNullOrWhiteSpace(settings.S3BucketName) &&
-               !string.IsNullOrWhiteSpace(settings.S3KeyPrefix) &&
-               !string.IsNullOrWhiteSpace(settings.AwsCredentialTargetName);
+               !string.IsNullOrWhiteSpace(settings.S3KeyPrefix);
     }
 }

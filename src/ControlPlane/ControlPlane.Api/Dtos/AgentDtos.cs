@@ -12,7 +12,8 @@ public sealed record JobStartRequest(
     string CustomerId,
     string HostId,
     string JobId,
-    DateTimeOffset StartedAtUtc
+    DateTimeOffset StartedAtUtc,
+    string? RunRequestId
 );
 
 public sealed record JobProgressReport(
@@ -39,7 +40,8 @@ public sealed record JobFinalReport(
     string? FailureCode,
     string? FailureMessage,
     DateTimeOffset FinishedAtUtc,
-    IReadOnlyList<JobArtifactDto> Artifacts
+    IReadOnlyList<JobArtifactDto> Artifacts,
+    string? RunRequestId
 );
 
 public sealed record JobArtifactDto(
@@ -81,6 +83,9 @@ public sealed record AgentEffectivePolicyResponse(
     DateTimeOffset? PolicyLastChangedAtUtc,
     string[] IncludePaths,
     string[] ExcludePaths,
+    string? AwsRegion,
+    string? S3BucketName,
+    string? S3KeyPrefix,
     string[] ScheduleDaysOfWeek,
     string ScheduleStartTimeLocal,
     int MaxRuntimeMinutes,

@@ -161,6 +161,15 @@ public sealed class BackupPolicy
     public string? ExcludePathsCsv { get; set; }
 
     [MaxLength(64)]
+    public string? AwsRegion { get; set; }
+
+    [MaxLength(128)]
+    public string? S3BucketName { get; set; }
+
+    [MaxLength(1024)]
+    public string? S3KeyPrefix { get; set; }
+
+    [MaxLength(64)]
     public required string ScheduleDaysCsv { get; set; }
 
     [MaxLength(8)]
@@ -177,6 +186,40 @@ public sealed class BackupPolicy
     public DateTimeOffset? LastChangedAtUtc { get; set; }
 
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class AgentRunRequest
+{
+    [Key]
+    [MaxLength(64)]
+    public required string Id { get; init; }
+
+    [MaxLength(64)]
+    public required string CustomerId { get; init; }
+
+    [MaxLength(64)]
+    public required string HostId { get; init; }
+
+    [MaxLength(32)]
+    public required string TriggerType { get; set; }
+
+    [MaxLength(32)]
+    public required string State { get; set; }
+
+    [MaxLength(128)]
+    public required string RequestedBy { get; init; }
+
+    public required DateTimeOffset RequestedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    public DateTimeOffset? ClaimedAtUtc { get; set; }
+
+    public DateTimeOffset? CompletedAtUtc { get; set; }
+
+    [MaxLength(64)]
+    public string? JobId { get; set; }
+
+    [MaxLength(2000)]
+    public string? FailureMessage { get; set; }
 }
 
 public sealed class PolicyChangeEvent

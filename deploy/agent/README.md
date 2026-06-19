@@ -23,6 +23,11 @@
 5. So habilite execucao real com upload apos validacao conjunta.
 6. Execute `Launch-Agent-Tray.cmd` para deixar o icone do agent na bandeja do Windows.
 
+## Regra operacional
+- Apos qualquer mudanca de codigo, configuracao ou empacotamento, reexecute o `ControlPlane` antes de validar o ambiente.
+- No host afetado, rode novamente o `Agent` em `dry-run` antes de iniciar ou liberar o servico real.
+- Nao considere a mudanca validada sem rechecagem de painel, onboarding, heartbeat e logs locais.
+
 ## Segredos
 - O instalador salva o `AgentToken` como `AgentTokenDpapiProtected` (DPAPI LocalMachine) por padrao, evitando token em texto puro no arquivo.
 - O servico consegue descriptografar esse token no proprio host, mesmo rodando como `LocalSystem` ou outro usuario local.

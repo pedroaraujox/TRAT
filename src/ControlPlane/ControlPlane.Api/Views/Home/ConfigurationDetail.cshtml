@@ -113,6 +113,51 @@
 <section class="split-grid">
     <div class="panel">
         <div class="panel-header">
+            <h2>AWS no ControlPlane</h2>
+        </div>
+        <div class="definition-grid">
+            <div><span>Status</span><strong>@(Model.AwsIntegration.IsConnected ? "Conectada" : "Nao conectada")</strong></div>
+            <div><span>Conta esperada</span><strong>@(Model.AwsIntegration.ExpectedAccountId ?? "-")</strong></div>
+            <div><span>Conta validada</span><strong>@(Model.AwsIntegration.ResolvedAccountId ?? "-")</strong></div>
+            <div><span>Bucket atual</span><strong>@(Model.AwsIntegration.SelectedBucket ?? "-")</strong></div>
+            <div><span>Regiao</span><strong>@(Model.AwsIntegration.SelectedBucketRegion ?? "-")</strong></div>
+            <div class="wide"><span>Diagnostico</span><strong>@Model.AwsIntegration.Message</strong></div>
+            <div class="wide"><span>Buckets</span><strong>@(Model.AwsIntegration.Buckets.Count == 0 ? "-" : string.Join(", ", Model.AwsIntegration.Buckets))</strong></div>
+            <div class="wide"><span>Pastas/prefixos</span><strong>@(Model.AwsIntegration.Prefixes.Count == 0 ? "-" : string.Join(", ", Model.AwsIntegration.Prefixes))</strong></div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Execucao Manual</h2>
+        </div>
+        @if (Model.LatestRunRequest is null)
+        {
+            <p>Nenhuma execucao manual solicitada para este host.</p>
+        }
+        else
+        {
+            <div class="definition-grid">
+                <div><span>Status</span><strong>@Model.LatestRunRequest.State</strong></div>
+                <div><span>Trigger</span><strong>@Model.LatestRunRequest.TriggerType</strong></div>
+                <div><span>Solicitado em</span><strong>@Model.LatestRunRequest.RequestedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</strong></div>
+                <div><span>Claimed em</span><strong>@(Model.LatestRunRequest.ClaimedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+                <div><span>Concluido em</span><strong>@(Model.LatestRunRequest.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+                <div><span>Job</span><strong>@(Model.LatestRunRequest.JobId ?? "-")</strong></div>
+                <div class="wide"><span>Falha</span><strong>@(Model.LatestRunRequest.FailureMessage ?? "-")</strong></div>
+            </div>
+        }
+        <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.Configuration.Id)/run-now" style="margin-top:12px;">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@returnUrl" />
+            <button class="button primary" type="submit">Executar backup agora</button>
+        </form>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
             <h2>Bootstrap do Host</h2>
         </div>
         <div class="definition-grid">
@@ -125,7 +170,7 @@
 
     <div class="panel">
         <div class="panel-header">
-            <h2>Politica Inicial do Bootstrap</h2>
+            <h2>Politica do Host</h2>
         </div>
         @if (!Model.BootstrapPolicyDraft.HasBootstrapPaths)
         {
@@ -155,6 +200,30 @@
                     <textarea id="ExcludePathsCsv" name="ExcludePathsCsv" rows="3">@Model.BootstrapPolicyDraft.ExcludePathsCsv</textarea>
                 </div>
                 <div class="form-field">
+                    <label for="AwsRegion">Regiao AWS</label>
+                    <input id="AwsRegion" name="AwsRegion" value="@Model.BootstrapPolicyDraft.AwsRegion" placeholder="us-east-1" />
+                </div>
+                <div class="form-field">
+                    <label for="S3BucketName">Bucket S3</label>
+                    <input id="S3BucketName" name="S3BucketName" list="bucket-options" value="@Model.BootstrapPolicyDraft.S3BucketName" placeholder="bucket-backup" />
+                    <datalist id="bucket-options">
+                        @foreach (var bucket in Model.AwsIntegration.Buckets)
+                        {
+                            <option value="@bucket"></option>
+                        }
+                    </datalist>
+                </div>
+                <div class="form-field full-width">
+                    <label for="S3KeyPrefix">Pasta/prefixo no bucket</label>
+                    <input id="S3KeyPrefix" name="S3KeyPrefix" list="prefix-options" value="@Model.BootstrapPolicyDraft.S3KeyPrefix" placeholder="clientes/ep/webstation-01" />
+                    <datalist id="prefix-options">
+                        @foreach (var prefix in Model.AwsIntegration.Prefixes)
+                        {
+                            <option value="@prefix"></option>
+                        }
+                    </datalist>
+                </div>
+                <div class="form-field">
                     <label for="ScheduleDaysCsv">Dias</label>
                     <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.BootstrapPolicyDraft.ScheduleDaysCsv" />
                 </div>
@@ -175,15 +244,15 @@
                     <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" min="1" value="@Model.BootstrapPolicyDraft.NetworkLimitMbit" />
                 </div>
                 <div class="form-field full-width">
-                    <span class="form-help">A acao cria ou atualiza a politica inicial derivada do bootstrap do host.</span>
+                    <span class="form-help">O caminho nasce no host, mas bucket, pasta, agenda e limites ficam centralizados no ControlPlane.</span>
                     <span class="form-help">Se o host estiver pronto, o painel vincula automaticamente essa politica a configuracao.</span>
                     @if (Model.Configuration.IsBootstrapPolicyAssigned)
                     {
-                        <span class="form-help">A politica bootstrap ja esta vinculada ao host; este formulario passa a funcionar como atualizacao controlada.</span>
+                        <span class="form-help">A politica atual ja esta vinculada ao host; este formulario funciona como atualizacao centralizada.</span>
                     }
                     else if (Model.Configuration.BootstrapPolicyExists)
                     {
-                        <span class="form-help">A politica bootstrap ja existe no painel e esta aguardando vinculacao ou revisao.</span>
+                        <span class="form-help">A politica do host ja existe no painel e esta aguardando vinculacao ou revisao.</span>
                     }
                 </div>
                 <div class="form-actions">
@@ -237,15 +306,15 @@
     {
         if (configuration.IsBootstrapPolicyAssigned)
         {
-            return "Atualizar politica bootstrap";
+            return "Atualizar politica do host";
         }
 
         if (configuration.BootstrapPolicyExists)
         {
-            return "Atualizar bootstrap e tentar vincular";
+            return "Atualizar politica e tentar vincular";
         }
 
-        return "Criar politica inicial";
+        return "Salvar politica do host";
     }
 
     private static string FormatBytes(long value)

@@ -16,6 +16,9 @@ internal sealed class RemoteEffectivePolicyResponse
     public DateTimeOffset? PolicyLastChangedAtUtc { get; set; }
     public string[] IncludePaths { get; set; } = Array.Empty<string>();
     public string[] ExcludePaths { get; set; } = Array.Empty<string>();
+    public string? AwsRegion { get; set; }
+    public string? S3BucketName { get; set; }
+    public string? S3KeyPrefix { get; set; }
     public string[] ScheduleDaysOfWeek { get; set; } = Array.Empty<string>();
     public string ScheduleStartTimeLocal { get; set; } = string.Empty;
     public int MaxRuntimeMinutes { get; set; }
@@ -32,6 +35,9 @@ internal sealed class EffectiveRuntimePolicy
     public DateTimeOffset? PolicyLastChangedAtUtc { get; init; }
     public string[] IncludePaths { get; init; } = Array.Empty<string>();
     public string[] ExcludePaths { get; init; } = Array.Empty<string>();
+    public string? AwsRegion { get; init; }
+    public string? S3BucketName { get; init; }
+    public string? S3KeyPrefix { get; init; }
     public string[] ScheduleDaysOfWeek { get; init; } = Array.Empty<string>();
     public required string ScheduleStartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
@@ -49,6 +55,9 @@ internal sealed class EffectiveRuntimePolicy
             PolicyLastChangedAtUtc = null,
             IncludePaths = NormalizePaths(settings.IncludePaths),
             ExcludePaths = NormalizePaths(settings.ExcludePaths),
+            AwsRegion = NormalizeOptional(settings.AwsRegion),
+            S3BucketName = NormalizeOptional(settings.S3BucketName),
+            S3KeyPrefix = NormalizeOptional(settings.S3KeyPrefix),
             ScheduleDaysOfWeek = NormalizeTokens(rules.Defaults.Schedule.DaysOfWeek),
             ScheduleStartTimeLocal = NormalizeTime(rules.Defaults.Schedule.StartTimeLocal, "22:00"),
             MaxRuntimeMinutes = NormalizePositive(rules.Defaults.Schedule.MaxRuntimeMinutes, 720),
@@ -72,6 +81,9 @@ internal sealed class EffectiveRuntimePolicy
             PolicyLastChangedAtUtc = remote.PolicyLastChangedAtUtc,
             IncludePaths = normalizedIncludePaths.Length > 0 ? normalizedIncludePaths : local.IncludePaths,
             ExcludePaths = NormalizePaths(remote.ExcludePaths),
+            AwsRegion = NormalizeOptional(remote.AwsRegion) ?? local.AwsRegion,
+            S3BucketName = NormalizeOptional(remote.S3BucketName) ?? local.S3BucketName,
+            S3KeyPrefix = NormalizeOptional(remote.S3KeyPrefix) ?? local.S3KeyPrefix,
             ScheduleDaysOfWeek = normalizedScheduleDays.Length > 0 ? normalizedScheduleDays : local.ScheduleDaysOfWeek,
             ScheduleStartTimeLocal = NormalizeTime(remote.ScheduleStartTimeLocal, local.ScheduleStartTimeLocal),
             MaxRuntimeMinutes = NormalizePositive(remote.MaxRuntimeMinutes, local.MaxRuntimeMinutes),
@@ -149,6 +161,11 @@ internal sealed class EffectiveRuntimePolicy
         return "operational";
     }
 
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+    }
+
     public string BuildFingerprint()
     {
         var changedAt = PolicyLastChangedAtUtc?.ToUniversalTime().ToString("O") ?? "-";
@@ -160,6 +177,9 @@ internal sealed class EffectiveRuntimePolicy
             changedAt,
             string.Join(";", IncludePaths ?? Array.Empty<string>()),
             string.Join(";", ExcludePaths ?? Array.Empty<string>()),
+            AwsRegion ?? string.Empty,
+            S3BucketName ?? string.Empty,
+            S3KeyPrefix ?? string.Empty,
             string.Join(",", ScheduleDaysOfWeek ?? Array.Empty<string>()),
             ScheduleStartTimeLocal ?? string.Empty,
             MaxRuntimeMinutes.ToString(),

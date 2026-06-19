@@ -65,6 +65,18 @@
             <label for="ExcludePathsCsv">Paths de exclusao</label>
             <input id="ExcludePathsCsv" name="ExcludePathsCsv" value="@Model.ExcludePathsCsv" placeholder="D:\Dados\Temp" />
         </div>
+        <div class="form-field">
+            <label for="AwsRegion">Regiao AWS</label>
+            <input id="AwsRegion" name="AwsRegion" value="@Model.AwsRegion" placeholder="us-east-1" />
+        </div>
+        <div class="form-field">
+            <label for="S3BucketName">Bucket S3</label>
+            <input id="S3BucketName" name="S3BucketName" value="@Model.S3BucketName" placeholder="bucket-backup-cliente" />
+        </div>
+        <div class="form-field full-width">
+            <label for="S3KeyPrefix">Pasta/prefixo no bucket</label>
+            <input id="S3KeyPrefix" name="S3KeyPrefix" value="@Model.S3KeyPrefix" placeholder="clientes/ep/webstation-01" />
+        </div>
         <div class="form-field full-width">
             <label for="ScheduleDaysCsv">Dias da agenda</label>
             <input id="ScheduleDaysCsv" name="ScheduleDaysCsv" value="@Model.ScheduleDaysCsv" placeholder="MON,TUE,WED,THU,FRI" required />
