@@ -7,6 +7,13 @@ namespace WebstationBackup.Agent.Service.Backup;
 
 internal sealed class FileScanner
 {
+    private static readonly HashSet<string> DefaultIgnoredFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "desktop.ini",
+        "thumbs.db",
+        "ehthumbs.db"
+    };
+
     public IReadOnlyList<string> ScanFiles(IEnumerable<string> includePaths, IEnumerable<string> excludePaths)
     {
         var includes = includePaths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -17,7 +24,7 @@ internal sealed class FileScanner
         {
             if (File.Exists(root))
             {
-                if (!IsExcluded(root, excludes))
+                if (!IsExcluded(root, excludes) && !IsIgnoredMetadataFile(root))
                 {
                     results.Add(root);
                 }
@@ -31,7 +38,7 @@ internal sealed class FileScanner
 
             foreach (var file in EnumerateFilesSafe(root))
             {
-                if (IsExcluded(file, excludes))
+                if (IsExcluded(file, excludes) || IsIgnoredMetadataFile(file))
                 {
                     continue;
                 }
@@ -94,6 +101,11 @@ internal sealed class FileScanner
         return false;
     }
 
+    private static bool IsIgnoredMetadataFile(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        return !string.IsNullOrWhiteSpace(fileName) && DefaultIgnoredFileNames.Contains(fileName);
+    }
+
     private static string NormalizePath(string p) => Path.GetFullPath(p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 }
-

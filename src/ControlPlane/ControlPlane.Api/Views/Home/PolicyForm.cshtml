@@ -114,7 +114,6 @@
             <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" value="@Model.NetworkLimitMbit" required />
         </div>
         <div class="form-field">
-            <input type="hidden" name="Enabled" value="false" />
             <label class="toggle-row" for="Enabled">
                 <span>Status</span>
                 <span class="switch">
@@ -122,6 +121,7 @@
                     <span class="switch-slider"></span>
                 </span>
             </label>
+            <input type="hidden" name="Enabled" value="false" />
         </div>
         @if (Model.IsEditMode)
         {

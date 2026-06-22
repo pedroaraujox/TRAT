@@ -285,7 +285,6 @@
                     <input id="NetworkLimitMbit" name="NetworkLimitMbit" type="number" min="1" value="@Model.BootstrapPolicyDraft.NetworkLimitMbit" />
                 </div>
                 <div class="form-field">
-                    <input type="hidden" name="Enabled" value="false" />
                     <label class="toggle-row" for="Enabled">
                         <span>Backup do host</span>
                         <span class="switch">
@@ -293,6 +292,7 @@
                             <span class="switch-slider"></span>
                         </span>
                     </label>
+                    <input type="hidden" name="Enabled" value="false" />
                     <span class="form-help">Use o botao on/off para habilitar ou desabilitar o backup deste host.</span>
                 </div>
                 <div class="form-field full-width">

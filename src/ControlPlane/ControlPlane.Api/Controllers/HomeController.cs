@@ -1743,19 +1743,26 @@ public sealed class HomeController(
         BackupPolicy? boundPolicy,
         AwsIntegrationViewModel awsIntegration)
     {
-        var includePathsCsv = NormalizePathCsv(host?.BootstrapIncludePathsCsv);
-        var excludePathsCsv = NormalizePathCsv(host?.BootstrapExcludePathsCsv);
+        var bootstrapIncludePathsCsv = NormalizePathCsv(host?.BootstrapIncludePathsCsv);
+        var bootstrapExcludePathsCsv = NormalizePathCsv(host?.BootstrapExcludePathsCsv);
+        var persistedIncludePathsCsv = NormalizePathCsv(boundPolicy?.IncludePathsCsv);
+        var persistedExcludePathsCsv = NormalizePathCsv(boundPolicy?.ExcludePathsCsv);
         var hostLabel = string.IsNullOrWhiteSpace(mappedConfiguration.Hostname) ? configuration.HostId : mappedConfiguration.Hostname!;
+        var effectiveName = string.IsNullOrWhiteSpace(boundPolicy?.Name)
+            ? $"Politica Inicial - {hostLabel}"
+            : boundPolicy!.Name.Trim();
+        var effectiveIncludePathsCsv = persistedIncludePathsCsv ?? bootstrapIncludePathsCsv;
+        var effectiveExcludePathsCsv = persistedExcludePathsCsv ?? bootstrapExcludePathsCsv;
 
         return new BootstrapPolicyDraftViewModel
         {
             SuggestedPolicyId = BuildBootstrapPolicyId(configuration.CustomerId, configuration.HostId),
-            Name = $"Politica Inicial - {hostLabel}",
+            Name = effectiveName,
             ScopeType = "host",
             CustomerId = configuration.CustomerId,
             HostId = configuration.HostId,
-            IncludePathsCsv = includePathsCsv ?? string.Empty,
-            ExcludePathsCsv = excludePathsCsv,
+            IncludePathsCsv = effectiveIncludePathsCsv ?? string.Empty,
+            ExcludePathsCsv = effectiveExcludePathsCsv,
             AwsRegion = boundPolicy?.AwsRegion ?? awsIntegration.SelectedBucketRegion,
             S3BucketName = boundPolicy?.S3BucketName ?? awsIntegration.SelectedBucket,
             S3KeyPrefix = boundPolicy?.S3KeyPrefix ?? $"{configuration.CustomerId}/{configuration.HostId}",
@@ -1766,7 +1773,7 @@ public sealed class HomeController(
             CpuLimitPercent = boundPolicy?.CpuLimitPercent ?? 35,
             NetworkLimitMbit = boundPolicy?.NetworkLimitMbit ?? 80,
             Enabled = boundPolicy?.Enabled ?? true,
-            HasBootstrapPaths = !string.IsNullOrWhiteSpace(includePathsCsv)
+            HasBootstrapPaths = !string.IsNullOrWhiteSpace(effectiveIncludePathsCsv)
         };
     }
 
@@ -2017,7 +2024,7 @@ public sealed class HomeController(
         return NormalizeUpperTokenCsv(csv, fallback);
     }
 
-    private static IReadOnlyList<string> SplitCsvTokens(string? csv)
+    private static string[] SplitCsvTokens(string? csv)
     {
         if (string.IsNullOrWhiteSpace(csv))
         {

@@ -37,7 +37,6 @@
             </select>
         </div>
         <div class="form-field">
-            <input type="hidden" name="IsActive" value="false" />
             <label class="toggle-row" for="IsActive">
                 <span>Status</span>
                 <span class="switch">
@@ -45,6 +44,7 @@
                     <span class="switch-slider"></span>
                 </span>
             </label>
+            <input type="hidden" name="IsActive" value="false" />
         </div>
         <div class="form-field">
             <label for="Password">Senha @(Model.IsEditMode ? "(opcional)" : string.Empty)</label>

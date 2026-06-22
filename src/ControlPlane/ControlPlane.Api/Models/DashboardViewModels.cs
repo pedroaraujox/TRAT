@@ -231,7 +231,7 @@ public sealed record PolicyFormViewModel
     public string? S3BucketName { get; init; }
     public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
-    public IReadOnlyList<string> ScheduleDays { get; init; } = Array.Empty<string>();
+    public string[] ScheduleDays { get; init; } = Array.Empty<string>();
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
     public int CpuLimitPercent { get; init; }
@@ -319,7 +319,7 @@ public sealed record BootstrapPolicyDraftViewModel
     public string? S3BucketName { get; init; }
     public string? S3KeyPrefix { get; init; }
     public required string ScheduleDaysCsv { get; init; }
-    public IReadOnlyList<string> ScheduleDays { get; init; } = Array.Empty<string>();
+    public string[] ScheduleDays { get; init; } = Array.Empty<string>();
     public required string StartTimeLocal { get; init; }
     public int MaxRuntimeMinutes { get; init; }
     public int CpuLimitPercent { get; init; }
