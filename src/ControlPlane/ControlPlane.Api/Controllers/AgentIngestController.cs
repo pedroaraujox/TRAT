@@ -18,6 +18,7 @@ public sealed class AgentIngestController(
     AppDbContext db,
     SmtpEmailSender email,
     PolicyResolutionService policyResolutionService,
+    OperationalAlertService operationalAlertService,
     ILogger<AgentIngestController> logger) : ControllerBase
 {
     public sealed record AgentEnrollRequest(string HostId, string Hostname, string OsVersion);
@@ -283,6 +284,7 @@ public sealed class AgentIngestController(
         }
 
         await db.SaveChangesAsync(ct);
+        await operationalAlertService.ReconcileHostAsync(normalizedCustomerId, normalizedHostId, ct);
         logger.LogInformation("Heartbeat recebido: customer={CustomerId} host={HostId} os={OsVersion}", normalizedCustomerId, normalizedHostId, request.OsVersion);
         return Ok();
     }
@@ -436,21 +438,8 @@ public sealed class AgentIngestController(
         }
 
         await db.SaveChangesAsync(ct);
-        if (!string.Equals(report.FinalState, "SUCCEEDED", StringComparison.OrdinalIgnoreCase))
-        {
-            db.Alerts.Add(new Alert
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                CustomerId = customerId,
-                HostId = hostId,
-                JobId = jobId,
-                Type = "JOB_FAILED",
-                Severity = "CRITICAL",
-                Message = $"{report.FailureCode ?? "FAILED"}: {report.FailureMessage ?? "Job finalizado com falha."}",
-                CreatedAtUtc = DateTimeOffset.UtcNow
-            });
-            await db.SaveChangesAsync(ct);
-        }
+        await operationalAlertService.ObserveJobFinalStateAsync(job, ct);
+        await operationalAlertService.ReconcileHostAsync(customerId, hostId, ct);
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId, ct);
         if (customer is not null)
@@ -555,6 +544,7 @@ public sealed class AgentIngestController(
         }
 
         await db.SaveChangesAsync(ct);
+        await operationalAlertService.ReconcileHostAsync(customerId, hostId, ct);
         logger.LogInformation(
             "Configuration report recebido: customer={CustomerId} host={HostId} service={ServiceStatus} effectivePolicyId={EffectivePolicyId} effectivePolicySource={EffectivePolicySource} tlsOk={TlsOk} diskOk={DiskOk} credOk={CredOk}",
             customerId,

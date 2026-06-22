@@ -28,6 +28,12 @@
             <option value="Warning" selected="@(Model.ServiceStatus == "Warning")">Warning</option>
             <option value="Stopped" selected="@(Model.ServiceStatus == "Stopped")">Stopped</option>
         </select>
+        <select name="recoveryStatus">
+            <option value="">Toda a saude</option>
+            <option value="Critico" selected="@(Model.RecoveryStatus == "Critico")">Critico</option>
+            <option value="Atencao" selected="@(Model.RecoveryStatus == "Atencao")">Atencao</option>
+            <option value="Estavel" selected="@(Model.RecoveryStatus == "Estavel")">Estavel</option>
+        </select>
         <button type="submit" class="button primary">Filtrar</button>
     </form>
 
@@ -37,7 +43,9 @@
                 <tr>
                     <th>Host</th>
                     <th>Cliente</th>
+                    <th>Versao</th>
                     <th>Prontidao</th>
+                    <th>Recuperacao</th>
                     <th>Bootstrap</th>
                     <th>Politica</th>
                     <th>Efetiva</th>
@@ -52,7 +60,7 @@
                 @if (Model.Configurations.Count == 0)
                 {
                     <tr>
-                        <td colspan="11">Nenhuma configuracao encontrada.</td>
+                        <td colspan="13">Nenhuma configuracao encontrada.</td>
                     </tr>
                 }
                 else
@@ -62,10 +70,17 @@
                         <tr>
                             <td>@(item.Hostname ?? item.HostId)</td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(item.CustomerId)">@(item.CustomerName ?? item.CustomerId)</a></td>
+                            <td>@item.AgentVersion</td>
                             <td>
                                 <div class="status-stack">
                                     <span class="badge @item.OperationalStatusCssClass">@item.OperationalStatusLabel</span>
                                     <div class="status-detail">@item.OperationalStatusMessage</div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @item.RecoveryStatusCssClass">@item.RecoveryStatusLabel</span>
+                                    <div class="status-detail">@item.RecoveryStatusMessage</div>
                                 </div>
                             </td>
                             <td>

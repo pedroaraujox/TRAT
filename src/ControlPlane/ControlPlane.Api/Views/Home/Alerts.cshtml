@@ -12,6 +12,118 @@
 </div>
 
 <section class="panel">
+    <div class="panel-header">
+        <h2>Relatorio operacional</h2>
+    </div>
+    <div class="card-grid">
+        <div class="info-card">
+            <div class="info-title">Em aberto</div>
+            <div class="info-line"><strong>@Model.Analytics.OpenAlertCount</strong> alerta(s) ativos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Reconhecidos</div>
+            <div class="info-line"><strong>@Model.Analytics.AcknowledgedAlertCount</strong> alerta(s) reconhecidos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Resolvidos</div>
+            <div class="info-line"><strong>@Model.Analytics.ResolvedAlertCount</strong> alerta(s) resolvidos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Causas distintas</div>
+            <div class="info-line"><strong>@Model.Analytics.DistinctRootCauseCount</strong> causa(s) raiz.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Reincidencias</div>
+            <div class="info-line"><strong>@Model.Analytics.ReincidentRootCauseCount</strong> causa(s) repetidas.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Tempo medio de resolucao</div>
+            <div class="info-line"><strong>@Model.Analytics.AverageTimeToResolveLabel</strong></div>
+        </div>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Causas raiz filtradas</h2>
+        </div>
+        <div class="table-wrap">
+            <table class="table responsive-table">
+                <thead>
+                    <tr>
+                        <th>Causa</th>
+                        <th>Ocorrencias</th>
+                        <th>Aberto</th>
+                        <th>Resolvido</th>
+                        <th>Media</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Analytics.TopRootCauses.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5">Nenhuma causa raiz encontrada com os filtros atuais.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var cause in Model.Analytics.TopRootCauses)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
+                                    @cause.Title
+                                </td>
+                                <td>@cause.OccurrenceCount</td>
+                                <td>@cause.OpenCount</td>
+                                <td>@cause.ResolvedCount</td>
+                                <td>@cause.AverageTimeToResolveLabel</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Timeline filtrada</h2>
+        </div>
+        <div class="ops-timeline">
+            @if (Model.Analytics.Timeline.Count == 0)
+            {
+                <div class="muted-text">Nenhum evento historico para os filtros selecionados.</div>
+            }
+            else
+            {
+                @foreach (var item in Model.Analytics.Timeline)
+                {
+                    <article class="ops-timeline-item">
+                        <div class="ops-signal-header">
+                            <strong>@item.Title</strong>
+                            <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
+                        </div>
+                        <div class="ops-signal-detail">@item.Message</div>
+                        <div class="ops-meta-line">
+                            <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
+                            <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                            <span>@(item.CustomerName ?? item.CustomerId ?? "-")</span>
+                            <span>@(item.Hostname ?? item.HostId ?? "-")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
+                        {
+                            <a href="@item.LinkUrl">@item.LinkText</a>
+                        }
+                    </article>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+<section class="panel">
     @if (TempData["StatusMessage"] is string statusMessage)
     {
         <div class="status-banner">@statusMessage</div>
@@ -29,10 +141,17 @@
             <option value="WARNING" selected="@(Model.Severity == "WARNING")">WARNING</option>
             <option value="INFO" selected="@(Model.Severity == "INFO")">INFO</option>
         </select>
+        <select name="recoveryStatus">
+            <option value="">Toda a saude</option>
+            <option value="Critico" selected="@(Model.RecoveryStatus == "Critico")">Critico</option>
+            <option value="Atencao" selected="@(Model.RecoveryStatus == "Atencao")">Atencao</option>
+            <option value="Estavel" selected="@(Model.RecoveryStatus == "Estavel")">Estavel</option>
+        </select>
         <select name="status">
             <option value="">Todos os status</option>
-            <option value="active" selected="@(Model.Status == "active")">Ativos</option>
+            <option value="active" selected="@(Model.Status == "active")">Em aberto</option>
             <option value="acknowledged" selected="@(Model.Status == "acknowledged")">Reconhecidos</option>
+            <option value="resolved" selected="@(Model.Status == "resolved")">Resolvidos</option>
         </select>
         <button type="submit" class="button primary">Filtrar</button>
     </form>
@@ -45,9 +164,11 @@
                     <th>Cliente</th>
                     <th>Host</th>
                     <th>Job</th>
+                    <th>Saude</th>
                     <th>Mensagem</th>
-                    <th>Data</th>
+                    <th>Ultima observacao</th>
                     <th>Status</th>
+                    <th>Acao sugerida</th>
                     <th></th>
                 </tr>
             </thead>
@@ -55,7 +176,7 @@
                 @if (Model.Alerts.Count == 0)
                 {
                     <tr>
-                        <td colspan="9">Nenhum alerta encontrado.</td>
+                        <td colspan="11">Nenhum alerta encontrado.</td>
                     </tr>
                 }
                 else
@@ -77,20 +198,58 @@
                                     <span>-</span>
                                 }
                             </td>
-                            <td>@alert.Message</td>
-                            <td>@alert.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                             <td>
-                                @if (alert.AcknowledgedAtUtc is null)
+                                @if (!string.IsNullOrWhiteSpace(alert.RecoveryStatusLabel))
+                                {
+                                    <div class="status-stack">
+                                        <span class="badge @(alert.RecoveryStatusCssClass ?? "not-ready")">@alert.RecoveryStatusLabel</span>
+                                        <div class="status-detail">@alert.RecoveryStatusMessage</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td>@alert.Message</td>
+                            <td>
+                                <div class="status-stack">
+                                    <div class="status-detail">Aberto em @alert.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                    <div class="status-detail">Visto em @alert.LastObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                </div>
+                            </td>
+                            <td>
+                                @if (alert.ResolvedAtUtc is not null)
+                                {
+                                    <div class="status-stack">
+                                        <span class="badge ready">Resolvido</span>
+                                        <div class="status-detail">@alert.ResolvedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                    </div>
+                                }
+                                else if (alert.AcknowledgedAtUtc is null)
                                 {
                                     <span class="badge warning">Ativo</span>
                                 }
                                 else
                                 {
-                                    <span class="badge succeeded">Reconhecido</span>
+                                    <div class="status-stack">
+                                        <span class="badge succeeded">Reconhecido</span>
+                                        <div class="status-detail">@alert.AcknowledgedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                    </div>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(alert.SuggestedActionText) && !string.IsNullOrWhiteSpace(alert.SuggestedActionUrl))
+                                {
+                                    <a href="@alert.SuggestedActionUrl">@alert.SuggestedActionText</a>
+                                }
+                                else
+                                {
+                                    <span>-</span>
                                 }
                             </td>
                             <td class="actions-cell">
-                                @if (alert.AcknowledgedAtUtc is null)
+                                @if (alert.ResolvedAtUtc is null && alert.AcknowledgedAtUtc is null)
                                 {
                                     <form method="post" action="/admin/alerts/@Uri.EscapeDataString(alert.Id)/ack">
                                         @Html.AntiForgeryToken()
@@ -98,9 +257,13 @@
                                         <button type="submit" class="button secondary compact-button">Reconhecer</button>
                                     </form>
                                 }
+                                else if (alert.ResolvedAtUtc is not null)
+                                {
+                                    <span class="muted-text">@alert.Source</span>
+                                }
                                 else
                                 {
-                                    <span class="muted-text">@(alert.AcknowledgedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm"))</span>
+                                    <span class="muted-text">@alert.Source</span>
                                 }
                             </td>
                         </tr>

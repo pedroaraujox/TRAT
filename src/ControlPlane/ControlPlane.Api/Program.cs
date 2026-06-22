@@ -13,10 +13,13 @@ builder.Services.AddSingleton<SmtpEmailSender>();
 builder.Services.AddSingleton<AwsDiscoveryService>();
 builder.Services.AddSingleton<HostOperationalStatusService>();
 builder.Services.AddSingleton<AgentPackageCatalogService>();
+builder.Services.AddScoped<AuditTrailService>();
+builder.Services.AddScoped<OperationalAlertService>();
 builder.Services.AddScoped<PanelPasswordHasher>();
 builder.Services.AddScoped<PanelAuthenticationService>();
 builder.Services.AddScoped<PanelBootstrapService>();
 builder.Services.AddScoped<PolicyResolutionService>();
+builder.Services.AddHostedService<OperationalAlertReconciliationHostedService>();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {

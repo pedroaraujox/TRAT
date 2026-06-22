@@ -114,20 +114,84 @@ public sealed class Alert
     public string? HostId { get; init; }
 
     [MaxLength(64)]
-    public string? JobId { get; init; }
+    public string? JobId { get; set; }
+
+    [MaxLength(160)]
+    public required string RootCauseKey { get; set; }
 
     [MaxLength(32)]
-    public required string Type { get; init; }
+    public required string Source { get; set; }
+
+    [MaxLength(32)]
+    public required string Type { get; set; }
 
     [MaxLength(16)]
-    public required string Severity { get; init; }
+    public required string Severity { get; set; }
+
+    [MaxLength(2000)]
+    public required string Message { get; set; }
+
+    public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+
+    public DateTimeOffset LastObservedAtUtc { get; set; }
+
+    public DateTimeOffset? AcknowledgedAtUtc { get; set; }
+
+    public DateTimeOffset? ResolvedAtUtc { get; set; }
+}
+
+public sealed class AuditEvent
+{
+    [Key]
+    [MaxLength(64)]
+    public required string Id { get; init; }
+
+    [MaxLength(32)]
+    public required string Category { get; init; }
+
+    [MaxLength(32)]
+    public required string Action { get; init; }
+
+    [MaxLength(16)]
+    public required string Outcome { get; init; }
+
+    [MaxLength(64)]
+    public required string EntityType { get; init; }
+
+    [MaxLength(64)]
+    public string? EntityId { get; init; }
+
+    [MaxLength(64)]
+    public string? CustomerId { get; init; }
+
+    [MaxLength(64)]
+    public string? HostId { get; init; }
+
+    [MaxLength(64)]
+    public string? ActorUserId { get; init; }
+
+    [MaxLength(320)]
+    public string? ActorEmail { get; init; }
+
+    [MaxLength(160)]
+    public string? ActorDisplayName { get; init; }
+
+    [MaxLength(256)]
+    public string? Route { get; init; }
+
+    [MaxLength(64)]
+    public string? IpAddress { get; init; }
+
+    [MaxLength(512)]
+    public string? UserAgent { get; init; }
 
     [MaxLength(2000)]
     public required string Message { get; init; }
 
-    public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+    [MaxLength(4000)]
+    public string? MetadataJson { get; init; }
 
-    public DateTimeOffset? AcknowledgedAtUtc { get; set; }
+    public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class BackupPolicy

@@ -50,6 +50,14 @@
                 <strong>@(Model.ConfigurationId ?? "Pendente de sync do agent")</strong>
             </div>
             <div>
+                <span>Versao do Agent</span>
+                <strong>@(Model.AgentVersion ?? "-")</strong>
+            </div>
+            <div>
+                <span>Servico</span>
+                <strong>@(Model.ServiceStatus ?? "-")</strong>
+            </div>
+            <div>
                 <span>Politica atual</span>
                 <strong>@(Model.AssignedPolicyName ?? "Nao vinculada")</strong>
             </div>
@@ -70,6 +78,154 @@
                 <strong>@(string.IsNullOrWhiteSpace(Model.BootstrapExcludePathsCsv) ? "-" : Model.BootstrapExcludePathsCsv)</strong>
             </div>
         </div>
+
+        @if (Model.OperationalHealth is not null)
+        {
+            <div class="ops-health-panel">
+                <div class="panel-header">
+                    <h2>Saude operacional</h2>
+                </div>
+                <div class="status-banner">
+                    <span class="badge @Model.OperationalHealth.RiskLevelCssClass">@Model.OperationalHealth.RiskLevelLabel</span>
+                    @Model.OperationalHealth.Summary
+                </div>
+                <div class="ops-signal-grid">
+                    @foreach (var signal in Model.OperationalHealth.Signals)
+                    {
+                        <div class="ops-signal-card">
+                            <div class="ops-signal-header">
+                                <span>@signal.Name</span>
+                                <span class="badge @signal.StatusCssClass">@signal.StatusLabel</span>
+                            </div>
+                            <div class="ops-signal-detail">@signal.Detail</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="ops-health-panel">
+                <div class="panel-header">
+                    <h2>Recuperacao guiada</h2>
+                </div>
+                <div class="ops-recovery-list">
+                    @foreach (var step in Model.OperationalHealth.RecoverySteps)
+                    {
+                        <article class="ops-recovery-card">
+                            <div class="ops-signal-header">
+                                <strong>@step.Title</strong>
+                                <span class="badge @step.Severity">@step.Severity.ToUpperInvariant()</span>
+                            </div>
+                            <p>@step.Message</p>
+                            @if (!string.IsNullOrWhiteSpace(step.LinkText) && !string.IsNullOrWhiteSpace(step.LinkUrl))
+                            {
+                                <a href="@step.LinkUrl">@step.LinkText</a>
+                            }
+                        </article>
+                    }
+                </div>
+            </div>
+
+            @if (Model.AlertAnalytics is not null)
+            {
+                <div class="ops-health-panel">
+                    <div class="panel-header">
+                        <h2>Relatorio de alertas</h2>
+                    </div>
+                    <div class="card-grid">
+                        <div class="info-card">
+                            <div class="info-title">Em aberto</div>
+                            <div class="info-line"><strong>@Model.AlertAnalytics.OpenAlertCount</strong> alerta(s).</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-title">Resolvidos</div>
+                            <div class="info-line"><strong>@Model.AlertAnalytics.ResolvedAlertCount</strong> alerta(s).</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-title">Reincidencias</div>
+                            <div class="info-line"><strong>@Model.AlertAnalytics.ReincidentRootCauseCount</strong> causa(s) repetidas.</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-title">Tempo medio</div>
+                            <div class="info-line"><strong>@Model.AlertAnalytics.AverageTimeToResolveLabel</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ops-health-panel">
+                    <div class="panel-header">
+                        <h2>Causas raiz recentes</h2>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="table responsive-table">
+                            <thead>
+                                <tr>
+                                    <th>Causa</th>
+                                    <th>Ocorrencias</th>
+                                    <th>Aberto</th>
+                                    <th>Media</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.AlertAnalytics.TopRootCauses.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="4">Nenhuma causa raiz historica para este host.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var cause in Model.AlertAnalytics.TopRootCauses)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
+                                                @cause.Title
+                                            </td>
+                                            <td>@cause.OccurrenceCount</td>
+                                            <td>@cause.OpenCount</td>
+                                            <td>@cause.AverageTimeToResolveLabel</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="ops-health-panel">
+                    <div class="panel-header">
+                        <h2>Timeline de alertas</h2>
+                    </div>
+                    <div class="ops-timeline">
+                        @if (Model.AlertAnalytics.Timeline.Count == 0)
+                        {
+                            <div class="muted-text">Nenhum alerta historico registrado para este host.</div>
+                        }
+                        else
+                        {
+                            @foreach (var item in Model.AlertAnalytics.Timeline)
+                            {
+                                <article class="ops-timeline-item">
+                                    <div class="ops-signal-header">
+                                        <strong>@item.Title</strong>
+                                        <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
+                                    </div>
+                                    <div class="ops-signal-detail">@item.Message</div>
+                                    <div class="ops-meta-line">
+                                        <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
+                                        <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
+                                    {
+                                        <a href="@item.LinkUrl">@item.LinkText</a>
+                                    }
+                                </article>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        }
     }
 
     <form method="post" action="@postUrl" class="form-grid">

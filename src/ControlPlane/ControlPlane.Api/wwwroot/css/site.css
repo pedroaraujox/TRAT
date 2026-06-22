@@ -1054,6 +1054,77 @@ body[data-theme="light"] .table th {
     grid-column: 1 / -1;
 }
 
+.ops-health-panel {
+    margin-top: 18px;
+}
+
+.ops-signal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.ops-signal-card,
+.ops-recovery-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.ops-signal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.ops-signal-header strong,
+.ops-signal-header span:first-child {
+    font-weight: 600;
+}
+
+.ops-signal-detail {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.ops-recovery-list {
+    display: grid;
+    gap: 12px;
+}
+
+.ops-recovery-card p {
+    margin: 0 0 8px;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.ops-timeline {
+    display: grid;
+    gap: 12px;
+}
+
+.ops-timeline-item {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.ops-meta-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .mono-cell {
     font-family: var(--mono);
     word-break: break-all;

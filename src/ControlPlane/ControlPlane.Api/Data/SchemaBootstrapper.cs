@@ -6,6 +6,10 @@ public static class SchemaBootstrapper
 {
     public static async Task EnsureExtendedSchemaAsync(AppDbContext db)
     {
+        await TryAddColumnAsync(db, tableName: "Alerts", columnName: "RootCauseKey", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "Alerts", columnName: "Source", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "Alerts", columnName: "LastObservedAtUtc", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "Alerts", columnName: "ResolvedAtUtc", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "Customers", columnName: "AgentEnrollmentTokenHash", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapIncludePathsCsv", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "Hosts", columnName: "BootstrapExcludePathsCsv", columnTypeSql: "TEXT");
@@ -20,6 +24,25 @@ public static class SchemaBootstrapper
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyKind", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicySource", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyLastChangedAtUtc", columnTypeSql: "TEXT");
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "Alerts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Alerts" PRIMARY KEY,
+                "CustomerId" TEXT NOT NULL,
+                "HostId" TEXT NULL,
+                "JobId" TEXT NULL,
+                "RootCauseKey" TEXT NOT NULL,
+                "Source" TEXT NOT NULL,
+                "Type" TEXT NOT NULL,
+                "Severity" TEXT NOT NULL,
+                "Message" TEXT NOT NULL,
+                "CreatedAtUtc" TEXT NOT NULL,
+                "LastObservedAtUtc" TEXT NOT NULL,
+                "AcknowledgedAtUtc" TEXT NULL,
+                "ResolvedAtUtc" TEXT NULL
+            );
+            """);
 
         await db.Database.ExecuteSqlRawAsync(
             """
@@ -122,6 +145,47 @@ public static class SchemaBootstrapper
 
         await db.Database.ExecuteSqlRawAsync(
             """
+            CREATE TABLE IF NOT EXISTS "AuditEvents" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_AuditEvents" PRIMARY KEY,
+                "Category" TEXT NOT NULL,
+                "Action" TEXT NOT NULL,
+                "Outcome" TEXT NOT NULL,
+                "EntityType" TEXT NOT NULL,
+                "EntityId" TEXT NULL,
+                "CustomerId" TEXT NULL,
+                "HostId" TEXT NULL,
+                "ActorUserId" TEXT NULL,
+                "ActorEmail" TEXT NULL,
+                "ActorDisplayName" TEXT NULL,
+                "Route" TEXT NULL,
+                "IpAddress" TEXT NULL,
+                "UserAgent" TEXT NULL,
+                "Message" TEXT NOT NULL,
+                "MetadataJson" TEXT NULL,
+                "CreatedAtUtc" TEXT NOT NULL
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_Alerts_CustomerId_Type_CreatedAtUtc"
+            ON "Alerts" ("CustomerId", "Type", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_Alerts_RootCauseKey_ResolvedAtUtc_LastObservedAtUtc"
+            ON "Alerts" ("RootCauseKey", "ResolvedAtUtc", "LastObservedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_Alerts_CustomerId_HostId_ResolvedAtUtc_CreatedAtUtc"
+            ON "Alerts" ("CustomerId", "HostId", "ResolvedAtUtc", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
             CREATE INDEX IF NOT EXISTS "IX_BackupPolicies_CustomerId_Name"
             ON "BackupPolicies" ("CustomerId", "Name");
             """);
@@ -146,8 +210,33 @@ public static class SchemaBootstrapper
 
         await db.Database.ExecuteSqlRawAsync(
             """
+            CREATE INDEX IF NOT EXISTS "IX_AuditEvents_Category_CreatedAtUtc"
+            ON "AuditEvents" ("Category", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_AuditEvents_EntityType_EntityId_CreatedAtUtc"
+            ON "AuditEvents" ("EntityType", "EntityId", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
             CREATE INDEX IF NOT EXISTS "IX_PolicyChangeEvents_PolicyId_CreatedAtUtc"
             ON "PolicyChangeEvents" ("PolicyId", "CreatedAtUtc");
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE "Alerts"
+            SET "RootCauseKey" = COALESCE(NULLIF(TRIM("RootCauseKey"), ''), 'legacy:' || "Id"),
+                "Source" = COALESCE(NULLIF(TRIM("Source"), ''), 'legacy'),
+                "LastObservedAtUtc" = COALESCE("LastObservedAtUtc", "CreatedAtUtc")
+            WHERE "RootCauseKey" IS NULL
+               OR TRIM("RootCauseKey") = ''
+               OR "Source" IS NULL
+               OR TRIM("Source") = ''
+               OR "LastObservedAtUtc" IS NULL;
             """);
 
         await db.Database.ExecuteSqlRawAsync(

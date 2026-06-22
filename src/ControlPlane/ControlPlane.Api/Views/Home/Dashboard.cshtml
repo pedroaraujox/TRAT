@@ -5,33 +5,10 @@
 
 <div class="page-header">
     <div>
-        <h1>Teste do MVP</h1>
-        <p>Use este painel apenas para criar o cliente, copiar o token e confirmar se o host apareceu online.</p>
+        <h1>Centro operacional</h1>
+        <p>Painel de saude, riscos recentes e atividade administrativa do ambiente interno.</p>
     </div>
 </div>
-
-<section class="panel">
-    <div class="panel-header">
-        <h2>Passo a passo</h2>
-    </div>
-    <div class="card-grid">
-        <div class="info-card">
-            <div class="info-title">1. Criar cliente</div>
-            <div class="info-line">Cadastre um cliente simples para o teste.</div>
-            <div class="info-line"><a href="/admin/customers/new">Abrir cadastro</a></div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">2. Copiar token</div>
-            <div class="info-line">Abra o cliente e copie o token de enrollment do Agent.</div>
-            <div class="info-line"><a href="/admin/customers">Abrir clientes</a></div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">3. Instalar Agent</div>
-            <div class="info-line">Preencha URL, token e caminhos de backup.</div>
-            <div class="info-line">Depois confirme se o host apareceu em Hosts.</div>
-        </div>
-    </div>
-</section>
 
 <section class="stats-grid">
     <div class="stat-card">
@@ -49,6 +26,206 @@
     <div class="stat-card">
         <span>Falhas 7 dias</span>
         <strong>@Model.Summary.FailedJobsLast7Days</strong>
+    </div>
+    <div class="stat-card">
+        <span>Sucesso 24h</span>
+        <strong>@Model.Summary.SuccessfulJobsLast24Hours</strong>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Saude operacional</h2>
+        <a class="button ghost" href="/admin/configurations">Abrir configuracoes</a>
+    </div>
+    <div class="card-grid">
+        <div class="info-card">
+            <div class="info-title">Hosts offline</div>
+            <div class="info-line"><strong>@Model.Health.OfflineHostCount</strong> host(s) sem heartbeat recente.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Credencial AWS</div>
+            <div class="info-line"><strong>@Model.Health.CredentialFailureHostCount</strong> host(s) com precheck de credencial falhando.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Sync desatualizada</div>
+            <div class="info-line"><strong>@Model.Health.StaleConfigurationCount</strong> configuracao(oes) sem sync recente.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Fila manual</div>
+            <div class="info-line"><strong>@Model.Health.PendingManualRunCount</strong> solicitacao(oes) manuais pendentes.</div>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Analise de alertas</h2>
+        <a class="button ghost" href="/admin/alerts">Abrir alertas</a>
+    </div>
+    <div class="card-grid">
+        <div class="info-card">
+            <div class="info-title">Em aberto</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.OpenAlertCount</strong> alerta(s) ainda ativos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Reconhecidos</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.AcknowledgedAlertCount</strong> alerta(s) aguardando resolucao.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Causas distintas</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.DistinctRootCauseCount</strong> causa(s) raiz observadas.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Reincidencia</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.ReincidentRootCauseCount</strong> causa(s) com repeticao.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Tempo medio de resolucao</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.AverageTimeToResolveLabel</strong></div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Maior janela em aberto</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.LongestOpenDurationLabel</strong></div>
+        </div>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Causas raiz dominantes</h2>
+        </div>
+        <div class="table-wrap">
+            <table class="table responsive-table">
+                <thead>
+                    <tr>
+                        <th>Causa</th>
+                        <th>Ocorrencias</th>
+                        <th>Aberto</th>
+                        <th>Media de resolucao</th>
+                        <th>Ultimo host</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.AlertAnalytics.TopRootCauses.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5">Nenhum historico de causa raiz disponivel ainda.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var cause in Model.AlertAnalytics.TopRootCauses)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
+                                    @cause.Title
+                                </td>
+                                <td>@cause.OccurrenceCount</td>
+                                <td>@cause.OpenCount</td>
+                                <td>@cause.AverageTimeToResolveLabel</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(cause.LinkUrl) && !string.IsNullOrWhiteSpace(cause.LatestHostname))
+                                    {
+                                        <a href="@cause.LinkUrl">@cause.LatestHostname</a>
+                                    }
+                                    else
+                                    {
+                                        <span>@(cause.LatestHostname ?? cause.LatestHostId ?? "-")</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Timeline de alertas</h2>
+        </div>
+        <div class="ops-timeline">
+            @if (Model.AlertAnalytics.Timeline.Count == 0)
+            {
+                <div class="muted-text">Nenhum alerta historico disponivel ainda.</div>
+            }
+            else
+            {
+                @foreach (var item in Model.AlertAnalytics.Timeline)
+                {
+                    <article class="ops-timeline-item">
+                        <div class="ops-signal-header">
+                            <strong>@item.Title</strong>
+                            <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
+                        </div>
+                        <div class="ops-signal-detail">@item.Message</div>
+                        <div class="ops-meta-line">
+                            <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
+                            <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                            <span>@(item.CustomerName ?? item.CustomerId ?? "-")</span>
+                            <span>@(item.Hostname ?? item.HostId ?? "-")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
+                        {
+                            <a href="@item.LinkUrl">@item.LinkText</a>
+                        }
+                    </article>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Riscos recentes</h2>
+        <a class="button ghost" href="/admin/alerts">Abrir alertas</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table responsive-table">
+            <thead>
+                <tr>
+                    <th>Severidade</th>
+                    <th>Risco</th>
+                    <th>Acao</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.OperationalRisks.Count == 0)
+                {
+                    <tr>
+                        <td colspan="3">Nenhum risco operacional relevante no momento.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var risk in Model.OperationalRisks)
+                    {
+                        <tr>
+                            <td><span class="badge @risk.Severity">@risk.Severity.ToUpperInvariant()</span></td>
+                            <td>
+                                <strong>@risk.Title</strong>
+                                <div>@risk.Message</div>
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(risk.LinkUrl))
+                                {
+                                    <a href="@risk.LinkUrl">@(risk.LinkText ?? "Abrir")</a>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
     </div>
 </section>
 
@@ -121,6 +298,46 @@
 
 <section class="panel">
     <div class="panel-header">
+        <h2>Atividade administrativa recente</h2>
+        <a class="button ghost" href="/admin/panel">Abrir painel</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table responsive-table">
+            <thead>
+                <tr>
+                    <th>Quando</th>
+                    <th>Actor</th>
+                    <th>Evento</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.RecentAuditEvents.Count == 0)
+                {
+                    <tr>
+                        <td colspan="3">Nenhum evento administrativo auditado ainda.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var audit in Model.RecentAuditEvents)
+                    {
+                        <tr>
+                            <td>@audit.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td>@(audit.ActorDisplayName ?? audit.ActorEmail ?? "Sistema")</td>
+                            <td>
+                                <span class="badge @(audit.Outcome == "success" ? "ready" : "warning")">@audit.Outcome.ToUpperInvariant()</span>
+                                @audit.Message
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
         <h2>Alertas recentes</h2>
     </div>
     <div class="table-wrap">
@@ -128,14 +345,16 @@
             <thead>
                 <tr>
                     <th>Severidade</th>
+                    <th>Saude</th>
                     <th>Mensagem</th>
+                    <th>Acao</th>
                 </tr>
             </thead>
             <tbody>
                 @if (Model.Alerts.Count == 0)
                 {
                     <tr>
-                        <td colspan="2">Nenhum alerta ativo.</td>
+                        <td colspan="4">Nenhum alerta ativo.</td>
                     </tr>
                 }
                 else
@@ -144,7 +363,30 @@
                     {
                         <tr>
                             <td><span class="badge @alert.Severity.ToLowerInvariant()">@alert.Severity</span></td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(alert.RecoveryStatusLabel))
+                                {
+                                    <div class="status-stack">
+                                        <span class="badge @(alert.RecoveryStatusCssClass ?? "not-ready")">@alert.RecoveryStatusLabel</span>
+                                        <div class="status-detail">@alert.RecoveryStatusMessage</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
                             <td>@alert.Message</td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(alert.SuggestedActionText) && !string.IsNullOrWhiteSpace(alert.SuggestedActionUrl))
+                                {
+                                    <a href="@alert.SuggestedActionUrl">@alert.SuggestedActionText</a>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
                         </tr>
                     }
                 }

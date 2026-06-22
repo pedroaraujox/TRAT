@@ -11,7 +11,8 @@ namespace ControlPlane.Api.Controllers;
 public sealed class PanelAdminController(
     AppDbContext db,
     PanelPasswordHasher passwordHasher,
-    AgentPackageCatalogService agentPackageCatalogService) : Controller
+    AgentPackageCatalogService agentPackageCatalogService,
+    AuditTrailService auditTrailService) : Controller
 {
     [HttpGet("/admin/panel")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -83,7 +84,7 @@ public sealed class PanelAdminController(
         }
 
         var hash = passwordHasher.HashPassword(normalized.Password!);
-        db.PanelUsers.Add(new PanelUser
+        var user = new PanelUser
         {
             Id = Guid.NewGuid().ToString("N"),
             Email = normalized.Email,
@@ -95,9 +96,22 @@ public sealed class PanelAdminController(
             IsActive = normalized.IsActive,
             CreatedAtUtc = DateTimeOffset.UtcNow,
             UpdatedAtUtc = DateTimeOffset.UtcNow
-        });
+        };
+        db.PanelUsers.Add(user);
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "panel_user",
+            action: "create",
+            entityType: "panel_user",
+            entityId: user.Id,
+            message: $"Usuario {user.Email} criado no painel.",
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["role"] = user.Role,
+                ["isActive"] = user.IsActive ? "true" : "false"
+            });
         TempData["StatusMessage"] = "Usuario criado com sucesso.";
         return Redirect("/admin/panel/users");
     }
@@ -156,6 +170,18 @@ public sealed class PanelAdminController(
         }
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "panel_user",
+            action: "edit",
+            entityType: "panel_user",
+            entityId: user.Id,
+            message: $"Usuario {user.Email} atualizado no painel.",
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["role"] = user.Role,
+                ["isActive"] = user.IsActive ? "true" : "false"
+            });
 
         var currentUser = HttpContext.GetCurrentPanelUser();
         if (currentUser is not null && string.Equals(currentUser.UserId, user.Id, StringComparison.Ordinal))
@@ -204,6 +230,17 @@ public sealed class PanelAdminController(
 
         db.PanelUsers.Remove(user);
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "panel_user",
+            action: "delete",
+            entityType: "panel_user",
+            entityId: user.Id,
+            message: $"Usuario {user.Email} removido do painel.",
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["role"] = user.Role
+            });
         TempData["StatusMessage"] = "Usuario removido com sucesso.";
         return Redirect("/admin/panel/users");
     }
@@ -216,7 +253,7 @@ public sealed class PanelAdminController(
     }
 
     [HttpGet("/admin/downloads/agent/setup")]
-    public IActionResult DownloadAgentSetup()
+    public async Task<IActionResult> DownloadAgentSetup(CancellationToken ct)
     {
         var package = agentPackageCatalogService.GetLatestPackage();
         if (!package.IsAvailable || string.IsNullOrWhiteSpace(package.SetupExePath) || !System.IO.File.Exists(package.SetupExePath))
@@ -224,17 +261,43 @@ public sealed class PanelAdminController(
             return NotFound();
         }
 
+        await RecordAuditAsync(
+            category: "agent",
+            action: "download_setup",
+            entityType: "agent_package",
+            entityId: package.Version,
+            message: "Download do Setup.exe do Agent iniciado pelo painel.",
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["version"] = package.Version,
+                ["publishedAtUtc"] = package.PublishedAtUtc?.ToString("O")
+            });
+
         return PhysicalFile(package.SetupExePath, "application/octet-stream", "WebstationBackup.Agent.Setup.exe");
     }
 
     [HttpGet("/admin/downloads/agent/zip")]
-    public IActionResult DownloadAgentZip()
+    public async Task<IActionResult> DownloadAgentZip(CancellationToken ct)
     {
         var package = agentPackageCatalogService.GetLatestPackage();
         if (!package.IsAvailable || string.IsNullOrWhiteSpace(package.ZipPath) || !System.IO.File.Exists(package.ZipPath))
         {
             return NotFound();
         }
+
+        await RecordAuditAsync(
+            category: "agent",
+            action: "download_zip",
+            entityType: "agent_package",
+            entityId: package.Version,
+            message: "Download do pacote ZIP do Agent iniciado pelo painel.",
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["version"] = package.Version,
+                ["publishedAtUtc"] = package.PublishedAtUtc?.ToString("O")
+            });
 
         return PhysicalFile(package.ZipPath, "application/zip", "WebstationBackup.Agent.Package.zip");
     }
@@ -355,5 +418,29 @@ public sealed class PanelAdminController(
             HasSetupExe = !string.IsNullOrWhiteSpace(package.SetupExePath),
             HasZip = !string.IsNullOrWhiteSpace(package.ZipPath)
         };
+    }
+
+    private Task RecordAuditAsync(
+        string category,
+        string action,
+        string entityType,
+        string? entityId,
+        string message,
+        CancellationToken ct,
+        string outcome = "success",
+        IReadOnlyDictionary<string, string?>? metadata = null)
+    {
+        return auditTrailService.RecordAsync(
+            HttpContext,
+            category,
+            action,
+            entityType,
+            entityId,
+            message,
+            customerId: null,
+            hostId: null,
+            outcome,
+            metadata,
+            ct);
     }
 }

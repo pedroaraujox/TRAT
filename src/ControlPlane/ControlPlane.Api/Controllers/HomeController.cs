@@ -16,6 +16,7 @@ public sealed class HomeController(
     AwsDiscoveryService awsDiscoveryService,
     PanelAuthenticationService panelAuthenticationService,
     HostOperationalStatusService hostOperationalStatusService,
+    AuditTrailService auditTrailService,
     ILogger<HomeController> logger) : Controller
 {
     private const string EnrollmentTokenSessionKeyPrefix = "customer-enroll-token:";
@@ -33,6 +34,21 @@ public sealed class HomeController(
         var result = await panelAuthenticationService.AuthenticateAsync(email, password, ct);
         if (!result.Success || result.Session is null)
         {
+            await auditTrailService.RecordAsync(
+                HttpContext,
+                category: "auth",
+                action: "login",
+                entityType: "panel_user",
+                entityId: null,
+                message: "Tentativa de login negada no painel.",
+                customerId: null,
+                hostId: null,
+                outcome: "failure",
+                metadata: new Dictionary<string, string?>
+                {
+                    ["email"] = PanelAuthenticationService.NormalizeEmail(email)
+                },
+                ct);
             return View("Login", new LoginViewModel
             {
                 Email = email?.Trim(),
@@ -45,13 +61,50 @@ public sealed class HomeController(
             result.Session.Email,
             result.Session.DisplayName,
             result.Session.Role);
+        await auditTrailService.RecordAsync(
+            HttpContext,
+            category: "auth",
+            action: "login",
+            entityType: "panel_user",
+            entityId: result.Session.UserId,
+            message: "Login realizado com sucesso no painel.",
+            customerId: null,
+            hostId: null,
+            outcome: "success",
+            metadata: new Dictionary<string, string?>
+            {
+                ["email"] = result.Session.Email,
+                ["role"] = result.Session.Role
+            },
+            ct);
         return Redirect("/admin");
     }
 
     [HttpPost("/logout")]
     [ValidateAntiForgeryToken]
-    public IActionResult Logout()
+    public async Task<IActionResult> Logout(CancellationToken ct)
     {
+        var currentUser = HttpContext.GetCurrentPanelUser();
+        if (currentUser is not null)
+        {
+            await auditTrailService.RecordAsync(
+                HttpContext,
+                category: "auth",
+                action: "logout",
+                entityType: "panel_user",
+                entityId: currentUser.UserId,
+                message: "Logout realizado no painel.",
+                customerId: null,
+                hostId: null,
+                outcome: "success",
+                metadata: new Dictionary<string, string?>
+                {
+                    ["email"] = currentUser.Email,
+                    ["role"] = currentUser.Role
+                },
+                ct);
+        }
+
         HttpContext.Session.SignOutPanelUser();
         return Redirect("/login");
     }
@@ -59,25 +112,31 @@ public sealed class HomeController(
     [HttpGet("/admin")]
     public async Task<IActionResult> Dashboard(CancellationToken ct)
     {
+        var nowUtc = DateTimeOffset.UtcNow;
         var customers = await db.Customers.AsNoTracking().OrderBy(c => c.Name).ToListAsync(ct);
         var customersById = customers.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
         var policiesById = await db.BackupPolicies.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p, ct);
-        var configsByHostId = (await db.AgentConfigurations.AsNoTracking().ToListAsync(ct))
+        var allConfigurations = await db.AgentConfigurations.AsNoTracking().ToListAsync(ct);
+        var configsByHostId = allConfigurations
             .GroupBy(c => c.HostId)
             .Select(g => g.OrderByDescending(x => x.LastConfigSyncAtUtc ?? x.CreatedAtUtc).FirstOrDefault()!)
             .ToDictionary(c => c.HostId, c => c, StringComparer.OrdinalIgnoreCase);
-        var hosts = (await db.Hosts.AsNoTracking().ToListAsync(ct))
+        var allHosts = await db.Hosts.AsNoTracking().ToListAsync(ct);
+        var hosts = allHosts
             .OrderByDescending(h => h.LastHeartbeatAtUtc)
             .Take(20)
             .ToList();
+        var allHostsById = allHosts.ToDictionary(h => h.Id, StringComparer.OrdinalIgnoreCase);
         var hostsById = hosts.ToDictionary(h => h.Id, StringComparer.OrdinalIgnoreCase);
         var jobs = (await db.Jobs.AsNoTracking().ToListAsync(ct))
             .OrderByDescending(j => j.StartedAtUtc)
             .Take(20)
             .ToList();
         var allJobs = await db.Jobs.AsNoTracking().ToListAsync(ct);
-        var alerts = (await db.Alerts.AsNoTracking().ToListAsync(ct))
-            .OrderByDescending(a => a.CreatedAtUtc)
+        var allAlerts = await db.Alerts.AsNoTracking().ToListAsync(ct);
+        var alerts = allAlerts
+            .Where(a => a.ResolvedAtUtc == null)
+            .OrderByDescending(a => a.LastObservedAtUtc)
             .Take(20)
             .ToList();
         var hostCounts = await db.Hosts.AsNoTracking()
@@ -92,6 +151,23 @@ public sealed class HomeController(
             .GroupBy(j => j.CustomerId)
             .Select(g => new { CustomerId = g.Key, LastJobAtUtc = g.Max(x => x.StartedAtUtc) })
             .ToDictionary(x => x.CustomerId, x => (DateTimeOffset?)x.LastJobAtUtc, StringComparer.OrdinalIgnoreCase);
+        var pendingRunRequestCount = await db.AgentRunRequests.AsNoTracking()
+            .CountAsync(r => r.State == "QUEUED" || r.State == "CLAIMED", ct);
+        var recentAuditEvents = await db.AuditEvents.AsNoTracking()
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .Take(12)
+            .ToListAsync(ct);
+        var latestJobsByHostId = allJobs
+            .GroupBy(j => j.HostId)
+            .Select(g => g.OrderByDescending(x => x.StartedAtUtc).First())
+            .ToDictionary(j => j.HostId, j => j, StringComparer.OrdinalIgnoreCase);
+        var health = BuildDashboardHealthSummary(nowUtc, allHosts, configsByHostId.Values, pendingRunRequestCount);
+        var operationalRisks = BuildOperationalRisks(
+            nowUtc,
+            allHosts,
+            configsByHostId,
+            latestJobsByHostId,
+            customersById);
 
         var customerCards = customers
             .Select(c => new CustomerCardViewModel
@@ -111,13 +187,18 @@ public sealed class HomeController(
             {
                 CustomerCount = await db.Customers.CountAsync(ct),
                 HostCount = await db.Hosts.CountAsync(ct),
-                ActiveAlertCount = await db.Alerts.CountAsync(a => a.AcknowledgedAtUtc == null, ct),
-                FailedJobsLast7Days = allJobs.Count(j => j.State == "FAILED" && j.StartedAtUtc >= DateTimeOffset.UtcNow.AddDays(-7))
+                ActiveAlertCount = await db.Alerts.CountAsync(a => a.ResolvedAtUtc == null, ct),
+                FailedJobsLast7Days = allJobs.Count(j => j.State == "FAILED" && j.StartedAtUtc >= nowUtc.AddDays(-7)),
+                SuccessfulJobsLast24Hours = allJobs.Count(j => j.State == "SUCCEEDED" && j.StartedAtUtc >= nowUtc.AddHours(-24))
             },
+            Health = health,
+            AlertAnalytics = BuildAlertAnalyticsSummary(allAlerts, customersById, allHostsById),
             Customers = customerCards,
             Hosts = hosts.Select(h => MapHost(h, customersById, configsByHostId, policiesById)).ToArray(),
             RecentJobs = jobs.Select(j => MapJob(j, customersById, hostsById)).ToArray(),
-            Alerts = alerts.Select(a => MapAlert(a, customersById, hostsById)).ToArray()
+            Alerts = alerts.Select(a => MapAlert(a, customersById, allHostsById, configsByHostId, latestJobsByHostId)).ToArray(),
+            OperationalRisks = operationalRisks,
+            RecentAuditEvents = recentAuditEvents.Select(MapAuditEvent).ToArray()
         };
 
         return View("Dashboard", model);
@@ -143,7 +224,7 @@ public sealed class HomeController(
             .Select(g => new { CustomerId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Count, ct);
         var alertCounts = await db.Alerts.AsNoTracking()
-            .Where(a => a.AcknowledgedAtUtc == null)
+            .Where(a => a.ResolvedAtUtc == null)
             .GroupBy(a => a.CustomerId)
             .Select(g => new { CustomerId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.CustomerId, x => x.Count, ct);
@@ -208,6 +289,20 @@ public sealed class HomeController(
             CreatedAtUtc = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "customer",
+            action: "create",
+            entityType: "customer",
+            entityId: customerId,
+            message: $"Cliente {customerId} criado no painel.",
+            customerId: customerId,
+            hostId: null,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["name"] = form.Name.Trim(),
+                ["awsAccountId"] = form.AwsAccountId.Trim()
+            });
 
         HttpContext.Session.SetString(BuildEnrollmentTokenSessionKey(customerId), enrollmentToken);
         return Redirect($"/admin/customers/{Uri.EscapeDataString(customerId)}");
@@ -248,9 +343,12 @@ public sealed class HomeController(
             .Take(30)
             .ToList();
         var alerts = (await db.Alerts.AsNoTracking().Where(a => a.CustomerId == id).ToListAsync(ct))
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.LastObservedAtUtc)
             .Take(30)
             .ToList();
+        var allCustomerAlerts = await db.Alerts.AsNoTracking()
+            .Where(a => a.CustomerId == id)
+            .ToListAsync(ct);
         var policies = await db.BackupPolicies.AsNoTracking()
             .Where(p => p.CustomerId == id)
             .OrderBy(p => p.Name)
@@ -275,9 +373,15 @@ public sealed class HomeController(
             },
             EnrollmentTokenOneTime = string.IsNullOrWhiteSpace(enrollmentToken) ? null : enrollmentToken,
             AwsIntegration = awsIntegration,
+            AlertAnalytics = BuildAlertAnalyticsSummary(allCustomerAlerts, customerMap, hostsById),
             Hosts = hosts.Select(h => MapHost(h, customerMap, configsByHostId, policyMap)).ToArray(),
             Jobs = jobs.Select(j => MapJob(j, customerMap, hostsById)).ToArray(),
-            Alerts = alerts.Select(a => MapAlert(a, customerMap, hostsById)).ToArray(),
+            Alerts = alerts.Select(a => MapAlert(
+                a,
+                customerMap,
+                hostsById,
+                configsByHostId,
+                jobs.GroupBy(j => j.HostId).ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.StartedAtUtc).First(), StringComparer.OrdinalIgnoreCase))).ToArray(),
             Policies = policies.Select(p => MapPolicy(p, customerMap, hostsById)).ToArray()
         });
     }
@@ -301,6 +405,15 @@ public sealed class HomeController(
         var enrollmentToken = GenerateEnrollmentToken();
         customer.AgentEnrollmentTokenHash = ComputeTokenHash(enrollmentToken);
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "customer",
+            action: "regenerate_token",
+            entityType: "customer",
+            entityId: customerId,
+            message: $"Token de enrollment regenerado para o cliente {customerId}.",
+            customerId: customerId,
+            hostId: null,
+            ct);
 
         HttpContext.Session.SetString(BuildEnrollmentTokenSessionKey(customerId), enrollmentToken);
         return Redirect($"/admin/customers/{Uri.EscapeDataString(customerId)}");
@@ -377,6 +490,20 @@ public sealed class HomeController(
         customer.NotificationEmailsCsv = string.IsNullOrWhiteSpace(form.NotificationEmailsCsv) ? null : form.NotificationEmailsCsv.Trim();
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "customer",
+            action: "edit",
+            entityType: "customer",
+            entityId: id,
+            message: $"Cliente {id} atualizado no painel.",
+            customerId: id,
+            hostId: null,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["name"] = customer.Name,
+                ["awsAccountId"] = customer.AwsAccountId
+            });
         return Redirect($"/admin/customers/{Uri.EscapeDataString(id)}");
     }
 
@@ -491,13 +618,29 @@ public sealed class HomeController(
             policies.Count,
             policyChangeEvents.Count,
             artifacts.Count);
+        await RecordAuditAsync(
+            category: "customer",
+            action: "delete",
+            entityType: "customer",
+            entityId: customerId,
+            message: $"Cliente {customerId} removido com dependencias relacionadas.",
+            customerId: customerId,
+            hostId: null,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["hosts"] = hosts.Count.ToString(),
+                ["jobs"] = jobs.Count.ToString(),
+                ["alerts"] = alerts.Count.ToString(),
+                ["policies"] = policies.Count.ToString()
+            });
 
         TempData["StatusMessage"] = "Cliente excluido com sucesso.";
         return RedirectToLocalOrDefault(returnUrl, "/admin/customers");
     }
 
     [HttpGet("/admin/hosts")]
-    public async Task<IActionResult> Hosts([FromQuery] string? customerId, [FromQuery] string? status, CancellationToken ct)
+    public async Task<IActionResult> Hosts([FromQuery] string? customerId, [FromQuery] string? status, [FromQuery] string? recoveryStatus, CancellationToken ct)
     {
         var customers = await db.Customers.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c, ct);
         var policies = await db.BackupPolicies.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p, ct);
@@ -520,11 +663,16 @@ public sealed class HomeController(
                 string.Equals(h.HeartbeatStatus, status, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(h.OperationalStatusLabel, status, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
+        if (!string.IsNullOrWhiteSpace(recoveryStatus))
+        {
+            rows = rows.Where(h => string.Equals(h.RecoveryStatusLabel, recoveryStatus, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
 
         return View(new HostsPageViewModel
         {
             CustomerId = customerId,
             Status = status,
+            RecoveryStatus = recoveryStatus,
             Hosts = rows
         });
     }
@@ -580,6 +728,20 @@ public sealed class HomeController(
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Host {HostId} created for customer {CustomerId}", hostId, customerId);
+        await RecordAuditAsync(
+            category: "host",
+            action: "create",
+            entityType: "host",
+            entityId: hostId,
+            message: $"Host {hostId} criado para o cliente {customerId}.",
+            customerId: customerId,
+            hostId: hostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["hostname"] = form.Hostname.Trim(),
+                ["osVersion"] = form.OsVersion.Trim()
+            });
 
         return Redirect("/admin/hosts");
     }
@@ -623,6 +785,20 @@ public sealed class HomeController(
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Host {HostId} updated", id);
+        await RecordAuditAsync(
+            category: "host",
+            action: "edit",
+            entityType: "host",
+            entityId: id,
+            message: $"Host {id} atualizado no painel.",
+            customerId: host.CustomerId,
+            hostId: id,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["hostname"] = host.Hostname,
+                ["osVersion"] = host.OsVersion
+            });
 
         return Redirect("/admin/hosts");
     }
@@ -659,6 +835,15 @@ public sealed class HomeController(
         db.Hosts.Remove(host);
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Host {HostId} deleted", id);
+        await RecordAuditAsync(
+            category: "host",
+            action: "delete",
+            entityType: "host",
+            entityId: id,
+            message: $"Host {id} removido do painel.",
+            customerId: host.CustomerId,
+            hostId: id,
+            ct);
 
         TempData["StatusMessage"] = "Host removido com sucesso.";
         return RedirectToLocalOrDefault(returnUrl, "/admin/hosts");
@@ -768,6 +953,21 @@ public sealed class HomeController(
                 : "Politica operacional criada manualmente."));
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "policy",
+            action: "create",
+            entityType: "policy",
+            entityId: normalizedForm.Id.Trim(),
+            message: $"Politica {normalizedForm.Id.Trim()} criada no painel.",
+            customerId: normalizedForm.CustomerId.Trim(),
+            hostId: string.IsNullOrWhiteSpace(normalizedForm.HostId) ? null : normalizedForm.HostId.Trim(),
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["name"] = normalizedForm.Name.Trim(),
+                ["scopeType"] = normalizedForm.ScopeType.Trim(),
+                ["policyKind"] = normalizedPolicyKind
+            });
         return Redirect("/admin/policies");
     }
 
@@ -866,11 +1066,26 @@ public sealed class HomeController(
             message: BuildPolicyUpdateMessage(previousKind, normalizedPolicyKind, previousEnabled, policy.Enabled)));
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "policy",
+            action: "edit",
+            entityType: "policy",
+            entityId: policy.Id,
+            message: $"Politica {policy.Id} atualizada no painel.",
+            customerId: policy.CustomerId,
+            hostId: policy.HostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["name"] = policy.Name,
+                ["scopeType"] = policy.ScopeType,
+                ["policyKind"] = policy.PolicyKind
+            });
         return Redirect("/admin/policies");
     }
 
     [HttpGet("/admin/configurations")]
-    public async Task<IActionResult> Configurations([FromQuery] string? customerId, [FromQuery] string? serviceStatus, CancellationToken ct)
+    public async Task<IActionResult> Configurations([FromQuery] string? customerId, [FromQuery] string? serviceStatus, [FromQuery] string? recoveryStatus, CancellationToken ct)
     {
         var customers = await db.Customers.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c, ct);
         var hosts = await db.Hosts.AsNoTracking().ToDictionaryAsync(h => h.Id, h => h, ct);
@@ -886,11 +1101,16 @@ public sealed class HomeController(
         {
             rows = rows.Where(c => string.Equals(c.ServiceStatus, serviceStatus, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
+        if (!string.IsNullOrWhiteSpace(recoveryStatus))
+        {
+            rows = rows.Where(c => string.Equals(c.RecoveryStatusLabel, recoveryStatus, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
 
         return View(new AgentConfigurationsPageViewModel
         {
             CustomerId = customerId,
             ServiceStatus = serviceStatus,
+            RecoveryStatus = recoveryStatus,
             Configurations = rows
         });
     }
@@ -984,6 +1204,21 @@ public sealed class HomeController(
         configuration.PolicyId = trimmedPolicyId;
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Configuration {ConfigurationId} policy updated to {PolicyId}", id, trimmedPolicyId ?? "<none>");
+        await RecordAuditAsync(
+            category: "configuration",
+            action: trimmedPolicyId is null ? "unbind_policy" : "bind_policy",
+            entityType: "agent_configuration",
+            entityId: id,
+            message: trimmedPolicyId is null
+                ? $"Politica desvinculada da configuracao {id}."
+                : $"Politica {trimmedPolicyId} vinculada a configuracao {id}.",
+            customerId: configuration.CustomerId,
+            hostId: configuration.HostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["policyId"] = trimmedPolicyId
+            });
 
         TempData["StatusMessage"] = trimmedPolicyId is null
             ? "Politica desvinculada com sucesso."
@@ -1119,6 +1354,22 @@ public sealed class HomeController(
             policyId,
             id,
             readiness.IsReadyForPolicyAssignment);
+        await RecordAuditAsync(
+            category: "configuration",
+            action: "bootstrap_policy",
+            entityType: "agent_configuration",
+            entityId: id,
+            message: readiness.IsReadyForPolicyAssignment
+                ? $"Politica bootstrap {policyId} criada/atualizada e vinculada automaticamente."
+                : $"Politica bootstrap {policyId} criada/atualizada, aguardando vinculacao manual.",
+            customerId: configuration.CustomerId,
+            hostId: configuration.HostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["policyId"] = policyId,
+                ["autoAssigned"] = readiness.IsReadyForPolicyAssignment ? "true" : "false"
+            });
 
         return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
     }
@@ -1147,7 +1398,7 @@ public sealed class HomeController(
             return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
         }
 
-        db.AgentRunRequests.Add(new AgentRunRequest
+        var runRequest = new AgentRunRequest
         {
             Id = Guid.NewGuid().ToString("N"),
             CustomerId = configuration.CustomerId,
@@ -1156,9 +1407,23 @@ public sealed class HomeController(
             State = "QUEUED",
             RequestedBy = HttpContext.GetCurrentPanelUser()?.Email ?? "controlplane-user",
             RequestedAtUtc = DateTimeOffset.UtcNow
-        });
+        };
+        db.AgentRunRequests.Add(runRequest);
 
         await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "operation",
+            action: "run_now",
+            entityType: "agent_configuration",
+            entityId: id,
+            message: $"Execucao manual enfileirada para o host {configuration.HostId}.",
+            customerId: configuration.CustomerId,
+            hostId: configuration.HostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["runRequestId"] = runRequest.Id
+            });
         TempData["StatusMessage"] = "Execucao manual enfileirada. O Agent vai consumir a requisicao no proximo ciclo.";
         return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
     }
@@ -1228,14 +1493,22 @@ public sealed class HomeController(
     }
 
     [HttpGet("/admin/alerts")]
-    public async Task<IActionResult> Alerts([FromQuery] string? customerId, [FromQuery] string? severity, [FromQuery] string? status, CancellationToken ct)
+    public async Task<IActionResult> Alerts([FromQuery] string? customerId, [FromQuery] string? severity, [FromQuery] string? status, [FromQuery] string? recoveryStatus, CancellationToken ct)
     {
         var customers = await db.Customers.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c, ct);
         var hosts = await db.Hosts.AsNoTracking().ToDictionaryAsync(h => h.Id, h => h, ct);
+        var configsByHostId = (await db.AgentConfigurations.AsNoTracking().ToListAsync(ct))
+            .GroupBy(c => c.HostId)
+            .Select(g => g.OrderByDescending(x => x.LastConfigSyncAtUtc ?? x.CreatedAtUtc).FirstOrDefault()!)
+            .ToDictionary(c => c.HostId, c => c, StringComparer.OrdinalIgnoreCase);
+        var latestJobsByHostId = (await db.Jobs.AsNoTracking().ToListAsync(ct))
+            .GroupBy(j => j.HostId)
+            .Select(g => g.OrderByDescending(x => x.StartedAtUtc).First())
+            .ToDictionary(j => j.HostId, j => j, StringComparer.OrdinalIgnoreCase);
         var alerts = (await db.Alerts.AsNoTracking().ToListAsync(ct))
-            .OrderByDescending(a => a.CreatedAtUtc)
+            .OrderByDescending(a => a.LastObservedAtUtc)
             .ToList();
-        var rows = alerts.Select(a => MapAlert(a, customers, hosts)).ToArray();
+        var rows = alerts.Select(a => MapAlert(a, customers, hosts, configsByHostId, latestJobsByHostId)).ToArray();
 
         if (!string.IsNullOrWhiteSpace(customerId))
         {
@@ -1247,11 +1520,19 @@ public sealed class HomeController(
         }
         if (string.Equals(status, "active", StringComparison.OrdinalIgnoreCase))
         {
-            rows = rows.Where(a => a.AcknowledgedAtUtc is null).ToArray();
+            rows = rows.Where(a => a.ResolvedAtUtc is null && a.AcknowledgedAtUtc is null).ToArray();
         }
         else if (string.Equals(status, "acknowledged", StringComparison.OrdinalIgnoreCase))
         {
-            rows = rows.Where(a => a.AcknowledgedAtUtc is not null).ToArray();
+            rows = rows.Where(a => a.ResolvedAtUtc is null && a.AcknowledgedAtUtc is not null).ToArray();
+        }
+        else if (string.Equals(status, "resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            rows = rows.Where(a => a.ResolvedAtUtc is not null).ToArray();
+        }
+        if (!string.IsNullOrWhiteSpace(recoveryStatus))
+        {
+            rows = rows.Where(a => string.Equals(a.RecoveryStatusLabel, recoveryStatus, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
 
         return View(new AlertsPageViewModel
@@ -1259,6 +1540,11 @@ public sealed class HomeController(
             CustomerId = customerId,
             Severity = severity,
             Status = status,
+            RecoveryStatus = recoveryStatus,
+            Analytics = BuildAlertAnalyticsSummary(
+                rows.Select(r => alerts.First(a => a.Id == r.Id)).ToArray(),
+                customers,
+                hosts),
             Alerts = rows
         });
     }
@@ -1280,9 +1566,29 @@ public sealed class HomeController(
             return RedirectToLocalOrDefault(returnUrl, "/admin/alerts");
         }
 
+        if (alert.ResolvedAtUtc is not null)
+        {
+            TempData["StatusMessage"] = "Alerta ja foi resolvido automaticamente.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/alerts");
+        }
+
         alert.AcknowledgedAtUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Alert {AlertId} acknowledged for customer {CustomerId}", id, alert.CustomerId);
+        await RecordAuditAsync(
+            category: "alert",
+            action: "acknowledge",
+            entityType: "alert",
+            entityId: id,
+            message: $"Alerta {id} reconhecido no painel.",
+            customerId: alert.CustomerId,
+            hostId: alert.HostId,
+            ct,
+            metadata: new Dictionary<string, string?>
+            {
+                ["severity"] = alert.Severity,
+                ["type"] = alert.Type
+            });
 
         TempData["StatusMessage"] = "Alerta reconhecido com sucesso.";
         return RedirectToLocalOrDefault(returnUrl, "/admin/alerts");
@@ -1445,6 +1751,7 @@ public sealed class HomeController(
 
         var operational = hostOperationalStatusService.Evaluate(host, config);
         var bootstrap = DescribeBootstrapState(host.CustomerId, host.Id, host.BootstrapIncludePathsCsv, config?.PolicyId, policiesById);
+        var health = BuildOperationalHealthViewModel(host, config, latestJob: null, latestRunRequest: null, operational);
 
         return new HostRowViewModel
         {
@@ -1456,6 +1763,7 @@ public sealed class HomeController(
             OsVersion = host.OsVersion,
             LastHeartbeatAtUtc = host.LastHeartbeatAtUtc,
             HeartbeatStatus = GetHeartbeatStatus(host.LastHeartbeatAtUtc),
+            AgentVersion = config?.AgentVersion,
             ServiceStatus = config?.ServiceStatus,
             AssignedPolicyName = policy?.Name,
             PrecheckTlsOk = config?.PrecheckTlsOk,
@@ -1467,7 +1775,10 @@ public sealed class HomeController(
             IsReadyForPolicyAssignment = operational.IsReadyForPolicyAssignment,
             BootstrapStatusLabel = bootstrap.Label,
             BootstrapStatusCssClass = bootstrap.CssClass,
-            BootstrapStatusMessage = bootstrap.Message
+            BootstrapStatusMessage = bootstrap.Message,
+            RecoveryStatusLabel = health.RiskLevelLabel,
+            RecoveryStatusCssClass = health.RiskLevelCssClass,
+            RecoveryStatusMessage = health.Summary
         };
     }
 
@@ -1494,26 +1805,31 @@ public sealed class HomeController(
         };
     }
 
-    private static AlertRowViewModel MapAlert(Alert alert, IReadOnlyDictionary<string, Customer> customers, IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts)
+    private AlertRowViewModel MapAlert(
+        Alert alert,
+        IReadOnlyDictionary<string, Customer> customers,
+        IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts,
+        IReadOnlyDictionary<string, AgentConfiguration>? configsByHostId = null,
+        IReadOnlyDictionary<string, Job>? latestJobsByHostId = null)
     {
         customers.TryGetValue(alert.CustomerId, out var customer);
+        ControlPlane.Api.Domain.Host? host = null;
+        AgentConfiguration? configuration = null;
+        Job? latestJob = null;
+        HostOperationalHealthViewModel? health = null;
+        string? suggestedActionText = null;
+        string? suggestedActionUrl = null;
+
         if (alert.HostId is not null)
         {
-            hosts.TryGetValue(alert.HostId, out var host);
-            return new AlertRowViewModel
+            hosts.TryGetValue(alert.HostId, out host);
+            if (host is not null)
             {
-                Id = alert.Id,
-                CustomerId = alert.CustomerId,
-                CustomerName = customer?.Name,
-                HostId = alert.HostId,
-                Hostname = host?.Hostname,
-                JobId = alert.JobId,
-                Type = alert.Type,
-                Severity = alert.Severity,
-                Message = alert.Message,
-                CreatedAtUtc = alert.CreatedAtUtc,
-                AcknowledgedAtUtc = alert.AcknowledgedAtUtc
-            };
+                configsByHostId?.TryGetValue(host.Id, out configuration);
+                latestJobsByHostId?.TryGetValue(host.Id, out latestJob);
+                health = BuildOperationalHealthViewModel(host, configuration, latestJob, latestRunRequest: null);
+                (suggestedActionText, suggestedActionUrl) = BuildAlertSuggestedAction(alert, host, configuration, health);
+            }
         }
 
         return new AlertRowViewModel
@@ -1522,14 +1838,354 @@ public sealed class HomeController(
             CustomerId = alert.CustomerId,
             CustomerName = customer?.Name,
             HostId = alert.HostId,
-            Hostname = null,
+            Hostname = host?.Hostname,
             JobId = alert.JobId,
             Type = alert.Type,
             Severity = alert.Severity,
             Message = alert.Message,
+            RecoveryStatusLabel = health?.RiskLevelLabel,
+            RecoveryStatusCssClass = health?.RiskLevelCssClass,
+            RecoveryStatusMessage = health?.Summary,
+            SuggestedActionText = suggestedActionText,
+            SuggestedActionUrl = suggestedActionUrl,
+            Source = alert.Source,
+            RootCauseKey = alert.RootCauseKey,
             CreatedAtUtc = alert.CreatedAtUtc,
-            AcknowledgedAtUtc = alert.AcknowledgedAtUtc
+            LastObservedAtUtc = alert.LastObservedAtUtc,
+            AcknowledgedAtUtc = alert.AcknowledgedAtUtc,
+            ResolvedAtUtc = alert.ResolvedAtUtc
         };
+    }
+
+    private AlertAnalyticsSummaryViewModel BuildAlertAnalyticsSummary(
+        IEnumerable<Alert> alerts,
+        IReadOnlyDictionary<string, Customer> customers,
+        IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var orderedAlerts = alerts
+            .OrderByDescending(a => a.LastObservedAtUtc)
+            .ToArray();
+        var rootCauseGroups = orderedAlerts
+            .GroupBy(a => string.IsNullOrWhiteSpace(a.RootCauseKey) ? $"legacy:{a.Id}" : a.RootCauseKey, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var resolvedDurations = orderedAlerts
+            .Where(a => a.ResolvedAtUtc is not null && a.ResolvedAtUtc >= a.CreatedAtUtc)
+            .Select(a => a.ResolvedAtUtc!.Value - a.CreatedAtUtc)
+            .ToArray();
+        var unresolvedDurations = orderedAlerts
+            .Where(a => a.ResolvedAtUtc is null)
+            .Select(a => nowUtc - a.CreatedAtUtc)
+            .ToArray();
+
+        return new AlertAnalyticsSummaryViewModel
+        {
+            OpenAlertCount = orderedAlerts.Count(a => a.ResolvedAtUtc is null),
+            AcknowledgedAlertCount = orderedAlerts.Count(a => a.ResolvedAtUtc is null && a.AcknowledgedAtUtc is not null),
+            ResolvedAlertCount = orderedAlerts.Count(a => a.ResolvedAtUtc is not null),
+            DistinctRootCauseCount = rootCauseGroups.Length,
+            ReincidentRootCauseCount = rootCauseGroups.Count(g => g.Count() > 1),
+            AverageTimeToResolveLabel = resolvedDurations.Length == 0 ? "-" : FormatDurationLabel(TimeSpan.FromTicks((long)resolvedDurations.Average(d => d.Ticks))),
+            LongestOpenDurationLabel = unresolvedDurations.Length == 0 ? "-" : FormatDurationLabel(unresolvedDurations.Max()),
+            Timeline = BuildAlertTimelineItems(orderedAlerts, customers, hosts),
+            TopRootCauses = BuildAlertCauseAnalytics(rootCauseGroups, hosts)
+        };
+    }
+
+    private IReadOnlyList<AlertTimelineItemViewModel> BuildAlertTimelineItems(
+        IReadOnlyList<Alert> orderedAlerts,
+        IReadOnlyDictionary<string, Customer> customers,
+        IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts)
+    {
+        return orderedAlerts
+            .Take(8)
+            .Select(alert =>
+            {
+                customers.TryGetValue(alert.CustomerId, out var customer);
+                ControlPlane.Api.Domain.Host? host = null;
+                if (!string.IsNullOrWhiteSpace(alert.HostId))
+                {
+                    hosts.TryGetValue(alert.HostId, out host);
+                }
+
+                return new AlertTimelineItemViewModel
+                {
+                    Title = DescribeAlertType(alert.Type),
+                    Severity = alert.Severity,
+                    StatusLabel = alert.ResolvedAtUtc is not null ? "Resolvido" : alert.AcknowledgedAtUtc is not null ? "Reconhecido" : "Aberto",
+                    StatusCssClass = alert.ResolvedAtUtc is not null ? "ready" : alert.AcknowledgedAtUtc is not null ? "succeeded" : MapAlertSeverityCssClass(alert.Severity),
+                    Message = alert.Message,
+                    CustomerId = alert.CustomerId,
+                    CustomerName = customer?.Name,
+                    HostId = alert.HostId,
+                    Hostname = host?.Hostname,
+                    LinkText = BuildAlertTimelineLinkText(alert),
+                    LinkUrl = BuildAlertTimelineLinkUrl(alert),
+                    ObservedAtUtc = alert.LastObservedAtUtc
+                };
+            })
+            .ToArray();
+    }
+
+    private IReadOnlyList<AlertCauseAnalyticsViewModel> BuildAlertCauseAnalytics(
+        IEnumerable<IGrouping<string, Alert>> rootCauseGroups,
+        IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts)
+    {
+        return rootCauseGroups
+            .Select(group =>
+            {
+                var alerts = group
+                    .OrderByDescending(a => a.LastObservedAtUtc)
+                    .ToArray();
+                var latest = alerts[0];
+                ControlPlane.Api.Domain.Host? latestHost = null;
+                if (!string.IsNullOrWhiteSpace(latest.HostId))
+                {
+                    hosts.TryGetValue(latest.HostId, out latestHost);
+                }
+
+                var resolvedDurations = alerts
+                    .Where(a => a.ResolvedAtUtc is not null && a.ResolvedAtUtc >= a.CreatedAtUtc)
+                    .Select(a => a.ResolvedAtUtc!.Value - a.CreatedAtUtc)
+                    .ToArray();
+
+                return new AlertCauseAnalyticsViewModel
+                {
+                    RootCauseKey = group.Key,
+                    Title = DescribeAlertType(latest.Type),
+                    Severity = PickHighestSeverity(alerts.Select(a => a.Severity)),
+                    OccurrenceCount = alerts.Length,
+                    OpenCount = alerts.Count(a => a.ResolvedAtUtc is null),
+                    ResolvedCount = alerts.Count(a => a.ResolvedAtUtc is not null),
+                    AverageTimeToResolveLabel = resolvedDurations.Length == 0
+                        ? "-"
+                        : FormatDurationLabel(TimeSpan.FromTicks((long)resolvedDurations.Average(d => d.Ticks))),
+                    LatestHostId = latest.HostId,
+                    LatestHostname = latestHost?.Hostname,
+                    LatestObservedAtUtc = latest.LastObservedAtUtc,
+                    LinkText = BuildAlertTimelineLinkText(latest),
+                    LinkUrl = BuildAlertTimelineLinkUrl(latest)
+                };
+            })
+            .OrderByDescending(x => x.OpenCount)
+            .ThenByDescending(x => x.OccurrenceCount)
+            .ThenByDescending(x => x.LatestObservedAtUtc)
+            .Take(6)
+            .ToArray();
+    }
+
+    private static string DescribeAlertType(string? alertType)
+    {
+        if (string.IsNullOrWhiteSpace(alertType))
+        {
+            return "Alerta operacional";
+        }
+
+        return alertType.Trim().ToUpperInvariant() switch
+        {
+            "JOB_FAILED" => "Job com falha",
+            "HOST_OFFLINE" => "Host offline",
+            "HOST_NO_HEARTBEAT" => "Host sem heartbeat",
+            "HOST_CONFIG_MISSING" => "Configuracao ausente",
+            "HOST_CONFIG_SYNC_MISSING" => "Sync de configuracao ausente",
+            "HOST_CONFIG_SYNC_STALE" => "Sync de configuracao desatualizada",
+            "HOST_SERVICE_NOT_RUNNING" => "Servico do Agent indisponivel",
+            "HOST_TLS_FAILED" => "Falha de TLS",
+            "HOST_STAGING_FAILED" => "Falha de staging local",
+            "HOST_AWS_CREDENTIAL_FAILED" => "Falha de credencial AWS",
+            "HOST_POLICY_MISSING" => "Politica ausente",
+            _ => alertType.Replace('_', ' ')
+        };
+    }
+
+    private static string PickHighestSeverity(IEnumerable<string?> severities)
+    {
+        var normalized = severities
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.Trim().ToUpperInvariant())
+            .ToArray();
+
+        if (normalized.Contains("CRITICAL", StringComparer.OrdinalIgnoreCase))
+        {
+            return "CRITICAL";
+        }
+
+        if (normalized.Contains("WARNING", StringComparer.OrdinalIgnoreCase))
+        {
+            return "WARNING";
+        }
+
+        return normalized.FirstOrDefault() ?? "INFO";
+    }
+
+    private static string MapAlertSeverityCssClass(string? severity)
+    {
+        return string.IsNullOrWhiteSpace(severity) ? "not-ready" : severity.Trim().ToLowerInvariant();
+    }
+
+    private static string? BuildAlertTimelineLinkText(Alert alert)
+    {
+        if (!string.IsNullOrWhiteSpace(alert.JobId))
+        {
+            return "Abrir job";
+        }
+
+        if (!string.IsNullOrWhiteSpace(alert.HostId))
+        {
+            return "Abrir host";
+        }
+
+        return !string.IsNullOrWhiteSpace(alert.CustomerId) ? "Abrir cliente" : null;
+    }
+
+    private static string? BuildAlertTimelineLinkUrl(Alert alert)
+    {
+        if (!string.IsNullOrWhiteSpace(alert.JobId))
+        {
+            return $"/admin/jobs/{Uri.EscapeDataString(alert.JobId)}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(alert.HostId))
+        {
+            return $"/admin/hosts/{Uri.EscapeDataString(alert.HostId)}/edit";
+        }
+
+        return !string.IsNullOrWhiteSpace(alert.CustomerId)
+            ? $"/admin/customers/{Uri.EscapeDataString(alert.CustomerId)}"
+            : null;
+    }
+
+    private static string FormatDurationLabel(TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero)
+        {
+            duration = TimeSpan.Zero;
+        }
+
+        if (duration.TotalDays >= 1)
+        {
+            return $"{(int)duration.TotalDays}d {duration.Hours}h";
+        }
+
+        if (duration.TotalHours >= 1)
+        {
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        }
+
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{(int)duration.TotalMinutes}m";
+        }
+
+        return $"{Math.Max(0, (int)duration.TotalSeconds)}s";
+    }
+
+    private static AuditEventRowViewModel MapAuditEvent(AuditEvent auditEvent)
+    {
+        return new AuditEventRowViewModel
+        {
+            Category = auditEvent.Category,
+            Action = auditEvent.Action,
+            Outcome = auditEvent.Outcome,
+            EntityType = auditEvent.EntityType,
+            EntityId = auditEvent.EntityId,
+            ActorDisplayName = auditEvent.ActorDisplayName,
+            ActorEmail = auditEvent.ActorEmail,
+            Message = auditEvent.Message,
+            CreatedAtUtc = auditEvent.CreatedAtUtc
+        };
+    }
+
+    private static DashboardHealthSummary BuildDashboardHealthSummary(
+        DateTimeOffset nowUtc,
+        IReadOnlyList<ControlPlane.Api.Domain.Host> hosts,
+        IEnumerable<AgentConfiguration> configurations,
+        int pendingManualRunCount)
+    {
+        var latestConfigurations = configurations.ToArray();
+        return new DashboardHealthSummary
+        {
+            OfflineHostCount = hosts.Count(h => h.LastHeartbeatAtUtc is null || h.LastHeartbeatAtUtc < nowUtc.AddMinutes(-20)),
+            CredentialFailureHostCount = latestConfigurations.Count(c => !c.PrecheckCredentialOk),
+            StaleConfigurationCount = latestConfigurations.Count(c => c.LastConfigSyncAtUtc is null || c.LastConfigSyncAtUtc < nowUtc.AddMinutes(-30)),
+            PendingManualRunCount = pendingManualRunCount
+        };
+    }
+
+    private static IReadOnlyList<OperationalRiskItemViewModel> BuildOperationalRisks(
+        DateTimeOffset nowUtc,
+        IReadOnlyList<ControlPlane.Api.Domain.Host> allHosts,
+        IReadOnlyDictionary<string, AgentConfiguration> configsByHostId,
+        IReadOnlyDictionary<string, Job> latestJobsByHostId,
+        IReadOnlyDictionary<string, Customer> customersById)
+    {
+        var items = new List<OperationalRiskItemViewModel>();
+
+        foreach (var host in allHosts.OrderByDescending(h => h.LastHeartbeatAtUtc))
+        {
+            customersById.TryGetValue(host.CustomerId, out var customer);
+            var hostLabel = string.IsNullOrWhiteSpace(host.Hostname) ? host.Id : host.Hostname;
+            var customerLabel = customer?.Name ?? host.CustomerId;
+
+            if (host.LastHeartbeatAtUtc is null || host.LastHeartbeatAtUtc < nowUtc.AddMinutes(-20))
+            {
+                items.Add(new OperationalRiskItemViewModel
+                {
+                    Title = $"{hostLabel} sem heartbeat",
+                    Severity = "high",
+                    Message = $"Host do cliente {customerLabel} sem heartbeat recente. Ultimo sinal: {(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "nunca")}.",
+                    LinkText = "Abrir host",
+                    LinkUrl = $"/admin/hosts/{Uri.EscapeDataString(host.Id)}/edit"
+                });
+            }
+
+            if (configsByHostId.TryGetValue(host.Id, out var configuration))
+            {
+                if (!configuration.PrecheckCredentialOk)
+                {
+                    items.Add(new OperationalRiskItemViewModel
+                    {
+                        Title = $"{hostLabel} com AWS pendente",
+                        Severity = "warning",
+                        Message = $"Host do cliente {customerLabel} reportou falha de credencial AWS. Ultima sync: {(configuration.LastConfigSyncAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")}.",
+                        LinkText = "Abrir configuracao",
+                        LinkUrl = $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}"
+                    });
+                }
+
+                if (configuration.LastConfigSyncAtUtc is null || configuration.LastConfigSyncAtUtc < nowUtc.AddMinutes(-30))
+                {
+                    items.Add(new OperationalRiskItemViewModel
+                    {
+                        Title = $"{hostLabel} com sync desatualizada",
+                        Severity = "warning",
+                        Message = $"A configuracao do host {hostLabel} nao sincroniza com o painel desde {(configuration.LastConfigSyncAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "o onboarding")}.",
+                        LinkText = "Abrir configuracao",
+                        LinkUrl = $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}"
+                    });
+                }
+            }
+
+            if (latestJobsByHostId.TryGetValue(host.Id, out var latestJob) &&
+                string.Equals(latestJob.State, "FAILED", StringComparison.OrdinalIgnoreCase))
+            {
+                items.Add(new OperationalRiskItemViewModel
+                {
+                    Title = $"{hostLabel} com ultimo job falho",
+                    Severity = "high",
+                    Message = $"Ultimo job do host {hostLabel} falhou em {latestJob.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm}.",
+                    LinkText = "Abrir job",
+                    LinkUrl = $"/admin/jobs/{Uri.EscapeDataString(latestJob.Id)}"
+                });
+            }
+        }
+
+        return items
+            .OrderByDescending(item => item.Severity == "high")
+            .ThenBy(item => item.Title)
+            .Take(12)
+            .ToArray();
     }
 
     private static PolicyListItemViewModel MapPolicy(BackupPolicy policy, IReadOnlyDictionary<string, Customer> customers, IReadOnlyDictionary<string, ControlPlane.Api.Domain.Host> hosts)
@@ -1588,6 +2244,7 @@ public sealed class HomeController(
             operational = hostOperationalStatusService.Evaluate(host, configuration);
         }
         var bootstrap = DescribeBootstrapState(configuration.CustomerId, configuration.HostId, host?.BootstrapIncludePathsCsv, configuration.PolicyId, policies);
+        var health = BuildOperationalHealthViewModel(host, configuration, latestJob: null, latestRunRequest: null, operational);
 
         return new AgentConfigurationListItemViewModel
         {
@@ -1626,7 +2283,10 @@ public sealed class HomeController(
             BootstrapStatusMessage = bootstrap.Message,
             BootstrapPolicyExists = bootstrap.PolicyExists,
             IsBootstrapPolicyAssigned = bootstrap.IsAssigned,
-            BootstrapPolicyId = bootstrap.PolicyId
+            BootstrapPolicyId = bootstrap.PolicyId,
+            RecoveryStatusLabel = health.RiskLevelLabel,
+            RecoveryStatusCssClass = health.RiskLevelCssClass,
+            RecoveryStatusMessage = health.Summary
         };
     }
 
@@ -1654,6 +2314,25 @@ public sealed class HomeController(
         }
 
         var operational = hostOperationalStatusService.Evaluate(host, latestConfiguration);
+        var latestJob = (await db.Jobs.AsNoTracking()
+            .Where(j => j.HostId == id)
+            .OrderByDescending(j => j.StartedAtUtc)
+            .FirstOrDefaultAsync(ct));
+        var latestRunRequest = (await db.AgentRunRequests.AsNoTracking()
+            .Where(r => r.CustomerId == host.CustomerId && r.HostId == host.Id)
+            .OrderByDescending(r => r.RequestedAtUtc)
+            .FirstOrDefaultAsync(ct));
+        var alertHistory = await db.Alerts.AsNoTracking()
+            .Where(a => a.CustomerId == host.CustomerId && a.HostId == host.Id)
+            .OrderByDescending(a => a.LastObservedAtUtc)
+            .ToListAsync(ct);
+        var hostMap = new Dictionary<string, ControlPlane.Api.Domain.Host>(StringComparer.OrdinalIgnoreCase)
+        {
+            [host.Id] = host
+        };
+        var customerMap = await db.Customers.AsNoTracking()
+            .Where(c => c.Id == host.CustomerId)
+            .ToDictionaryAsync(c => c.Id, c => c, ct);
 
         return new HostFormViewModel
         {
@@ -1666,12 +2345,16 @@ public sealed class HomeController(
             FirstSeenAtUtc = host.FirstSeenAtUtc,
             LastHeartbeatAtUtc = host.LastHeartbeatAtUtc,
             ConfigurationId = latestConfiguration?.Id,
+            AgentVersion = latestConfiguration?.AgentVersion,
+            ServiceStatus = latestConfiguration?.ServiceStatus,
             AssignedPolicyName = policy?.Name,
             OperationalStatusLabel = operational.Label,
             OperationalStatusCssClass = operational.CssClass,
             OperationalStatusMessage = operational.Message,
             BootstrapIncludePathsCsv = host.BootstrapIncludePathsCsv,
             BootstrapExcludePathsCsv = host.BootstrapExcludePathsCsv,
+            OperationalHealth = BuildOperationalHealthViewModel(host, latestConfiguration, latestJob, latestRunRequest, operational),
+            AlertAnalytics = BuildAlertAnalyticsSummary(alertHistory, customerMap, hostMap),
             ErrorMessage = errorMessage
         };
     }
@@ -1700,6 +2383,7 @@ public sealed class HomeController(
         hosts.TryGetValue(configEntity.HostId, out var host);
         var mappedConfiguration = MapAgentConfiguration(configEntity, customers, hosts, policies);
         var boundPolicy = ResolveBoundPolicy(configEntity, policies);
+        var latestJob = jobs.FirstOrDefault();
         var awsIntegration = await BuildAwsIntegrationViewModelAsync(
             customers.TryGetValue(configEntity.CustomerId, out var customer) ? customer.AwsAccountId : null,
             boundPolicy?.S3BucketName,
@@ -1709,11 +2393,284 @@ public sealed class HomeController(
         return new AgentConfigurationDetailViewModel
         {
             Configuration = mappedConfiguration,
+            OperationalHealth = BuildOperationalHealthViewModel(
+                host,
+                configEntity,
+                latestJob,
+                latestRunRequest,
+                host is null ? null : hostOperationalStatusService.Evaluate(host, configEntity)),
             AwsIntegration = awsIntegration,
             LatestRunRequest = MapRunRequest(latestRunRequest),
             RecentJobs = jobs.Select(j => MapJob(j, customers, hosts)).ToArray(),
             PolicyOptions = await BuildPolicyOptionsAsync(configEntity.CustomerId, configEntity.HostId, ct),
             BootstrapPolicyDraft = BuildBootstrapPolicyDraft(configEntity, host, mappedConfiguration, boundPolicy, awsIntegration)
+        };
+    }
+
+    private HostOperationalHealthViewModel BuildOperationalHealthViewModel(
+        ControlPlane.Api.Domain.Host? host,
+        AgentConfiguration? configuration,
+        Job? latestJob,
+        AgentRunRequest? latestRunRequest,
+        HostOperationalStatus? operational = null)
+    {
+        if (host is null)
+        {
+            return new HostOperationalHealthViewModel
+            {
+                RiskLevelLabel = "Critico",
+                RiskLevelCssClass = "critical",
+                Summary = "A configuracao chegou ao painel, mas o cadastro operacional do host nao foi reconciliado.",
+                Signals =
+                [
+                    new OperationalHealthSignalViewModel
+                    {
+                        Name = "Cadastro operacional",
+                        StatusLabel = "Pendente",
+                        StatusCssClass = "critical",
+                        Detail = "Cadastre ou reconcilie o host para liberar diagnostico completo, politica e suporte operacional."
+                    }
+                ],
+                RecoverySteps =
+                [
+                    new OperationalRecoveryStepViewModel
+                    {
+                        Severity = "critical",
+                        Title = "Reconciliar o host no cadastro operacional",
+                        Message = "A configuracao foi recebida, mas o painel nao encontrou o host correspondente. Revise o onboarding, IDs e eventuais reinstalacoes parciais do Agent."
+                    }
+                ]
+            };
+        }
+
+        operational ??= hostOperationalStatusService.Evaluate(host, configuration);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var heartbeatStatus = hostOperationalStatusService.GetHeartbeatStatus(host.LastHeartbeatAtUtc);
+        var hasConfiguration = configuration is not null;
+        var heartbeatMissing = host.LastHeartbeatAtUtc is null;
+        var heartbeatOffline = string.Equals(heartbeatStatus, "Offline", StringComparison.OrdinalIgnoreCase);
+        var heartbeatDelayed = string.Equals(heartbeatStatus, "Atrasado", StringComparison.OrdinalIgnoreCase);
+        var syncMissing = configuration?.LastConfigSyncAtUtc is null;
+        var syncStale = configuration?.LastConfigSyncAtUtc is not null && configuration.LastConfigSyncAtUtc < nowUtc.AddMinutes(-30);
+        var serviceIssue = hasConfiguration && !IsRunningLike(configuration!.ServiceStatus);
+        var tlsIssue = hasConfiguration && !configuration!.PrecheckTlsOk;
+        var diskIssue = hasConfiguration && !configuration!.PrecheckDiskOk;
+        var credentialIssue = hasConfiguration && !configuration!.PrecheckCredentialOk;
+        var latestJobFailed = latestJob is not null && string.Equals(latestJob.State, "FAILED", StringComparison.OrdinalIgnoreCase);
+        var latestJobSucceeded = latestJob is not null && string.Equals(latestJob.State, "SUCCEEDED", StringComparison.OrdinalIgnoreCase);
+        var manualRunPending = latestRunRequest is not null &&
+            (string.Equals(latestRunRequest.State, "QUEUED", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(latestRunRequest.State, "CLAIMED", StringComparison.OrdinalIgnoreCase));
+        var noPolicyLinked = hasConfiguration &&
+            string.IsNullOrWhiteSpace(configuration!.PolicyId) &&
+            string.IsNullOrWhiteSpace(configuration.EffectivePolicyId);
+
+        var signals = new List<OperationalHealthSignalViewModel>();
+        AddSignal(
+            signals,
+            "Heartbeat",
+            heartbeatStatus,
+            MapHeartbeatCssClass(heartbeatStatus),
+            host.LastHeartbeatAtUtc is null
+                ? "O Agent ainda nao publicou heartbeat para este host."
+                : $"Ultimo heartbeat em {host.LastHeartbeatAtUtc.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss}.");
+
+        AddSignal(
+            signals,
+            "Servico",
+            hasConfiguration ? (configuration!.ServiceStatus ?? "Desconhecido") : "Sem sync",
+            hasConfiguration ? MapServiceStatusCssClass(configuration!.ServiceStatus) : "not-ready",
+            hasConfiguration
+                ? $"Versao reportada: {configuration!.AgentVersion}. Upload: {configuration.UploadMode}."
+                : "O painel ainda nao recebeu sincronizacao de configuracao deste host.");
+
+        AddSignal(
+            signals,
+            "Sincronizacao",
+            !hasConfiguration ? "Pendente" : syncMissing ? "Sem sync" : syncStale ? "Desatualizada" : "Atual",
+            !hasConfiguration || syncMissing ? "not-ready" : syncStale ? "warning" : "ready",
+            !hasConfiguration || syncMissing
+                ? "A configuracao do Agent ainda nao foi recebida pelo painel."
+                : $"Ultima sync em {configuration!.LastConfigSyncAtUtc!.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss}.");
+
+        AddSignal(
+            signals,
+            "TLS",
+            !hasConfiguration ? "Pendente" : configuration!.PrecheckTlsOk ? "OK" : "Falhou",
+            !hasConfiguration ? "not-ready" : configuration!.PrecheckTlsOk ? "ready" : "critical",
+            !hasConfiguration
+                ? "Sem precheck TLS porque a configuracao ainda nao sincronizou."
+                : $"{configuration!.TlsMode} | {(configuration.PrecheckTlsOk ? "Canal seguro validado." : SafePrecheckMessage(configuration, "Validacao TLS falhou."))}");
+
+        AddSignal(
+            signals,
+            "Disco staging",
+            !hasConfiguration ? "Pendente" : configuration!.PrecheckDiskOk ? "OK" : "Falhou",
+            !hasConfiguration ? "not-ready" : configuration!.PrecheckDiskOk ? "ready" : "critical",
+            !hasConfiguration
+                ? "Sem validacao de staging porque a configuracao ainda nao sincronizou."
+                : $"{configuration!.StagingPath} | {(configuration.PrecheckDiskOk ? "Espaco e acesso local validados." : SafePrecheckMessage(configuration, "Espaco ou permissao local insuficiente."))}");
+
+        AddSignal(
+            signals,
+            "Credencial AWS",
+            !hasConfiguration ? "Pendente" : configuration!.PrecheckCredentialOk ? "OK" : "Falhou",
+            !hasConfiguration ? "not-ready" : configuration!.PrecheckCredentialOk ? "ready" : "warning",
+            !hasConfiguration
+                ? "Sem validacao da credencial AWS porque a configuracao ainda nao sincronizou."
+                : $"{configuration!.CredentialTargetName} | {(configuration.PrecheckCredentialOk ? "Credencial local pronta para upload." : SafePrecheckMessage(configuration, "Credencial AWS local invalida ou ausente."))}");
+
+        AddSignal(
+            signals,
+            "Politica",
+            !hasConfiguration ? "Sem sync" : noPolicyLinked ? "Pendente" : "Vinculada",
+            !hasConfiguration ? "not-ready" : noPolicyLinked ? "warning" : "ready",
+            !hasConfiguration
+                ? "O host ainda nao sincronizou configuracao suficiente para avaliacao de politica."
+                : noPolicyLinked
+                    ? "Existe readiness operacional, mas ainda nao ha politica operacional vinculada."
+                    : $"Politica efetiva: {configuration!.EffectivePolicyName ?? configuration.EffectivePolicyId ?? configuration.PolicyId ?? "-"}.");
+
+        AddSignal(
+            signals,
+            "Ultimo job",
+            latestJob is null ? "Sem historico" : latestJob.State,
+            latestJob is null ? "not-ready" : latestJobFailed ? "critical" : latestJobSucceeded ? "ready" : "warning",
+            latestJob is null
+                ? "Ainda nao existe job conhecido para este host."
+                : latestJobFailed
+                    ? $"Falhou em {latestJob.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss}. {latestJob.FailureMessage ?? latestJob.FailureCode ?? "Sem detalhe adicional."}"
+                    : $"Ultima execucao em {latestJob.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss} com status {latestJob.State}.");
+
+        AddSignal(
+            signals,
+            "Execucao manual",
+            latestRunRequest is null ? "Nenhuma" : latestRunRequest.State,
+            latestRunRequest is null ? "not-ready" : manualRunPending ? "warning" : string.Equals(latestRunRequest.State, "FAILED", StringComparison.OrdinalIgnoreCase) ? "critical" : "ready",
+            latestRunRequest is null
+                ? "Nao ha solicitacao manual recente em fila."
+                : $"Solicitada em {latestRunRequest.RequestedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss}. {(string.IsNullOrWhiteSpace(latestRunRequest.FailureMessage) ? "Sem falha registrada." : latestRunRequest.FailureMessage)}");
+
+        var recoverySteps = new List<OperationalRecoveryStepViewModel>();
+        AddRecoveryStep(
+            recoverySteps,
+            heartbeatMissing || heartbeatOffline,
+            "critical",
+            "Restabelecer heartbeat do Agent",
+            heartbeatMissing
+                ? "O painel ainda nao recebeu heartbeat deste host. Valide se o servico do Agent foi instalado, iniciado e se consegue sair para o ControlPlane."
+                : "O host ficou offline para o painel. Valide servico Windows, firewall, proxy corporativo e resolucao DNS antes de alterar politica.",
+            configuration?.Id is not null ? "Abrir configuracao" : "Revisar host",
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : $"/admin/hosts/{Uri.EscapeDataString(host.Id)}/edit");
+
+        AddRecoveryStep(
+            recoverySteps,
+            !hasConfiguration || syncMissing || syncStale,
+            heartbeatOffline || heartbeatMissing ? "warning" : "critical",
+            "Confirmar sincronizacao com o ControlPlane",
+            !hasConfiguration || syncMissing
+                ? "O Agent ainda nao publicou configuracao completa. Aguarde o primeiro ciclo ou valide a URL do painel, token de enrollment e comunicacao HTTPS."
+                : "A ultima sync ficou desatualizada. Isso indica que o host nao esta conseguindo renovar estado operacional com o painel.",
+            configuration?.Id is not null ? "Ver detalhes" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            serviceIssue,
+            "critical",
+            "Corrigir o servico Windows do Agent",
+            "O servico nao esta em execucao normal. Reinicie o servico, revise logs locais e valide se houve update parcial ou instalacao corrompida.",
+            configuration?.Id is not null ? "Abrir configuracao" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            tlsIssue,
+            "critical",
+            "Validar TLS minimo e cadeia de confianca",
+            "O precheck TLS falhou. Em ambiente corporativo, revise TLS 1.2, certificados, inspeccao SSL, proxy e bloqueios intermediarios antes de reexecutar backup.",
+            configuration?.Id is not null ? "Ver diagnostico" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            diskIssue,
+            "critical",
+            "Liberar staging local e permissoes",
+            "O precheck de disco falhou. Revise espaco livre, ACL do caminho de staging e eventuais bloqueios de antivirus ou ransomware protection no host.",
+            configuration?.Id is not null ? "Ver staging" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            credentialIssue,
+            "warning",
+            "Regravar a credencial AWS local",
+            "O host segue comunicando com o painel, mas o upload continuara bloqueado ate que a credencial AWS local seja corrigida e validada novamente.",
+            configuration?.Id is not null ? "Abrir configuracao" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            noPolicyLinked && operational.IsReadyForPolicyAssignment,
+            "warning",
+            "Vincular politica operacional",
+            "O host ja esta apto para operacao, mas ainda nao possui politica vinculada. Sem esse passo nao existe agenda efetiva de backup.",
+            configuration?.Id is not null ? "Gerenciar politica" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            latestJobFailed && latestJob is not null,
+            "critical",
+            "Analisar o ultimo job falho",
+            $"O ultimo job conhecido falhou em {latestJob!.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss}. Revise o erro antes de liberar novos hosts para este mesmo padrao operacional.",
+            latestJob is not null ? "Abrir job" : null,
+            latestJob is not null ? $"/admin/jobs/{Uri.EscapeDataString(latestJob.Id)}" : null);
+
+        AddRecoveryStep(
+            recoverySteps,
+            manualRunPending && latestRunRequest is not null,
+            "warning",
+            "Acompanhar execucao manual pendente",
+            "Existe uma solicitacao manual aguardando consumo pelo Agent. Se permanecer em fila por muito tempo, revalide heartbeat, sync e comunicacao do host.",
+            configuration?.Id is not null ? "Abrir configuracao" : null,
+            configuration?.Id is not null ? $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}" : null);
+
+        if (recoverySteps.Count == 0)
+        {
+            recoverySteps.Add(new OperationalRecoveryStepViewModel
+            {
+                Severity = "ready",
+                Title = "Operacao estavel",
+                Message = "O host esta sincronizado, com prechecks aprovados e sem acao corretiva imediata pendente."
+            });
+        }
+
+        var riskLevelLabel = "Estavel";
+        var riskLevelCssClass = "ready";
+        var summary = "Host sincronizado, com sinais operacionais consistentes e sem bloqueio atual.";
+
+        if (heartbeatMissing || heartbeatOffline || !hasConfiguration || serviceIssue || tlsIssue || diskIssue || latestJobFailed)
+        {
+            riskLevelLabel = "Critico";
+            riskLevelCssClass = "critical";
+            summary = "Existe bloqueio operacional que pode impedir backup, sincronizacao ou confiabilidade do host.";
+        }
+        else if (credentialIssue || syncStale || heartbeatDelayed || manualRunPending || (noPolicyLinked && operational.IsReadyForPolicyAssignment))
+        {
+            riskLevelLabel = "Atencao";
+            riskLevelCssClass = "warning";
+            summary = "O host esta parcialmente operacional, mas ainda requer acao de suporte para reduzir risco de falha ou lacuna de cobertura.";
+        }
+
+        return new HostOperationalHealthViewModel
+        {
+            RiskLevelLabel = riskLevelLabel,
+            RiskLevelCssClass = riskLevelCssClass,
+            Summary = summary,
+            Signals = signals,
+            RecoverySteps = recoverySteps
         };
     }
 
@@ -2071,6 +3028,32 @@ public sealed class HomeController(
         return value;
     }
 
+    private Task RecordAuditAsync(
+        string category,
+        string action,
+        string entityType,
+        string? entityId,
+        string message,
+        string? customerId,
+        string? hostId,
+        CancellationToken ct,
+        string outcome = "success",
+        IReadOnlyDictionary<string, string?>? metadata = null)
+    {
+        return auditTrailService.RecordAsync(
+            HttpContext,
+            category,
+            action,
+            entityType,
+            entityId,
+            message,
+            customerId,
+            hostId,
+            outcome,
+            metadata,
+            ct);
+    }
+
     private IActionResult RedirectToLocalOrDefault(string? returnUrl, string defaultPath)
     {
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
@@ -2089,5 +3072,127 @@ public sealed class HomeController(
         }
 
         return value.Trim().All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.');
+    }
+
+    private static void AddSignal(
+        ICollection<OperationalHealthSignalViewModel> signals,
+        string name,
+        string statusLabel,
+        string statusCssClass,
+        string detail)
+    {
+        signals.Add(new OperationalHealthSignalViewModel
+        {
+            Name = name,
+            StatusLabel = statusLabel,
+            StatusCssClass = statusCssClass,
+            Detail = detail
+        });
+    }
+
+    private static void AddRecoveryStep(
+        ICollection<OperationalRecoveryStepViewModel> steps,
+        bool condition,
+        string severity,
+        string title,
+        string message,
+        string? linkText,
+        string? linkUrl)
+    {
+        if (!condition)
+        {
+            return;
+        }
+
+        steps.Add(new OperationalRecoveryStepViewModel
+        {
+            Severity = severity,
+            Title = title,
+            Message = message,
+            LinkText = linkText,
+            LinkUrl = linkUrl
+        });
+    }
+
+    private static (string? LinkText, string? LinkUrl) BuildAlertSuggestedAction(
+        Alert alert,
+        ControlPlane.Api.Domain.Host host,
+        AgentConfiguration? configuration,
+        HostOperationalHealthViewModel? health)
+    {
+        if (!string.IsNullOrWhiteSpace(alert.JobId))
+        {
+            return ("Abrir job", $"/admin/jobs/{Uri.EscapeDataString(alert.JobId)}");
+        }
+
+        if (health is not null && string.Equals(health.RiskLevelLabel, "Critico", StringComparison.OrdinalIgnoreCase))
+        {
+            if (configuration is not null)
+            {
+                return ("Abrir configuracao", $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}");
+            }
+
+            return ("Abrir suporte do host", $"/admin/hosts/{Uri.EscapeDataString(host.Id)}/edit");
+        }
+
+        if (configuration is not null)
+        {
+            return ("Revisar configuracao", $"/admin/configurations/{Uri.EscapeDataString(configuration.Id)}");
+        }
+
+        return ("Abrir host", $"/admin/hosts/{Uri.EscapeDataString(host.Id)}/edit");
+    }
+
+    private static string MapHeartbeatCssClass(string heartbeatStatus)
+    {
+        if (string.Equals(heartbeatStatus, "Online", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ready";
+        }
+
+        if (string.Equals(heartbeatStatus, "Atrasado", StringComparison.OrdinalIgnoreCase))
+        {
+            return "warning";
+        }
+
+        return string.Equals(heartbeatStatus, "Offline", StringComparison.OrdinalIgnoreCase) ? "offline" : "not-ready";
+    }
+
+    private static string MapServiceStatusCssClass(string? serviceStatus)
+    {
+        if (IsRunningLike(serviceStatus))
+        {
+            return "ready";
+        }
+
+        if (string.IsNullOrWhiteSpace(serviceStatus))
+        {
+            return "not-ready";
+        }
+
+        return "critical";
+    }
+
+    private static bool IsRunningLike(string? serviceStatus)
+    {
+        return string.Equals(serviceStatus, "Running", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(serviceStatus, "DryRun", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SafePrecheckMessage(AgentConfiguration configuration, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(configuration.LastPrecheckMessage))
+        {
+            return fallback;
+        }
+
+        var message = configuration.LastPrecheckMessage.Trim();
+        var policySourceIndex = message.IndexOf(" PolicySource=", StringComparison.OrdinalIgnoreCase);
+        if (policySourceIndex >= 0)
+        {
+            message = message[..policySourceIndex].Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(message) ? fallback : message;
     }
 }

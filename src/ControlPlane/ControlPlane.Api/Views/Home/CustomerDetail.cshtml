@@ -118,6 +118,127 @@
 
 <section class="panel">
     <div class="panel-header">
+        <h2>Relatorio de alertas do cliente</h2>
+        <a class="button ghost" href="/admin/alerts?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir alertas do cliente</a>
+    </div>
+    <div class="card-grid">
+        <div class="info-card">
+            <div class="info-title">Em aberto</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.OpenAlertCount</strong> alerta(s) ativos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Resolvidos</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.ResolvedAlertCount</strong> alerta(s) resolvidos.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Causas distintas</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.DistinctRootCauseCount</strong> causa(s) raiz.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Reincidencias</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.ReincidentRootCauseCount</strong> causa(s) com repeticao.</div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Tempo medio de resolucao</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.AverageTimeToResolveLabel</strong></div>
+        </div>
+        <div class="info-card">
+            <div class="info-title">Maior janela em aberto</div>
+            <div class="info-line"><strong>@Model.AlertAnalytics.LongestOpenDurationLabel</strong></div>
+        </div>
+    </div>
+</section>
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Principais causas raiz</h2>
+        </div>
+        <div class="table-wrap">
+            <table class="table responsive-table">
+                <thead>
+                    <tr>
+                        <th>Causa</th>
+                        <th>Ocorrencias</th>
+                        <th>Aberto</th>
+                        <th>Media</th>
+                        <th>Ultimo host</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.AlertAnalytics.TopRootCauses.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5">Nenhuma causa raiz disponivel ainda para este cliente.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var cause in Model.AlertAnalytics.TopRootCauses)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
+                                    @cause.Title
+                                </td>
+                                <td>@cause.OccurrenceCount</td>
+                                <td>@cause.OpenCount</td>
+                                <td>@cause.AverageTimeToResolveLabel</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(cause.LinkUrl) && !string.IsNullOrWhiteSpace(cause.LatestHostname))
+                                    {
+                                        <a href="@cause.LinkUrl">@cause.LatestHostname</a>
+                                    }
+                                    else
+                                    {
+                                        <span>@(cause.LatestHostname ?? cause.LatestHostId ?? "-")</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Timeline recente</h2>
+        </div>
+        <div class="ops-timeline">
+            @if (Model.AlertAnalytics.Timeline.Count == 0)
+            {
+                <div class="muted-text">Nenhum evento de alerta historico ainda para este cliente.</div>
+            }
+            else
+            {
+                @foreach (var item in Model.AlertAnalytics.Timeline)
+                {
+                    <article class="ops-timeline-item">
+                        <div class="ops-signal-header">
+                            <strong>@item.Title</strong>
+                            <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
+                        </div>
+                        <div class="ops-signal-detail">@item.Message</div>
+                        <div class="ops-meta-line">
+                            <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
+                            <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                            <span>@(item.Hostname ?? item.HostId ?? "-")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
+                        {
+                            <a href="@item.LinkUrl">@item.LinkText</a>
+                        }
+                    </article>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
         <h2>Hosts do cliente</h2>
         <a class="button ghost" href="/admin/hosts?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir tela de hosts</a>
     </div>

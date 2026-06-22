@@ -3,10 +3,14 @@ namespace ControlPlane.Api.Models;
 public sealed class DashboardViewModel
 {
     public required DashboardSummary Summary { get; init; }
+    public required DashboardHealthSummary Health { get; init; }
+    public required AlertAnalyticsSummaryViewModel AlertAnalytics { get; init; }
     public required IReadOnlyList<CustomerCardViewModel> Customers { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
     public required IReadOnlyList<JobRowViewModel> RecentJobs { get; init; }
     public required IReadOnlyList<AlertRowViewModel> Alerts { get; init; }
+    public required IReadOnlyList<OperationalRiskItemViewModel> OperationalRisks { get; init; }
+    public required IReadOnlyList<AuditEventRowViewModel> RecentAuditEvents { get; init; }
 }
 
 public sealed class DashboardSummary
@@ -15,6 +19,15 @@ public sealed class DashboardSummary
     public int HostCount { get; init; }
     public int ActiveAlertCount { get; init; }
     public int FailedJobsLast7Days { get; init; }
+    public int SuccessfulJobsLast24Hours { get; init; }
+}
+
+public sealed class DashboardHealthSummary
+{
+    public int OfflineHostCount { get; init; }
+    public int CredentialFailureHostCount { get; init; }
+    public int StaleConfigurationCount { get; init; }
+    public int PendingManualRunCount { get; init; }
 }
 
 public sealed class CustomerCardViewModel
@@ -37,6 +50,7 @@ public sealed class HostRowViewModel
     public required string OsVersion { get; init; }
     public DateTimeOffset? LastHeartbeatAtUtc { get; init; }
     public string HeartbeatStatus { get; init; } = "Unknown";
+    public string? AgentVersion { get; init; }
     public string? ServiceStatus { get; init; }
     public string? AssignedPolicyName { get; init; }
     public bool? PrecheckTlsOk { get; init; }
@@ -49,6 +63,9 @@ public sealed class HostRowViewModel
     public required string BootstrapStatusLabel { get; init; }
     public required string BootstrapStatusCssClass { get; init; }
     public required string BootstrapStatusMessage { get; init; }
+    public required string RecoveryStatusLabel { get; init; }
+    public required string RecoveryStatusCssClass { get; init; }
+    public required string RecoveryStatusMessage { get; init; }
 }
 
 public sealed class JobRowViewModel
@@ -80,8 +97,39 @@ public sealed class AlertRowViewModel
     public required string Type { get; init; }
     public required string Severity { get; init; }
     public required string Message { get; init; }
+    public string? RecoveryStatusLabel { get; init; }
+    public string? RecoveryStatusCssClass { get; init; }
+    public string? RecoveryStatusMessage { get; init; }
+    public string? SuggestedActionText { get; init; }
+    public string? SuggestedActionUrl { get; init; }
+    public string? Source { get; init; }
+    public string? RootCauseKey { get; init; }
     public DateTimeOffset CreatedAtUtc { get; init; }
+    public DateTimeOffset LastObservedAtUtc { get; init; }
     public DateTimeOffset? AcknowledgedAtUtc { get; init; }
+    public DateTimeOffset? ResolvedAtUtc { get; init; }
+}
+
+public sealed class OperationalRiskItemViewModel
+{
+    public required string Title { get; init; }
+    public required string Severity { get; init; }
+    public required string Message { get; init; }
+    public string? LinkText { get; init; }
+    public string? LinkUrl { get; init; }
+}
+
+public sealed class AuditEventRowViewModel
+{
+    public required string Category { get; init; }
+    public required string Action { get; init; }
+    public required string Outcome { get; init; }
+    public required string EntityType { get; init; }
+    public string? EntityId { get; init; }
+    public string? ActorDisplayName { get; init; }
+    public string? ActorEmail { get; init; }
+    public required string Message { get; init; }
+    public DateTimeOffset CreatedAtUtc { get; init; }
 }
 
 public sealed class CustomersPageViewModel
@@ -107,6 +155,7 @@ public sealed class CustomerDetailViewModel
     public required CustomerFormViewModel Customer { get; init; }
     public string? EnrollmentTokenOneTime { get; init; }
     public required AwsIntegrationViewModel AwsIntegration { get; init; }
+    public required AlertAnalyticsSummaryViewModel AlertAnalytics { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
     public required IReadOnlyList<JobRowViewModel> Jobs { get; init; }
     public required IReadOnlyList<AlertRowViewModel> Alerts { get; init; }
@@ -128,6 +177,7 @@ public sealed class HostsPageViewModel
 {
     public string? CustomerId { get; init; }
     public string? Status { get; init; }
+    public string? RecoveryStatus { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
 }
 
@@ -142,12 +192,16 @@ public sealed record HostFormViewModel
     public DateTimeOffset? FirstSeenAtUtc { get; init; }
     public DateTimeOffset? LastHeartbeatAtUtc { get; init; }
     public string? ConfigurationId { get; init; }
+    public string? AgentVersion { get; init; }
+    public string? ServiceStatus { get; init; }
     public string? AssignedPolicyName { get; init; }
     public string? OperationalStatusLabel { get; init; }
     public string? OperationalStatusCssClass { get; init; }
     public string? OperationalStatusMessage { get; init; }
     public string? BootstrapIncludePathsCsv { get; init; }
     public string? BootstrapExcludePathsCsv { get; init; }
+    public HostOperationalHealthViewModel? OperationalHealth { get; init; }
+    public AlertAnalyticsSummaryViewModel? AlertAnalytics { get; init; }
     public string? ErrorMessage { get; init; }
 }
 
@@ -179,7 +233,54 @@ public sealed class AlertsPageViewModel
     public string? CustomerId { get; init; }
     public string? Severity { get; init; }
     public string? Status { get; init; }
+    public string? RecoveryStatus { get; init; }
+    public required AlertAnalyticsSummaryViewModel Analytics { get; init; }
     public required IReadOnlyList<AlertRowViewModel> Alerts { get; init; }
+}
+
+public sealed class AlertAnalyticsSummaryViewModel
+{
+    public int OpenAlertCount { get; init; }
+    public int AcknowledgedAlertCount { get; init; }
+    public int ResolvedAlertCount { get; init; }
+    public int DistinctRootCauseCount { get; init; }
+    public int ReincidentRootCauseCount { get; init; }
+    public string? AverageTimeToResolveLabel { get; init; }
+    public string? LongestOpenDurationLabel { get; init; }
+    public required IReadOnlyList<AlertTimelineItemViewModel> Timeline { get; init; }
+    public required IReadOnlyList<AlertCauseAnalyticsViewModel> TopRootCauses { get; init; }
+}
+
+public sealed class AlertTimelineItemViewModel
+{
+    public required string Title { get; init; }
+    public required string Severity { get; init; }
+    public required string StatusLabel { get; init; }
+    public required string StatusCssClass { get; init; }
+    public required string Message { get; init; }
+    public string? CustomerId { get; init; }
+    public string? CustomerName { get; init; }
+    public string? HostId { get; init; }
+    public string? Hostname { get; init; }
+    public string? LinkText { get; init; }
+    public string? LinkUrl { get; init; }
+    public DateTimeOffset ObservedAtUtc { get; init; }
+}
+
+public sealed class AlertCauseAnalyticsViewModel
+{
+    public required string RootCauseKey { get; init; }
+    public required string Title { get; init; }
+    public required string Severity { get; init; }
+    public int OccurrenceCount { get; init; }
+    public int OpenCount { get; init; }
+    public int ResolvedCount { get; init; }
+    public required string AverageTimeToResolveLabel { get; init; }
+    public string? LatestHostId { get; init; }
+    public string? LatestHostname { get; init; }
+    public DateTimeOffset LatestObservedAtUtc { get; init; }
+    public string? LinkText { get; init; }
+    public string? LinkUrl { get; init; }
 }
 
 public sealed class PoliciesPageViewModel
@@ -247,6 +348,7 @@ public sealed class AgentConfigurationsPageViewModel
 {
     public string? CustomerId { get; init; }
     public string? ServiceStatus { get; init; }
+    public string? RecoveryStatus { get; init; }
     public required IReadOnlyList<AgentConfigurationListItemViewModel> Configurations { get; init; }
 }
 
@@ -288,16 +390,46 @@ public sealed class AgentConfigurationListItemViewModel
     public bool BootstrapPolicyExists { get; init; }
     public bool IsBootstrapPolicyAssigned { get; init; }
     public string? BootstrapPolicyId { get; init; }
+    public required string RecoveryStatusLabel { get; init; }
+    public required string RecoveryStatusCssClass { get; init; }
+    public required string RecoveryStatusMessage { get; init; }
 }
 
 public sealed class AgentConfigurationDetailViewModel
 {
     public required AgentConfigurationListItemViewModel Configuration { get; init; }
+    public required HostOperationalHealthViewModel OperationalHealth { get; init; }
     public required AwsIntegrationViewModel AwsIntegration { get; init; }
     public HostRunRequestViewModel? LatestRunRequest { get; init; }
     public required IReadOnlyList<JobRowViewModel> RecentJobs { get; init; }
     public required IReadOnlyList<PolicyOptionViewModel> PolicyOptions { get; init; }
     public required BootstrapPolicyDraftViewModel BootstrapPolicyDraft { get; init; }
+}
+
+public sealed class HostOperationalHealthViewModel
+{
+    public required string RiskLevelLabel { get; init; }
+    public required string RiskLevelCssClass { get; init; }
+    public required string Summary { get; init; }
+    public required IReadOnlyList<OperationalHealthSignalViewModel> Signals { get; init; }
+    public required IReadOnlyList<OperationalRecoveryStepViewModel> RecoverySteps { get; init; }
+}
+
+public sealed class OperationalHealthSignalViewModel
+{
+    public required string Name { get; init; }
+    public required string StatusLabel { get; init; }
+    public required string StatusCssClass { get; init; }
+    public required string Detail { get; init; }
+}
+
+public sealed class OperationalRecoveryStepViewModel
+{
+    public required string Severity { get; init; }
+    public required string Title { get; init; }
+    public required string Message { get; init; }
+    public string? LinkText { get; init; }
+    public string? LinkUrl { get; init; }
 }
 
 public sealed class PolicyOptionViewModel

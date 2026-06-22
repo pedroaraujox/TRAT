@@ -79,10 +79,13 @@ public static class DemoDataSeeder
             CustomerId = customer.Id,
             HostId = hostB.Id,
             JobId = failedJob.Id,
+            RootCauseKey = $"job-runtime:{customer.Id}:{hostB.Id}:bytes-mismatch",
+            Source = "job_runtime",
             Type = "JOB_FAILED",
             Severity = "CRITICAL",
             Message = "Job do host SRV-ERP-01 finalizado com divergencia de bytes.",
-            CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-33)
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-33),
+            LastObservedAtUtc = DateTimeOffset.UtcNow.AddHours(-33)
         };
 
         var artifacts = new[]

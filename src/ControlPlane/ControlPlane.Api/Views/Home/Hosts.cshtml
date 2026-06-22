@@ -33,6 +33,12 @@
             <option value="Offline" selected="@(Model.Status == "Offline")">Offline</option>
             <option value="Sem heartbeat" selected="@(Model.Status == "Sem heartbeat")">Sem heartbeat</option>
         </select>
+        <select name="recoveryStatus">
+            <option value="">Toda a saude</option>
+            <option value="Critico" selected="@(Model.RecoveryStatus == "Critico")">Critico</option>
+            <option value="Atencao" selected="@(Model.RecoveryStatus == "Atencao")">Atencao</option>
+            <option value="Estavel" selected="@(Model.RecoveryStatus == "Estavel")">Estavel</option>
+        </select>
         <button type="submit" class="button primary">Filtrar</button>
     </form>
     <div class="table-wrap">
@@ -42,7 +48,9 @@
                     <th>Host</th>
                     <th>Cliente</th>
                     <th>Ultimo Heartbeat</th>
+                    <th>Versao</th>
                     <th>Status</th>
+                    <th>Recuperacao</th>
                     <th>Servico</th>
                     <th></th>
                 </tr>
@@ -51,7 +59,7 @@
                 @if (Model.Hosts.Count == 0)
                 {
                     <tr>
-                        <td colspan="6">Nenhum host encontrado.</td>
+                        <td colspan="8">Nenhum host encontrado.</td>
                     </tr>
                 }
                 else
@@ -62,15 +70,23 @@
                             <td>@host.Hostname</td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
                             <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
+                            <td>@(host.AgentVersion ?? "-")</td>
                             <td>
                                 <div class="status-stack">
                                     <span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span>
                                     <div class="status-detail">@host.HeartbeatStatus</div>
                                 </div>
                             </td>
+                            <td>
+                                <div class="status-stack">
+                                    <span class="badge @host.RecoveryStatusCssClass">@host.RecoveryStatusLabel</span>
+                                    <div class="status-detail">@host.RecoveryStatusMessage</div>
+                                </div>
+                            </td>
                             <td>@(host.ServiceStatus ?? "-")</td>
                             <td class="actions-cell">
                                 <a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">Abrir cliente</a>
+                                <a href="/admin/hosts/@Uri.EscapeDataString(host.Id)/edit">Suporte</a>
                             </td>
                         </tr>
                     }

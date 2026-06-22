@@ -55,6 +55,10 @@
         <span>Bootstrap</span>
         <strong class="small-stat"><span class="badge @Model.Configuration.BootstrapStatusCssClass">@Model.Configuration.BootstrapStatusLabel</span></strong>
     </div>
+    <div class="stat-card">
+        <span>Recuperacao</span>
+        <strong class="small-stat"><span class="badge @Model.OperationalHealth.RiskLevelCssClass">@Model.OperationalHealth.RiskLevelLabel</span></strong>
+    </div>
 </section>
 
 @if (TempData["StatusMessage"] is string statusMessage)
@@ -69,6 +73,52 @@
         <div class="error-banner">@errorMessage</div>
     </section>
 }
+
+<section class="split-grid">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Saude operacional detalhada</h2>
+        </div>
+        <div class="status-banner">
+            <span class="badge @Model.OperationalHealth.RiskLevelCssClass">@Model.OperationalHealth.RiskLevelLabel</span>
+            @Model.OperationalHealth.Summary
+        </div>
+        <div class="ops-signal-grid">
+            @foreach (var signal in Model.OperationalHealth.Signals)
+            {
+                <div class="ops-signal-card">
+                    <div class="ops-signal-header">
+                        <span>@signal.Name</span>
+                        <span class="badge @signal.StatusCssClass">@signal.StatusLabel</span>
+                    </div>
+                    <div class="ops-signal-detail">@signal.Detail</div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Recuperacao operacional</h2>
+        </div>
+        <div class="ops-recovery-list">
+            @foreach (var step in Model.OperationalHealth.RecoverySteps)
+            {
+                <article class="ops-recovery-card">
+                    <div class="ops-signal-header">
+                        <strong>@step.Title</strong>
+                        <span class="badge @step.Severity">@step.Severity.ToUpperInvariant()</span>
+                    </div>
+                    <p>@step.Message</p>
+                    @if (!string.IsNullOrWhiteSpace(step.LinkText) && !string.IsNullOrWhiteSpace(step.LinkUrl))
+                    {
+                        <a href="@step.LinkUrl">@step.LinkText</a>
+                    }
+                </article>
+            }
+        </div>
+    </div>
+</section>
 
 <section class="split-grid">
     <div class="panel">

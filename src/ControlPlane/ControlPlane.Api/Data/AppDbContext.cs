@@ -15,6 +15,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<PolicyChangeEvent> PolicyChangeEvents => Set<PolicyChangeEvent>();
     public DbSet<AgentConfiguration> AgentConfigurations => Set<AgentConfiguration>();
     public DbSet<PanelUser> PanelUsers => Set<PanelUser>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +29,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<Alert>()
             .HasIndex(a => new { a.CustomerId, a.Type, a.CreatedAtUtc })
+            .IsUnique(false);
+
+        modelBuilder.Entity<Alert>()
+            .HasIndex(a => new { a.RootCauseKey, a.ResolvedAtUtc, a.LastObservedAtUtc })
+            .IsUnique(false);
+
+        modelBuilder.Entity<Alert>()
+            .HasIndex(a => new { a.CustomerId, a.HostId, a.ResolvedAtUtc, a.CreatedAtUtc })
             .IsUnique(false);
 
         modelBuilder.Entity<BackupPolicy>()
@@ -49,5 +58,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         modelBuilder.Entity<PanelUser>()
             .HasIndex(u => u.Email)
             .IsUnique(true);
+
+        modelBuilder.Entity<AuditEvent>()
+            .HasIndex(a => new { a.Category, a.CreatedAtUtc })
+            .IsUnique(false);
+
+        modelBuilder.Entity<AuditEvent>()
+            .HasIndex(a => new { a.EntityType, a.EntityId, a.CreatedAtUtc })
+            .IsUnique(false);
     }
 }
