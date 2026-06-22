@@ -11,7 +11,7 @@ Set-StrictMode -Version Latest
 
 $startupValueName = "WebstationBackupAgentTray"
 $uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
-$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "Webstation Backup"
+$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "TRAT"
 
 function Stop-TrayProcessIfExists {
     param(

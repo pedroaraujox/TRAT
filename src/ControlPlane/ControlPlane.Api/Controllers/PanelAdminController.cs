@@ -17,10 +17,10 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/panel")]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var currentUser = HttpContext.GetCurrentPanelUser();
-        if (currentUser is null)
+        var guard = RequireAdminUser(out var currentUser);
+        if (guard is not null)
         {
-            return Redirect("/login");
+            return guard;
         }
 
         var users = await db.PanelUsers.AsNoTracking().ToListAsync(ct);
@@ -28,7 +28,7 @@ public sealed class PanelAdminController(
 
         return View("PanelAdmin", new PanelAdministrationViewModel
         {
-            CurrentUser = currentUser,
+            CurrentUser = currentUser!,
             AgentDownload = MapDownload(package),
             UserCount = users.Count,
             ActiveUserCount = users.Count(u => u.IsActive),
@@ -39,10 +39,10 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/panel/users")]
     public async Task<IActionResult> Users(CancellationToken ct)
     {
-        var currentUser = HttpContext.GetCurrentPanelUser();
-        if (currentUser is null)
+        var guard = RequireAdminUser(out var currentUser);
+        if (guard is not null)
         {
-            return Redirect("/login");
+            return guard;
         }
 
         var users = await db.PanelUsers.AsNoTracking()
@@ -52,7 +52,7 @@ public sealed class PanelAdminController(
 
         return View("PanelUsers", new PanelUsersPageViewModel
         {
-            CurrentUser = currentUser,
+            CurrentUser = currentUser!,
             Users = users.Select(MapUser).ToArray()
         });
     }
@@ -60,6 +60,12 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/panel/users/new")]
     public IActionResult NewUser()
     {
+        var guard = RequireAdminUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         return View("PanelUserForm", new PanelUserFormViewModel
         {
             Email = string.Empty,
@@ -76,6 +82,12 @@ public sealed class PanelAdminController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> NewUserPost([FromForm] PanelUserFormViewModel form, CancellationToken ct)
     {
+        var guard = RequireAdminUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var normalized = NormalizeForm(form, isEditMode: false);
         var error = await ValidateFormAsync(normalized, isEditMode: false, currentUserId: null, ct);
         if (error is not null)
@@ -119,6 +131,12 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/panel/users/{id}/edit")]
     public async Task<IActionResult> EditUser(string id, CancellationToken ct)
     {
+        var guard = RequireAdminUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var user = await db.PanelUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, ct);
         if (user is null)
         {
@@ -142,8 +160,14 @@ public sealed class PanelAdminController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> EditUserPost(string id, [FromForm] PanelUserFormViewModel form, CancellationToken ct)
     {
+        var guard = RequireAdminUser(out var currentUser);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var normalized = NormalizeForm(form, isEditMode: true) with { OriginalId = id, IsEditMode = true };
-        var error = await ValidateFormAsync(normalized, isEditMode: true, currentUserId: HttpContext.GetCurrentPanelUser()?.UserId, ct);
+        var error = await ValidateFormAsync(normalized, isEditMode: true, currentUserId: currentUser!.UserId, ct);
         if (error is not null)
         {
             return View("PanelUserForm", normalized with { ErrorMessage = error });
@@ -183,8 +207,7 @@ public sealed class PanelAdminController(
                 ["isActive"] = user.IsActive ? "true" : "false"
             });
 
-        var currentUser = HttpContext.GetCurrentPanelUser();
-        if (currentUser is not null && string.Equals(currentUser.UserId, user.Id, StringComparison.Ordinal))
+        if (string.Equals(currentUser!.UserId, user.Id, StringComparison.Ordinal))
         {
             HttpContext.Session.SignInPanelUser(user.Id, user.Email, user.DisplayName, user.Role);
         }
@@ -197,10 +220,10 @@ public sealed class PanelAdminController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteUser(string id, CancellationToken ct)
     {
-        var currentUser = HttpContext.GetCurrentPanelUser();
-        if (currentUser is null)
+        var guard = RequireAdminUser(out var currentUser);
+        if (guard is not null)
         {
-            return Redirect("/login");
+            return guard;
         }
 
         var user = await db.PanelUsers.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -210,7 +233,7 @@ public sealed class PanelAdminController(
             return Redirect("/admin/panel/users");
         }
 
-        if (string.Equals(currentUser.UserId, user.Id, StringComparison.Ordinal))
+        if (string.Equals(currentUser!.UserId, user.Id, StringComparison.Ordinal))
         {
             TempData["ErrorMessage"] = "Voce nao pode remover o proprio usuario logado.";
             return Redirect("/admin/panel/users");
@@ -248,6 +271,12 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/downloads")]
     public IActionResult Downloads()
     {
+        var guard = RequirePanelUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var package = agentPackageCatalogService.GetLatestPackage();
         return View("Downloads", MapDownload(package));
     }
@@ -255,6 +284,12 @@ public sealed class PanelAdminController(
     [HttpGet("/admin/downloads/agent/setup")]
     public async Task<IActionResult> DownloadAgentSetup(CancellationToken ct)
     {
+        var guard = RequirePanelUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var package = agentPackageCatalogService.GetLatestPackage();
         if (!package.IsAvailable || string.IsNullOrWhiteSpace(package.SetupExePath) || !System.IO.File.Exists(package.SetupExePath))
         {
@@ -274,12 +309,18 @@ public sealed class PanelAdminController(
                 ["publishedAtUtc"] = package.PublishedAtUtc?.ToString("O")
             });
 
-        return PhysicalFile(package.SetupExePath, "application/octet-stream", "WebstationBackup.Agent.Setup.exe");
+        return PhysicalFile(package.SetupExePath, "application/octet-stream", "TRAT.Agent.Setup.exe");
     }
 
     [HttpGet("/admin/downloads/agent/zip")]
     public async Task<IActionResult> DownloadAgentZip(CancellationToken ct)
     {
+        var guard = RequirePanelUser(out _);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
         var package = agentPackageCatalogService.GetLatestPackage();
         if (!package.IsAvailable || string.IsNullOrWhiteSpace(package.ZipPath) || !System.IO.File.Exists(package.ZipPath))
         {
@@ -299,7 +340,7 @@ public sealed class PanelAdminController(
                 ["publishedAtUtc"] = package.PublishedAtUtc?.ToString("O")
             });
 
-        return PhysicalFile(package.ZipPath, "application/zip", "WebstationBackup.Agent.Package.zip");
+        return PhysicalFile(package.ZipPath, "application/zip", "TRAT.Agent.Package.zip");
     }
 
     private async Task<string?> ValidateFormAsync(PanelUserFormViewModel form, bool isEditMode, string? currentUserId, CancellationToken ct)
@@ -418,6 +459,23 @@ public sealed class PanelAdminController(
             HasSetupExe = !string.IsNullOrWhiteSpace(package.SetupExePath),
             HasZip = !string.IsNullOrWhiteSpace(package.ZipPath)
         };
+    }
+
+    private IActionResult? RequirePanelUser(out PanelCurrentUserViewModel? currentUser)
+    {
+        currentUser = HttpContext.GetCurrentPanelUser();
+        return currentUser is null ? Redirect("/login") : null;
+    }
+
+    private IActionResult? RequireAdminUser(out PanelCurrentUserViewModel? currentUser)
+    {
+        var guard = RequirePanelUser(out currentUser);
+        if (guard is not null)
+        {
+            return guard;
+        }
+
+        return currentUser!.IsAdmin ? null : Forbid();
     }
 
     private Task RecordAuditAsync(

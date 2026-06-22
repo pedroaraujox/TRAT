@@ -19,7 +19,7 @@ public static class DemoDataSeeder
             Id = "cliente-demo",
             Name = "Cliente Demo",
             AwsAccountId = "123456789012",
-            NotificationEmailsCsv = "admin@webstation.local",
+            NotificationEmailsCsv = "admin@trat.local",
             CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-10)
         };
 
@@ -95,7 +95,7 @@ public static class DemoDataSeeder
                 Id = "artifact-demo-1",
                 JobId = okJob.Id,
                 Type = "MANIFEST_LOCAL",
-                Location = @"C:\ProgramData\WebstationBackup\Agent\manifest.job-demo-ok.json",
+                Location = @"C:\ProgramData\TRAT\Agent\manifest.job-demo-ok.json",
                 CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-9)
             },
             new Artifact
@@ -103,7 +103,7 @@ public static class DemoDataSeeder
                 Id = "artifact-demo-2",
                 JobId = failedJob.Id,
                 Type = "MANIFEST_LOCAL",
-                Location = @"C:\ProgramData\WebstationBackup\Agent\manifest.job-demo-failed.json",
+                Location = @"C:\ProgramData\TRAT\Agent\manifest.job-demo-failed.json",
                 CreatedAtUtc = DateTimeOffset.UtcNow.AddHours(-33)
             }
         };
@@ -132,7 +132,7 @@ public static class DemoDataSeeder
                     ScopeType = "customer",
                     HostId = null,
                     OriginHostId = null,
-                    IncludePathsCsv = @"D:\Dados;C:\Webstation",
+                    IncludePathsCsv = @"D:\Dados;C:\TRAT",
                     ExcludePathsCsv = @"D:\Dados\Temp",
                     ScheduleDaysCsv = "TUE,FRI",
                     StartTimeLocal = "22:00",
@@ -181,7 +181,7 @@ public static class DemoDataSeeder
                     PrecheckDiskOk = true,
                     PrecheckCredentialOk = true,
                     StagingPath = @"D:\BackupStaging",
-                    CredentialTargetName = "WebstationBackupAwsKeys",
+                    CredentialTargetName = "TRATAwsKeys",
                     UploadMode = "direct-s3",
                     LastConfigSyncAtUtc = DateTimeOffset.UtcNow.AddMinutes(-20),
                     LastPrecheckAtUtc = DateTimeOffset.UtcNow.AddMinutes(-30),
@@ -201,7 +201,7 @@ public static class DemoDataSeeder
                     PrecheckDiskOk = false,
                     PrecheckCredentialOk = true,
                     StagingPath = @"C:\BackupStaging",
-                    CredentialTargetName = "WebstationBackupAwsKeys",
+                    CredentialTargetName = "TRATAwsKeys",
                     UploadMode = "direct-s3",
                     LastConfigSyncAtUtc = DateTimeOffset.UtcNow.AddHours(-3),
                     LastPrecheckAtUtc = DateTimeOffset.UtcNow.AddHours(-2),

@@ -98,6 +98,15 @@ body[data-theme="light"] .topbar {
     margin-bottom: 24px;
 }
 
+.brand-logo {
+    display: block;
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
+    margin-bottom: 12px;
+    border-radius: 18px;
+}
+
 .brand-title {
     font-size: 22px;
     font-weight: 700;

@@ -10,7 +10,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@ViewData["Title"] - Webstation Backup</title>
+    <title>@ViewData["Title"] - TRAT</title>
+    <link rel="icon" type="image/png" href="~/img/trat-logo.png" />
     <link rel="stylesheet" href="~/css/site.css" />
     <script src="~/js/app.js" defer></script>
 </head>
@@ -18,8 +19,9 @@
     <div class="shell">
         <aside class="sidebar" aria-label="Navegacao">
             <div class="brand">
-                <div class="brand-title">Webstation Backup</div>
-                <div class="brand-subtitle">MVP de teste</div>
+                <img class="brand-logo" src="~/img/trat-logo.png" alt="TRAT" />
+                <div class="brand-title">TRAT</div>
+                <div class="brand-subtitle">Painel operacional</div>
             </div>
             <nav class="nav">
                 <a href="/admin"><span class="nav-icon">◎</span><span>Inicio</span></a>
@@ -51,7 +53,7 @@
                 </button>
                 <div class="topbar-title-group">
                     <div class="topbar-title">@ViewData["Title"]</div>
-                    <div class="topbar-subtitle">Fluxo simplificado para onboarding e teste do Agent</div>
+                    <div class="topbar-subtitle">Fluxo simplificado para onboarding e operacao do TRAT Agent</div>
                 </div>
                 <div class="topbar-actions">
                     <a class="button ghost" href="/admin/downloads">Download</a>

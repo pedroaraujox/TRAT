@@ -11,6 +11,7 @@ namespace WebstationBackup.Agent.Installer;
 
 internal sealed class InstallerForm : Form
 {
+    private const string InstallerDisplayName = "TRAT Agent Installer";
     private readonly TextBox _packageRootTextBox;
     private readonly TextBox _settingsOutputTextBox;
     private readonly TextBox _installDirectoryTextBox;
@@ -46,10 +47,17 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = "Webstation Backup Agent Installer";
+        Text = InstallerDisplayName;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(860, 680);
         Size = new Size(980, 760);
+        try
+        {
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        }
+        catch
+        {
+        }
 
         var packageRoot = InstallerPackagePaths.ResolveInitialPackageRoot();
         var packageLayout = InstallerPackagePaths.Resolve(packageRoot);
@@ -388,7 +396,7 @@ internal sealed class InstallerForm : Form
             {
                 MessageBox.Show(
                     $"A instalacao retornou codigo {result.ExitCode}. Revise o log exibido na tela.",
-                    "Webstation Backup Agent Installer",
+                    InstallerDisplayName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
@@ -398,7 +406,7 @@ internal sealed class InstallerForm : Form
 
             MessageBox.Show(
                 "Instalacao concluida com sucesso. O Agent agora fica instalado no Windows e futuras atualizacoes podem substituir a versao anterior sem fechar o Tray App manualmente.",
-                "Webstation Backup Agent Installer",
+                InstallerDisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -407,7 +415,7 @@ internal sealed class InstallerForm : Form
             AppendOutput($"Falha na instalacao: {ex}");
             MessageBox.Show(
                 ex.Message,
-                "Webstation Backup Agent Installer",
+                InstallerDisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -467,7 +475,7 @@ internal sealed class InstallerForm : Form
             {
                 MessageBox.Show(
                     "Validacao concluida com sucesso.",
-                    "Webstation Backup Agent Installer",
+                    InstallerDisplayName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
@@ -486,7 +494,7 @@ internal sealed class InstallerForm : Form
             {
                 MessageBox.Show(
                     builder.ToString(),
-                    "Webstation Backup Agent Installer",
+                    InstallerDisplayName,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
             }
@@ -518,7 +526,7 @@ internal sealed class InstallerForm : Form
         {
             MessageBox.Show(
                 "agent.settings.json salvo com sucesso.",
-                "Webstation Backup Agent Installer",
+                InstallerDisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

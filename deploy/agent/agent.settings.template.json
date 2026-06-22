@@ -8,7 +8,7 @@
   "AwsRegion": "us-east-1",
   "S3BucketName": "change-me-bucket",
   "S3KeyPrefix": "backups/change-me-host",
-  "AwsCredentialTargetName": "WebstationBackupAwsKeys",
+  "AwsCredentialTargetName": "TRATAwsKeys",
   "IncludePaths": [
     "C:\\Data"
   ],

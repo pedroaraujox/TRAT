@@ -153,10 +153,10 @@ public sealed class HomeController(
             .ToDictionary(x => x.CustomerId, x => (DateTimeOffset?)x.LastJobAtUtc, StringComparer.OrdinalIgnoreCase);
         var pendingRunRequestCount = await db.AgentRunRequests.AsNoTracking()
             .CountAsync(r => r.State == "QUEUED" || r.State == "CLAIMED", ct);
-        var recentAuditEvents = await db.AuditEvents.AsNoTracking()
+        var recentAuditEvents = (await db.AuditEvents.AsNoTracking().ToListAsync(ct))
             .OrderByDescending(a => a.CreatedAtUtc)
             .Take(12)
-            .ToListAsync(ct);
+            .ToList();
         var latestJobsByHostId = allJobs
             .GroupBy(j => j.HostId)
             .Select(g => g.OrderByDescending(x => x.StartedAtUtc).First())
@@ -2316,16 +2316,19 @@ public sealed class HomeController(
         var operational = hostOperationalStatusService.Evaluate(host, latestConfiguration);
         var latestJob = (await db.Jobs.AsNoTracking()
             .Where(j => j.HostId == id)
+            .ToListAsync(ct))
             .OrderByDescending(j => j.StartedAtUtc)
-            .FirstOrDefaultAsync(ct));
+            .FirstOrDefault();
         var latestRunRequest = (await db.AgentRunRequests.AsNoTracking()
             .Where(r => r.CustomerId == host.CustomerId && r.HostId == host.Id)
+            .ToListAsync(ct))
             .OrderByDescending(r => r.RequestedAtUtc)
-            .FirstOrDefaultAsync(ct));
-        var alertHistory = await db.Alerts.AsNoTracking()
+            .FirstOrDefault();
+        var alertHistory = (await db.Alerts.AsNoTracking()
             .Where(a => a.CustomerId == host.CustomerId && a.HostId == host.Id)
+            .ToListAsync(ct))
             .OrderByDescending(a => a.LastObservedAtUtc)
-            .ToListAsync(ct);
+            .ToList();
         var hostMap = new Dictionary<string, ControlPlane.Api.Domain.Host>(StringComparer.OrdinalIgnoreCase)
         {
             [host.Id] = host

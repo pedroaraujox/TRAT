@@ -6,7 +6,20 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$packageRootPath = (Resolve-Path $PackageRoot).Path
+function Resolve-PackageRootPath {
+    param(
+        [string]$PathValue
+    )
+
+    $candidate = if ([string]::IsNullOrWhiteSpace($PathValue)) { $PSScriptRoot } else { $PathValue.Trim().Trim('"') }
+    if ($candidate.Length -gt 3) {
+        $candidate = $candidate.TrimEnd('\')
+    }
+
+    return (Resolve-Path -LiteralPath $candidate).Path
+}
+
+$packageRootPath = Resolve-PackageRootPath -PathValue $PackageRoot
 $databasePath = Join-Path $packageRootPath "data\controlplane.db"
 $backupRoot = Join-Path $packageRootPath "backups"
 

@@ -75,7 +75,7 @@ internal static class WindowsCredentialManager
             {
                 AttributeCount = 0,
                 Attributes = IntPtr.Zero,
-                Comment = "Webstation Backup Agent secret",
+                Comment = "TRAT Agent secret",
                 TargetAlias = string.Empty,
                 Type = CRED_TYPE_GENERIC,
                 Persist = CRED_PERSIST_LOCAL_MACHINE,

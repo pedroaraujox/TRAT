@@ -6,7 +6,7 @@ pushd "%SCRIPT_DIR%"
 
 if not exist "appsettings.Local.json" (
     echo Configuracao local nao encontrada. Iniciando primeira configuracao...
-    powershell.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Primeira-Configuracao.ps1" -PackageRoot "%SCRIPT_DIR%"
+    powershell.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Primeira-Configuracao.ps1"
     if errorlevel 1 (
         echo Falha ao criar a configuracao local.
         popd

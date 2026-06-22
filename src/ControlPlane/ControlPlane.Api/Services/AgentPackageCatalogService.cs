@@ -4,8 +4,17 @@ namespace ControlPlane.Api.Services;
 
 public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfiguration config)
 {
-    private const string SetupFileName = "WebstationBackup.Agent.Setup.exe";
-    private const string ZipFileName = "WebstationBackup.Agent.Package.zip";
+    private static readonly string[] SetupFileNames =
+    {
+        "TRAT.Agent.Setup.exe",
+        "WebstationBackup.Agent.Setup.exe"
+    };
+
+    private static readonly string[] ZipFileNames =
+    {
+        "TRAT.Agent.Package.zip",
+        "WebstationBackup.Agent.Package.zip"
+    };
 
     public AgentPackageCatalogResult GetLatestPackage()
     {
@@ -15,11 +24,15 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
             return AgentPackageCatalogResult.NotAvailable(root, "Diretorio de artifacts do Agent nao encontrado.");
         }
 
-        var zipFiles = Directory.GetFiles(root, ZipFileName, SearchOption.AllDirectories)
+        var zipFiles = ZipFileNames
+            .SelectMany(fileName => Directory.GetFiles(root, fileName, SearchOption.AllDirectories))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path => new FileInfo(path))
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .ToArray();
-        var setupFiles = Directory.GetFiles(root, SetupFileName, SearchOption.AllDirectories)
+        var setupFiles = SetupFileNames
+            .SelectMany(fileName => Directory.GetFiles(root, fileName, SearchOption.AllDirectories))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path => new FileInfo(path))
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .ToArray();

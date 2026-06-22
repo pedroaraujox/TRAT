@@ -6,6 +6,19 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+function Resolve-PackageRootPath {
+    param(
+        [string]$PathValue
+    )
+
+    $candidate = if ([string]::IsNullOrWhiteSpace($PathValue)) { $PSScriptRoot } else { $PathValue.Trim().Trim('"') }
+    if ($candidate.Length -gt 3) {
+        $candidate = $candidate.TrimEnd('\')
+    }
+
+    return (Resolve-Path -LiteralPath $candidate).Path
+}
+
 function Read-RequiredValue {
     param(
         [Parameter(Mandatory = $true)]
@@ -32,7 +45,7 @@ function Read-RequiredValue {
     }
 }
 
-$packageRootPath = (Resolve-Path $PackageRoot).Path
+$packageRootPath = Resolve-PackageRootPath -PathValue $PackageRoot
 $templatePath = Join-Path $packageRootPath "appsettings.Local.template.json"
 $targetPath = Join-Path $packageRootPath "appsettings.Local.json"
 
@@ -40,14 +53,20 @@ if (-not (Test-Path $templatePath)) {
     throw "Template de configuracao nao encontrado em: $templatePath"
 }
 
-$adminEmail = Read-RequiredValue -Prompt "Email do administrador inicial" -DefaultValue "admin@webstation.local"
+$adminEmail = Read-RequiredValue -Prompt "Email do administrador inicial" -DefaultValue "admin@trat.local"
 $adminDisplayName = Read-RequiredValue -Prompt "Nome do administrador inicial" -DefaultValue "Administrador"
 $adminPassword = Read-RequiredValue -Prompt "Senha do administrador inicial"
 
-$adminToken = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-    .TrimEnd('=')
-    .Replace('+', 'A')
-    .Replace('/', 'B')
+$tokenBytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $rng.GetBytes($tokenBytes)
+}
+finally {
+    $rng.Dispose()
+}
+
+$adminToken = ([Convert]::ToBase64String($tokenBytes)).TrimEnd('=').Replace('+', 'A').Replace('/', 'B')
 
 $configuration = [ordered]@{
     ControlPlane = [ordered]@{

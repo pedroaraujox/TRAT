@@ -28,13 +28,20 @@ internal sealed class TrayStatusForm : Form
         _openLogsFolder = openLogsFolder;
         _refresh = refresh;
 
-        Text = "Webstation Backup Agent";
+        Text = "TRAT Agent";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
         ClientSize = new Size(540, 360);
+        try
+        {
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        }
+        catch
+        {
+        }
 
         var layout = new TableLayoutPanel
         {

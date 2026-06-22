@@ -22,12 +22,12 @@ $installScriptPath = Join-Path $repoRoot "scripts\agent\Install-Agent.ps1"
 $uninstallScriptPath = Join-Path $repoRoot "scripts\agent\Uninstall-Agent.ps1"
 $updateScriptPath = Join-Path $repoRoot "scripts\agent\Update-Agent.ps1"
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
-$packageDir = Join-Path $outputRoot "WebstationBackup.Agent.Package"
+$packageDir = Join-Path $outputRoot "TRAT.Agent.Package"
 $stagingDir = $packageDir
 $binDir = Join-Path $stagingDir "bin"
 $trayDir = Join-Path $stagingDir "tray"
 $installerDir = Join-Path $stagingDir "installer"
-$zipPath = Join-Path $outputRoot "WebstationBackup.Agent.Package.zip"
+$zipPath = Join-Path $outputRoot "TRAT.Agent.Package.zip"
 
 if (Test-Path $outputRoot) {
     Remove-Item -Path $outputRoot -Recurse -Force
@@ -66,6 +66,7 @@ Copy-Item -Path $installScriptPath -Destination (Join-Path $stagingDir "Install-
 Copy-Item -Path $uninstallScriptPath -Destination (Join-Path $stagingDir "Uninstall-Agent.ps1") -Force
 Copy-Item -Path $updateScriptPath -Destination (Join-Path $stagingDir "Update-Agent.ps1") -Force
 
+Copy-Item -Path (Join-Path $installerDir "WebstationBackup.Agent.Installer.exe") -Destination (Join-Path $stagingDir "TRAT.Agent.Setup.exe") -Force
 Copy-Item -Path (Join-Path $installerDir "WebstationBackup.Agent.Installer.exe") -Destination (Join-Path $stagingDir "WebstationBackup.Agent.Setup.exe") -Force
 
 if (-not $SkipZip) {

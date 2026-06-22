@@ -1,4 +1,4 @@
-# Pacote do Agent
+# Pacote do TRAT Agent
 
 ## Conteudo
 - `agent.settings.template.json`: modelo de configuracao local do host.
@@ -6,15 +6,15 @@
 - `Install-Agent.ps1`: instala ou atualiza o agent como servico Windows.
 - `Uninstall-Agent.ps1`: remove o servico Windows do agent.
 - `Update-Agent.ps1`: aplica atualizacao do agent a partir de um pacote ja baixado, preservando a configuracao local.
-- `bin\`: binarios do `WebstationBackup.Agent.Service`.
+- `bin\`: binarios do servico do TRAT Agent.
 - `tray\`: aplicativo de bandeja do Windows para status local do agent.
 - `installer\`: instalador GUI para configurar o agent e disparar a instalacao com elevacao.
 - `Launch-Agent-Tray.cmd`: abre o `Tray App` diretamente do pacote.
 - `Launch-Agent-Installer.cmd`: abre o instalador GUI diretamente do pacote.
 
 ## Diretórios recomendados
-- Binarios: `C:\Program Files\WebstationBackup\Agent`
-- Estado e configuracao: `C:\ProgramData\WebstationBackup\Agent`
+- Binarios: `C:\Program Files\TRAT\Agent` ou pasta operacional equivalente
+- Estado e configuracao: `C:\ProgramData\TRAT\Agent` ou pasta operacional equivalente
 
 ## Fluxo seguro
 1. Execute `Launch-Agent-Installer.cmd`.
@@ -23,7 +23,7 @@
 4. O instalador cria atalhos no menu Iniciar, registra desinstalacao no Windows e pode iniciar o servico ao final.
 5. Rode primeiro em modo console/dry-run antes de iniciar o servico real.
 6. So habilite execucao real com upload apos validacao conjunta.
-7. O `Tray App` passa a funcionar como aplicativo instalado; atualizacoes devem substituir a versao anterior sem exigir fechamento manual do icone oculto.
+7. O `Tray App` passa a funcionar como aplicativo instalado do TRAT; atualizacoes devem substituir a versao anterior sem exigir fechamento manual do icone oculto.
 
 ## Regra operacional
 - Apos qualquer mudanca de codigo, configuracao ou empacotamento, reexecute o `ControlPlane` antes de validar o ambiente.

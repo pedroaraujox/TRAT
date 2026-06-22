@@ -4,7 +4,7 @@ param(
     [string]$InstallDir = "C:\Program Files\WebstationBackup\Agent",
     [string]$StateDir = "C:\ProgramData\WebstationBackup\Agent",
     [string]$ServiceName = "WebstationBackupAgent",
-    [string]$ServiceDisplayName = "Webstation Backup Agent",
+    [string]$ServiceDisplayName = "TRAT Agent",
     [string]$SettingsSourcePath,
     [string]$RulesSourcePath,
     [pscredential]$ServiceCredential,
@@ -14,11 +14,11 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$productName = "Webstation Backup Agent"
-$publisherName = "Webstation"
+$productName = "TRAT Agent"
+$publisherName = "TRAT"
 $uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
 $startupValueName = "WebstationBackupAgentTray"
-$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "Webstation Backup"
+$startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "TRAT"
 
 function Stop-TrayProcessIfExists {
     param(
@@ -97,20 +97,20 @@ function Register-StartMenuShortcuts {
     New-Item -ItemType Directory -Force -Path $startMenuFolder | Out-Null
 
     New-ShortcutFile `
-        -ShortcutPath (Join-Path $startMenuFolder "Webstation Backup Agent.lnk") `
+        -ShortcutPath (Join-Path $startMenuFolder "TRAT Agent.lnk") `
         -TargetPath $trayExePath `
         -Arguments "" `
         -WorkingDirectory (Split-Path -Parent $trayExePath) `
-        -Description "Abrir status local do Webstation Backup Agent." `
+        -Description "Abrir status local do TRAT Agent." `
         -IconLocation $trayExePath
 
     if (Test-Path $uninstallScriptPath) {
         New-ShortcutFile `
-            -ShortcutPath (Join-Path $startMenuFolder "Desinstalar Webstation Backup Agent.lnk") `
+            -ShortcutPath (Join-Path $startMenuFolder "Desinstalar TRAT Agent.lnk") `
             -TargetPath "powershell.exe" `
             -Arguments ('-ExecutionPolicy Bypass -File "{0}"' -f $uninstallScriptPath) `
             -WorkingDirectory (Split-Path -Parent $uninstallScriptPath) `
-            -Description "Desinstalar o Webstation Backup Agent mantendo os dados locais por padrao." `
+            -Description "Desinstalar o TRAT Agent mantendo os dados locais por padrao." `
             -IconLocation "powershell.exe"
     }
 }
@@ -243,7 +243,7 @@ function Ensure-ServiceInstalled {
                 -DisplayName $DisplayName `
                 -BinaryPathName ('"{0}"' -f $BinaryPath) `
                 -StartupType Automatic `
-                -Description "Webstation Backup Agent" `
+                -Description "TRAT Agent" `
                 -Credential $Credential
         } else {
             New-Service `
@@ -251,14 +251,14 @@ function Ensure-ServiceInstalled {
                 -DisplayName $DisplayName `
                 -BinaryPathName ('"{0}"' -f $BinaryPath) `
                 -StartupType Automatic `
-                -Description "Webstation Backup Agent"
+                -Description "TRAT Agent"
         }
 
         return
     }
 
     Set-Service -Name $Name -DisplayName $DisplayName -StartupType Automatic
-    sc.exe description $Name "Webstation Backup Agent" | Out-Null
+    sc.exe description $Name "TRAT Agent" | Out-Null
 
     if ($null -ne $Credential) {
         $username = $Credential.UserName

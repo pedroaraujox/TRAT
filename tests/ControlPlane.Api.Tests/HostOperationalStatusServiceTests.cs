@@ -1,4 +1,4 @@
-using ControlPlane.Api.Domain;
+﻿using ControlPlane.Api.Domain;
 using ControlPlane.Api.Services;
 
 namespace ControlPlane.Api.Tests;
@@ -63,7 +63,7 @@ public sealed class HostOperationalStatusServiceTests
             PrecheckDiskOk = true,
             PrecheckCredentialOk = precheckCredentialOk,
             StagingPath = @"D:\BackupStaging",
-            CredentialTargetName = "WebstationBackupAwsKeys",
+            CredentialTargetName = "TRATAwsKeys",
             UploadMode = "direct-s3",
             LastConfigSyncAtUtc = DateTimeOffset.UtcNow,
             LastPrecheckAtUtc = DateTimeOffset.UtcNow,
@@ -72,3 +72,4 @@ public sealed class HostOperationalStatusServiceTests
         };
     }
 }
+

@@ -24,7 +24,7 @@ public sealed class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSend
             return;
         }
 
-        var from = config["ControlPlane:Smtp:From"] ?? "backup@webstation.local";
+        var from = config["ControlPlane:Smtp:From"] ?? "backup@trat.local";
         var port = int.TryParse(config["ControlPlane:Smtp:Port"], out var p) ? p : 587;
         var enableSsl = bool.TryParse(config["ControlPlane:Smtp:EnableSsl"], out var ssl) && ssl;
         var username = config["ControlPlane:Smtp:Username"] ?? string.Empty;
@@ -52,4 +52,3 @@ public sealed class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSend
         }
     }
 }
-

@@ -1,4 +1,4 @@
-using ControlPlane.Api.Controllers;
+﻿using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Models;
@@ -201,7 +201,7 @@ public sealed class HomeControllerPolicyAssignmentTests
             PrecheckDiskOk = true,
             PrecheckCredentialOk = precheckCredentialOk,
             StagingPath = @"D:\BackupStaging",
-            CredentialTargetName = "WebstationBackupAwsKeys",
+            CredentialTargetName = "TRATAwsKeys",
             UploadMode = "direct-s3",
             LastConfigSyncAtUtc = now,
             LastPrecheckAtUtc = now,
@@ -268,3 +268,4 @@ public sealed class HomeControllerPolicyAssignmentTests
         }
     }
 }
+

@@ -6,7 +6,7 @@
 <div class="page-header">
     <div>
         <h1>Downloads</h1>
-        <p>Distribuicao centralizada do Agent na versao mais recente publicada.</p>
+        <p>Distribuicao centralizada do TRAT Agent na versao mais recente publicada.</p>
     </div>
     <div class="page-actions">
         <a class="button secondary" href="/admin">Inicio</a>
@@ -16,7 +16,7 @@
 <section class="split-grid">
     <div class="panel">
         <div class="panel-header">
-            <h2>Pacote atual do Agent</h2>
+            <h2>Pacote atual do TRAT Agent</h2>
         </div>
         <div class="definition-grid">
             <div><span>Status</span><strong>@(Model.IsAvailable ? "Disponivel" : "Indisponivel")</strong></div>
@@ -26,8 +26,8 @@
             <div class="wide"><span>Mensagem</span><strong>@Model.Message</strong></div>
         </div>
         <div class="form-actions">
-            <a class="button primary @(Model.HasZip ? string.Empty : "disabled")" href="@(Model.HasZip ? "/admin/downloads/agent/zip" : "#")">Baixar pacote completo (.zip)</a>
-            <a class="button secondary @(Model.HasSetupExe ? string.Empty : "disabled")" href="@(Model.HasSetupExe ? "/admin/downloads/agent/setup" : "#")">Baixar somente Setup.exe</a>
+            <a class="button primary @(Model.HasZip ? string.Empty : "disabled")" href="@(Model.HasZip ? "/admin/downloads/agent/zip" : "#")">Baixar TRAT Agent (.zip)</a>
+            <a class="button secondary @(Model.HasSetupExe ? string.Empty : "disabled")" href="@(Model.HasSetupExe ? "/admin/downloads/agent/setup" : "#")">Baixar somente TRAT.Agent.Setup.exe</a>
         </div>
     </div>
 
@@ -36,9 +36,9 @@
             <h2>Uso recomendado</h2>
         </div>
         <ul class="list">
-            <li>Baixe o pacote completo `.zip`, extraia todo o conteudo e execute o `Setup.exe` de dentro da pasta extraida.</li>
-            <li>O `Setup.exe` isolado e apenas para uso tecnico avancado; sozinho ele nao contem todos os arquivos do pacote.</li>
-            <li>Ao publicar uma nova versao do Agent, publique novamente o pacote para que esta pagina entregue a versao atualizada.</li>
+            <li>Baixe o pacote completo `.zip`, extraia todo o conteudo e execute o `TRAT.Agent.Setup.exe` de dentro da pasta extraida.</li>
+            <li>O `TRAT.Agent.Setup.exe` isolado e apenas para uso tecnico avancado; sozinho ele nao contem todos os arquivos do pacote.</li>
+            <li>Ao publicar uma nova versao do TRAT Agent, publique novamente o pacote para que esta pagina entregue a versao atualizada.</li>
         </ul>
     </div>
 </section>

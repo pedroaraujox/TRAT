@@ -8,6 +8,7 @@ namespace WebstationBackup.Agent.Tray;
 
 internal sealed class AgentTrayApplicationContext : ApplicationContext
 {
+    private const string ProductDisplayName = "TRAT Agent";
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _serviceStatusItem;
     private readonly ToolStripMenuItem _summaryItem;
@@ -46,8 +47,8 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Shield,
-            Text = "Webstation Backup Agent",
+            Icon = LoadTrayIcon(),
+            Text = ProductDisplayName,
             Visible = true,
             ContextMenuStrip = contextMenu
         };
@@ -62,7 +63,7 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
 
         _startupItem.Checked = StartupRegistration.IsEnabled();
         RefreshStatus();
-        _notifyIcon.ShowBalloonTip(2000, "Webstation Backup Agent", "Agent monitorado em segundo plano pela bandeja do Windows.", ToolTipIcon.Info);
+        _notifyIcon.ShowBalloonTip(2000, ProductDisplayName, "Agent monitorado em segundo plano pela bandeja do Windows.", ToolTipIcon.Info);
     }
 
     private void RefreshStatus()
@@ -98,7 +99,7 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
         {
             MessageBox.Show(
                 "O painel ainda nao esta configurado no agent.settings.json.",
-                "Webstation Backup Agent",
+                ProductDisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -133,7 +134,7 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
         {
             MessageBox.Show(
                 $"Falha ao abrir '{target}'.\n\n{ex.Message}",
-                "Webstation Backup Agent",
+                ProductDisplayName,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -165,15 +166,27 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
     {
         MessageBox.Show(
             $"{title}\n\n{ex.Message}",
-            "Webstation Backup Agent",
+            ProductDisplayName,
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
     }
 
     private static string BuildNotifyText(AgentStatusSnapshot snapshot)
     {
-        var text = $"Webstation Backup Agent - {snapshot.ServiceStatusLabel}";
+        var text = $"{ProductDisplayName} - {snapshot.ServiceStatusLabel}";
         return text.Length <= 63 ? text : text.Substring(0, 63);
+    }
+
+    private static Icon LoadTrayIcon()
+    {
+        try
+        {
+            return Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Shield;
+        }
+        catch
+        {
+            return SystemIcons.Shield;
+        }
     }
 
     protected override void Dispose(bool disposing)

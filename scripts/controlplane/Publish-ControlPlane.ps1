@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = "Release",
-    [string]$PackageOutputDir = "artifacts\controlplane-local",
+    [string]$PackageOutputDir = "artifacts\trat-local",
     [string]$WindowsRuntimeIdentifier = "win-x64",
     [switch]$SkipZip,
     [switch]$SkipAgentArtifacts
@@ -15,8 +15,8 @@ $projectPath = Join-Path $repoRoot "src\ControlPlane\ControlPlane.Api\ControlPla
 $deployRoot = Join-Path $repoRoot "deploy\controlplane"
 $sourceAgentArtifactsDir = Join-Path $repoRoot "artifacts\agent-package"
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
-$packageDir = Join-Path $outputRoot "WebstationBackup.ControlPlane.Local"
-$zipPath = Join-Path $outputRoot "WebstationBackup.ControlPlane.Local.zip"
+$packageDir = Join-Path $outputRoot "TRAT.ControlPlane.Local"
+$zipPath = Join-Path $outputRoot "TRAT.ControlPlane.Local.zip"
 
 if (Test-Path $outputRoot) {
     Remove-Item -Path $outputRoot -Recurse -Force

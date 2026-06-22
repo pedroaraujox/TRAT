@@ -1,4 +1,4 @@
-using ControlPlane.Api.Controllers;
+﻿using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Dtos;
 using ControlPlane.Api.Email;
@@ -37,7 +37,7 @@ public sealed class AgentIngestControllerConfigurationReportTests
                 PrecheckDiskOk: true,
                 PrecheckCredentialOk: true,
                 StagingPath: @"D:\Staging",
-                CredentialTargetName: "WebstationBackupAwsKeys",
+                CredentialTargetName: "TRATAwsKeys",
                 UploadMode: "direct-s3",
                 TimestampUtc: timestamp,
                 PrecheckAtUtc: timestamp,
@@ -78,7 +78,7 @@ public sealed class AgentIngestControllerConfigurationReportTests
                 PrecheckDiskOk: true,
                 PrecheckCredentialOk: true,
                 StagingPath: @"D:\Staging",
-                CredentialTargetName: "WebstationBackupAwsKeys",
+                CredentialTargetName: "TRATAwsKeys",
                 UploadMode: "direct-s3",
                 TimestampUtc: firstTimestamp,
                 PrecheckAtUtc: firstTimestamp,
@@ -102,7 +102,7 @@ public sealed class AgentIngestControllerConfigurationReportTests
                 PrecheckDiskOk: true,
                 PrecheckCredentialOk: false,
                 StagingPath: @"D:\Staging",
-                CredentialTargetName: "WebstationBackupAwsKeys",
+                CredentialTargetName: "TRATAwsKeys",
                 UploadMode: "dry-run",
                 TimestampUtc: secondTimestamp,
                 PrecheckAtUtc: secondTimestamp,
@@ -178,3 +178,4 @@ public sealed class AgentIngestControllerConfigurationReportTests
         }
     }
 }
+

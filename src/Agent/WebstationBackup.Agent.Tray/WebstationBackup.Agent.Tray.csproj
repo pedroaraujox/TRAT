@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>WebstationBackup.Agent.Tray</AssemblyName>
     <RootNamespace>WebstationBackup.Agent.Tray</RootNamespace>
+    <ApplicationIcon>..\..\..\assets\branding\trat-logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

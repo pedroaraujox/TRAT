@@ -6,7 +6,7 @@ namespace WebstationBackup.Agent.Tray;
 internal static class AgentPaths
 {
     public const string ServiceName = "WebstationBackupAgent";
-    public const string ServiceDisplayName = "Webstation Backup Agent";
+    public const string ServiceDisplayName = "TRAT Agent";
 
     public static string InstallDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
