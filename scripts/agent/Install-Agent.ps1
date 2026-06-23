@@ -206,8 +206,25 @@ function Assert-Administrator {
     }
 }
 
+function Get-RegistryValueCompat {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $item = Get-ItemProperty -Path $Path -ErrorAction Stop
+    $property = $item.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        throw "Valor '$Name' nao encontrado no registro em '$Path'."
+    }
+
+    return $property.Value
+}
+
 function Assert-DotNet48Installed {
-    $release = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release -ErrorAction Stop
+    $release = Get-RegistryValueCompat -Path "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release
     if ($release -lt 528040) {
         throw ".NET Framework 4.8 nao encontrado neste host."
     }
