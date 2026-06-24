@@ -21,6 +21,11 @@ function Test-TRATRunning {
         [string]$PackageRoot
     )
 
+    $service = Get-Service -Name "TRATControlPlane" -ErrorAction SilentlyContinue
+    if ($null -ne $service -and $service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+        return $true
+    }
+
     $pidFile = Join-Path $PackageRoot "controlplane.pid"
     if (-not (Test-Path $pidFile)) {
         return $false
