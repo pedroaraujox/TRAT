@@ -2,12 +2,15 @@ using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Security;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ControlPlane.Api.Services;
 
 public sealed class PanelBootstrapService(
     AppDbContext db,
     IConfiguration config,
+    IWebHostEnvironment env,
     PanelPasswordHasher passwordHasher,
     ILogger<PanelBootstrapService> logger)
 {
@@ -31,6 +34,7 @@ public sealed class PanelBootstrapService(
         if (anyAdminExists)
         {
             logger.LogInformation("Bootstrap admin ignorado porque ja existe um administrador ativo no banco.");
+            TryRemoveBootstrapPasswordFromLocalConfig();
             return;
         }
 
@@ -43,6 +47,7 @@ public sealed class PanelBootstrapService(
             existing.UpdatedAtUtc = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Usuario bootstrap existente promovido para administrador: {Email}", email);
+            TryRemoveBootstrapPasswordFromLocalConfig();
             return;
         }
 
@@ -63,5 +68,50 @@ public sealed class PanelBootstrapService(
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Administrador bootstrap criado com sucesso para {Email}", email);
+        TryRemoveBootstrapPasswordFromLocalConfig();
+    }
+
+    private void TryRemoveBootstrapPasswordFromLocalConfig()
+    {
+        var localConfigPath = Path.Combine(env.ContentRootPath, "appsettings.Local.json");
+        if (!File.Exists(localConfigPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(localConfigPath);
+            var root = JsonNode.Parse(json) as JsonObject;
+            if (root is null)
+            {
+                return;
+            }
+
+            var controlPlane = root["ControlPlane"] as JsonObject;
+            var bootstrap = controlPlane?["BootstrapAdmin"] as JsonObject;
+            if (bootstrap is null)
+            {
+                return;
+            }
+
+            if (!bootstrap.ContainsKey("Password"))
+            {
+                return;
+            }
+
+            bootstrap.Remove("Password");
+
+            var backupPath = localConfigPath + ".bak-" + DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
+            File.Copy(localConfigPath, backupPath, overwrite: true);
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(localConfigPath, root.ToJsonString(options));
+            logger.LogInformation("Senha bootstrap removida de appsettings.Local.json apos bootstrap do administrador.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Falha ao remover senha bootstrap de appsettings.Local.json.");
+        }
     }
 }

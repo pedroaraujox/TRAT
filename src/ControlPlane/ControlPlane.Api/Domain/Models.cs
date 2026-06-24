@@ -392,6 +392,12 @@ public sealed class PanelUser
 
     public bool IsActive { get; set; }
 
+    public int FailedLoginCount { get; set; }
+
+    public DateTimeOffset? LastFailedLoginAtUtc { get; set; }
+
+    public DateTimeOffset? LockoutUntilUtc { get; set; }
+
     public DateTimeOffset? LastLoginAtUtc { get; set; }
 
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;

@@ -85,9 +85,9 @@ public sealed class HostOperationalStatusService
                 HeartbeatStatus: heartbeatStatus,
                 Label: "Pendente AWS",
                 CssClass: "warning",
-                Message: ResolvePrecheckMessage(configuration, "Verificar configuracoes AWS no Host.") +
-                         " O host pode receber politica central, mas o upload real continuara bloqueado ate corrigir a credencial AWS local.",
-                IsReadyForPolicyAssignment: true);
+                Message: ResolvePrecheckMessage(configuration, "Falha AWS.") +
+                         " Corrija a credencial AWS local no host antes de vincular ou alterar a politica.",
+                IsReadyForPolicyAssignment: false);
         }
 
         if (string.Equals(heartbeatStatus, "Atrasado", StringComparison.OrdinalIgnoreCase))

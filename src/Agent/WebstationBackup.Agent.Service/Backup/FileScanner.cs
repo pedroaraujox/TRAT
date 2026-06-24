@@ -14,6 +14,12 @@ internal sealed class FileScanner
         "ehthumbs.db"
     };
 
+    private static readonly HashSet<string> DefaultIgnoredDirectoryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "System Volume Information",
+        "$RECYCLE.BIN"
+    };
+
     public IReadOnlyList<string> ScanFiles(IEnumerable<string> includePaths, IEnumerable<string> excludePaths)
     {
         var includes = includePaths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -84,6 +90,11 @@ internal sealed class FileScanner
 
             foreach (var d in dirs)
             {
+                if (IsIgnoredDirectory(d))
+                {
+                    continue;
+                }
+
                 stack.Push(d);
             }
         }
@@ -105,6 +116,25 @@ internal sealed class FileScanner
     {
         var fileName = Path.GetFileName(path);
         return !string.IsNullOrWhiteSpace(fileName) && DefaultIgnoredFileNames.Contains(fileName);
+    }
+
+    private static bool IsIgnoredDirectory(string path)
+    {
+        try
+        {
+            var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (!string.IsNullOrWhiteSpace(name) && DefaultIgnoredDirectoryNames.Contains(name))
+            {
+                return true;
+            }
+
+            var attrs = File.GetAttributes(path);
+            return (attrs & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint;
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static string NormalizePath(string p) => Path.GetFullPath(p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));

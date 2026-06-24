@@ -29,6 +29,9 @@ Todos os itens abaixo devem estar `OK`:
 3. `OK` pagina de download do `Agent` funcionando no pacote local.
 4. `OK` fluxo completo `ControlPlane -> Agent -> S3` validado novamente usando o painel local.
 5. `OK` backup manual do banco `data\controlplane.db` testado.
+6. `OK` restart do servidor:
+   - ControlPlane volta automaticamente (via servico Windows ou rotina equivalente);
+   - sessao do painel nao quebra por falta de chaves de criptografia (DataProtection persistido).
 6. `OK` pelo menos 1 host cliente com:
    - heartbeat regular;
    - sync de configuracao;
@@ -46,6 +49,7 @@ Todos os itens abaixo devem estar `OK`:
 - testar a pagina de downloads do `Agent` a partir desse pacote local;
 - executar um ciclo final de smoke test com pelo menos 1 host real apontando para essa instancia local;
 - validar o backup do banco local e a reabertura do painel com a mesma base.
+- validar execucao do painel como servico Windows em servidor de teste e reboot controlado.
 
 ## Criterio de decisao
 

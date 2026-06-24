@@ -372,9 +372,25 @@ public sealed class PanelAdminController(
 
         if (!string.IsNullOrWhiteSpace(form.Password))
         {
-            if (form.Password.Length < 8)
+            if (form.Password.Length < 10)
             {
-                return "A senha deve ter ao menos 8 caracteres.";
+                return "A senha deve ter ao menos 10 caracteres.";
+            }
+
+            if (form.Password.Any(char.IsWhiteSpace))
+            {
+                return "A senha nao pode conter espacos.";
+            }
+
+            var hasLower = form.Password.Any(char.IsLower);
+            var hasUpper = form.Password.Any(char.IsUpper);
+            var hasDigit = form.Password.Any(char.IsDigit);
+            var hasSymbol = form.Password.Any(c => !char.IsLetterOrDigit(c));
+
+            var categories = new[] { hasLower, hasUpper, hasDigit, hasSymbol }.Count(x => x);
+            if (categories < 3)
+            {
+                return "A senha deve conter ao menos 3 tipos: maiuscula, minuscula, numero e simbolo.";
             }
 
             if (!string.Equals(form.Password, form.ConfirmPassword, StringComparison.Ordinal))

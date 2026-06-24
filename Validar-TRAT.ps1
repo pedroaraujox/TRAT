@@ -2,6 +2,8 @@
 param(
     [string]$PanelUrl = "http://localhost:5080",
     [string]$PackageRoot = "",
+    [string]$AdminEmail = "",
+    [string]$AdminPassword = "",
     [switch]$SkipSetupDownload
 )
 
@@ -69,12 +71,23 @@ if ($null -eq $controlPlaneSettings) {
 }
 
 $bootstrapAdmin = $controlPlaneSettings.BootstrapAdmin
-if ($null -eq $bootstrapAdmin) {
-    throw "Secao ControlPlane.BootstrapAdmin nao encontrada em appsettings.Local.json"
+$email = $null
+$password = $null
+if ($null -ne $bootstrapAdmin) {
+    $email = $bootstrapAdmin.PSObject.Properties["Email"]?.Value
+    $password = $bootstrapAdmin.PSObject.Properties["Password"]?.Value
 }
 
-$email = Get-RequiredSetting -Node $bootstrapAdmin -PropertyName "Email"
-$password = Get-RequiredSetting -Node $bootstrapAdmin -PropertyName "Password"
+if ([string]::IsNullOrWhiteSpace([string]$email)) {
+    $email = $AdminEmail
+}
+if ([string]::IsNullOrWhiteSpace([string]$password)) {
+    $password = $AdminPassword
+}
+
+if ([string]::IsNullOrWhiteSpace([string]$email) -or [string]::IsNullOrWhiteSpace([string]$password)) {
+    throw "Credenciais nao encontradas. Informe -AdminEmail e -AdminPassword (a senha bootstrap pode ter sido removida do appsettings.Local.json por seguranca)."
+}
 
 $baseUrl = $PanelUrl.TrimEnd('/')
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession

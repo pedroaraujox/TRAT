@@ -1,16 +1,19 @@
 [CmdletBinding()]
 param(
     [string]$ServiceName = "WebstationBackupAgent",
-    [string]$InstallDir = "C:\Program Files\WebstationBackup\Agent",
-    [string]$StateDir = "C:\ProgramData\WebstationBackup\Agent",
+    [string]$InstallDir = "C:\Program Files\TRAT\Agent",
+    [string]$StateDir = "C:\ProgramData\TRAT\Agent",
     [switch]$RemoveState
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$startupValueName = "WebstationBackupAgentTray"
-$uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
+$startupValueNames = @("TRATAgentTray", "WebstationBackupAgentTray")
+$uninstallKeyPaths = @(
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\TRATAgent",
+    "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
+)
 $startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "TRAT"
 
 function Stop-TrayProcessIfExists {
@@ -49,7 +52,9 @@ function Stop-TrayProcessIfExists {
 function Remove-TrayStartupRegistration {
     $runKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
     if (Test-Path $runKeyPath) {
-        Remove-ItemProperty -Path $runKeyPath -Name $startupValueName -ErrorAction SilentlyContinue
+        foreach ($name in $startupValueNames) {
+            Remove-ItemProperty -Path $runKeyPath -Name $name -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -62,6 +67,15 @@ function Assert-Administrator {
 }
 
 Assert-Administrator
+
+$legacyInstallDir = "C:\Program Files\WebstationBackup\Agent"
+$legacyStateDir = "C:\ProgramData\WebstationBackup\Agent"
+if (-not $MyInvocation.BoundParameters.ContainsKey("InstallDir") -and (Test-Path $legacyInstallDir) -and -not (Test-Path $InstallDir)) {
+    $InstallDir = $legacyInstallDir
+}
+if (-not $MyInvocation.BoundParameters.ContainsKey("StateDir") -and (Test-Path $legacyStateDir) -and -not (Test-Path $StateDir)) {
+    $StateDir = $legacyStateDir
+}
 
 Stop-TrayProcessIfExists -InstallDir $InstallDir
 
@@ -91,8 +105,10 @@ if (Test-Path $InstallDir) {
     Remove-Item -Path $InstallDir -Recurse -Force
 }
 
-if (Test-Path $uninstallKeyPath) {
-    Remove-Item -Path $uninstallKeyPath -Recurse -Force
+foreach ($key in $uninstallKeyPaths) {
+    if (Test-Path $key) {
+        Remove-Item -Path $key -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 if (Test-Path $startMenuFolder) {

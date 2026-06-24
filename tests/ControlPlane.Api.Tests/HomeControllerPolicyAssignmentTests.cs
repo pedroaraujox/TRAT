@@ -1,4 +1,4 @@
-﻿using ControlPlane.Api.Controllers;
+using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Models;
@@ -29,7 +29,7 @@ public sealed class HomeControllerPolicyAssignmentTests
 
         Assert.Equal("/admin/configurations/cfg-01", redirect.Url);
         Assert.Null(persisted.PolicyId);
-        Assert.Equal("Falha AWS.", controller.TempData["ErrorMessage"]);
+        Assert.StartsWith("Falha AWS.", controller.TempData["ErrorMessage"] as string);
     }
 
     [Fact]
@@ -148,11 +148,17 @@ public sealed class HomeControllerPolicyAssignmentTests
     private static HomeController CreateController(AppDbContext db)
     {
         var httpContext = new DefaultHttpContext();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+        var passwordHasher = new PanelPasswordHasher();
+        var panelAuth = new PanelAuthenticationService(db, configuration, passwordHasher, NullLogger<PanelAuthenticationService>.Instance);
         var controller = new HomeController(
             db,
-            BuildConfiguration(),
             new AwsDiscoveryService(NullLogger<AwsDiscoveryService>.Instance),
+            panelAuth,
             new HostOperationalStatusService(),
+            new AuditTrailService(db, NullLogger<AuditTrailService>.Instance),
             NullLogger<HomeController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -163,13 +169,6 @@ public sealed class HomeControllerPolicyAssignmentTests
         };
 
         return controller;
-    }
-
-    private static IConfiguration BuildConfiguration()
-    {
-        return new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
-            .Build();
     }
 
     private static async Task SeedScenarioAsync(AppDbContext db, bool precheckCredentialOk)
@@ -244,6 +243,7 @@ public sealed class HomeControllerPolicyAssignmentTests
 
         var context = new AppDbContext(options);
         context.Database.EnsureCreated();
+        SchemaBootstrapper.EnsureExtendedSchemaAsync(context).GetAwaiter().GetResult();
 
         return new TestDatabase(connection, context);
     }

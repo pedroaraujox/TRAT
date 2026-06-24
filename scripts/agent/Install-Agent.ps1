@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$PackageRoot = (Split-Path -Parent $PSScriptRoot),
-    [string]$InstallDir = "C:\Program Files\WebstationBackup\Agent",
-    [string]$StateDir = "C:\ProgramData\WebstationBackup\Agent",
+    [string]$InstallDir = "C:\Program Files\TRAT\Agent",
+    [string]$StateDir = "C:\ProgramData\TRAT\Agent",
     [string]$ServiceName = "WebstationBackupAgent",
     [string]$ServiceDisplayName = "TRAT Agent",
     [string]$SettingsSourcePath,
@@ -16,8 +16,10 @@ Set-StrictMode -Version Latest
 
 $productName = "TRAT Agent"
 $publisherName = "TRAT"
-$uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
-$startupValueName = "WebstationBackupAgentTray"
+$uninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\TRATAgent"
+$legacyUninstallKeyPath = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WebstationBackupAgent"
+$startupValueName = "TRATAgentTray"
+$legacyStartupValueName = "WebstationBackupAgentTray"
 $startMenuFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) "TRAT"
 
 function Stop-TrayProcessIfExists {
@@ -133,6 +135,10 @@ function Register-UninstallEntry {
     Set-ItemProperty -Path $uninstallKeyPath -Name "QuietUninstallString" -Value ('powershell.exe -ExecutionPolicy Bypass -File "{0}"' -f $uninstallScriptPath)
     Set-ItemProperty -Path $uninstallKeyPath -Name "NoModify" -Value 1 -Type DWord
     Set-ItemProperty -Path $uninstallKeyPath -Name "NoRepair" -Value 1 -Type DWord
+
+    if (Test-Path $legacyUninstallKeyPath) {
+        Remove-Item -Path $legacyUninstallKeyPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Write-InstallationMetadata {
@@ -284,8 +290,26 @@ function Ensure-ServiceInstalled {
     }
 }
 
+function Ensure-ServiceRecovery {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    sc.exe failure $Name reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
+}
+
 Assert-Administrator
 Assert-DotNet48Installed
+
+$legacyInstallDir = "C:\Program Files\WebstationBackup\Agent"
+$legacyStateDir = "C:\ProgramData\WebstationBackup\Agent"
+if (-not $MyInvocation.BoundParameters.ContainsKey("InstallDir") -and (Test-Path $legacyInstallDir) -and -not (Test-Path $InstallDir)) {
+    $InstallDir = $legacyInstallDir
+}
+if (-not $MyInvocation.BoundParameters.ContainsKey("StateDir") -and (Test-Path $legacyStateDir) -and -not (Test-Path $StateDir)) {
+    $StateDir = $legacyStateDir
+}
 
 $resolvedPackageRoot = (Resolve-Path $PackageRoot).Path
 $binSourceDir = Join-Path $resolvedPackageRoot "bin"
@@ -364,6 +388,7 @@ Ensure-ServiceInstalled `
     -DisplayName $ServiceDisplayName `
     -BinaryPath $agentExeInstalled `
     -Credential $ServiceCredential
+Ensure-ServiceRecovery -Name $ServiceName
 
 Register-StartMenuShortcuts -InstallDir $InstallDir -StateDir $StateDir
 Register-UninstallEntry -InstallDir $InstallDir -StateDir $StateDir -DisplayVersion $displayVersion

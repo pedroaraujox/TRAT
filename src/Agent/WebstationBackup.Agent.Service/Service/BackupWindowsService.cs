@@ -162,8 +162,13 @@ internal static class AgentWorker
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
         var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         var stateDir = string.IsNullOrWhiteSpace(options.StateDir)
-            ? Path.Combine(programData, "WebstationBackup", "Agent")
+            ? Path.Combine(programData, "TRAT", "Agent")
             : Path.GetFullPath(options.StateDir!.Trim());
+        if (string.IsNullOrWhiteSpace(options.StateDir))
+        {
+            var legacyStateDir = Path.Combine(programData, "WebstationBackup", "Agent");
+            TryMigrateLegacyState(legacyStateDir, stateDir);
+        }
         Directory.CreateDirectory(stateDir);
 
         var rulesPath = options.RulesPath;
@@ -216,6 +221,46 @@ internal static class AgentWorker
             Schedule = schedule,
             StateDir = stateDir
         };
+    }
+
+    private static void TryMigrateLegacyState(string legacyStateDir, string preferredStateDir)
+    {
+        try
+        {
+            if (!Directory.Exists(legacyStateDir))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(preferredStateDir);
+
+            CopyIfMissing(
+                Path.Combine(legacyStateDir, "agent.settings.json"),
+                Path.Combine(preferredStateDir, "agent.settings.json"));
+            CopyIfMissing(
+                Path.Combine(legacyStateDir, "project.rules.json"),
+                Path.Combine(preferredStateDir, "project.rules.json"));
+            CopyIfMissing(
+                Path.Combine(legacyStateDir, "agent.state.json"),
+                Path.Combine(preferredStateDir, "agent.state.json"));
+        }
+        catch
+        {
+        }
+    }
+
+    private static void CopyIfMissing(string source, string destination)
+    {
+        try
+        {
+            if (!File.Exists(destination) && File.Exists(source))
+            {
+                File.Copy(source, destination, overwrite: false);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private static string? FindFileUpwards(string startDir, string fileName, int maxLevels)

@@ -1,4 +1,4 @@
-﻿using ControlPlane.Api.Controllers;
+using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Domain;
 using ControlPlane.Api.Services;
@@ -40,11 +40,17 @@ public sealed class HomeControllerCustomerDeletionTests
     private static HomeController CreateController(AppDbContext db)
     {
         var httpContext = new DefaultHttpContext();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+        var passwordHasher = new PanelPasswordHasher();
+        var panelAuth = new PanelAuthenticationService(db, configuration, passwordHasher, NullLogger<PanelAuthenticationService>.Instance);
         var controller = new HomeController(
             db,
-            BuildConfiguration(),
             new AwsDiscoveryService(NullLogger<AwsDiscoveryService>.Instance),
+            panelAuth,
             new HostOperationalStatusService(),
+            new AuditTrailService(db, NullLogger<AuditTrailService>.Instance),
             NullLogger<HomeController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -55,13 +61,6 @@ public sealed class HomeControllerCustomerDeletionTests
         };
 
         return controller;
-    }
-
-    private static IConfiguration BuildConfiguration()
-    {
-        return new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
-            .Build();
     }
 
     private static async Task SeedScenarioAsync(AppDbContext db)
@@ -167,10 +166,13 @@ public sealed class HomeControllerCustomerDeletionTests
             CustomerId = "customer-01",
             HostId = "host-01",
             JobId = "job-01",
+            RootCauseKey = "job_runtime:customer-01:host-01:failed",
+            Source = "job_runtime",
             Type = "JOB_FAILED",
             Severity = "CRITICAL",
             Message = "Failure",
-            CreatedAtUtc = now.AddMinutes(-8)
+            CreatedAtUtc = now.AddMinutes(-8),
+            LastObservedAtUtc = now.AddMinutes(-8)
         });
 
         await db.SaveChangesAsync();
@@ -187,6 +189,7 @@ public sealed class HomeControllerCustomerDeletionTests
 
         var context = new AppDbContext(options);
         context.Database.EnsureCreated();
+        SchemaBootstrapper.EnsureExtendedSchemaAsync(context).GetAwaiter().GetResult();
 
         return new TestDatabase(connection, context);
     }

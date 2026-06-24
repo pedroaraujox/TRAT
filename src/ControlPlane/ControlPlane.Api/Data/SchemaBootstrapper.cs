@@ -24,6 +24,9 @@ public static class SchemaBootstrapper
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyKind", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicySource", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyLastChangedAtUtc", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "FailedLoginCount", columnTypeSql: "INTEGER");
+        await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "LastFailedLoginAtUtc", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "LockoutUntilUtc", columnTypeSql: "TEXT");
 
         await db.Database.ExecuteSqlRawAsync(
             """
@@ -137,6 +140,9 @@ public static class SchemaBootstrapper
                 "PasswordSalt" TEXT NOT NULL,
                 "PasswordIterations" INTEGER NOT NULL,
                 "IsActive" INTEGER NOT NULL,
+                "FailedLoginCount" INTEGER NOT NULL DEFAULT 0,
+                "LastFailedLoginAtUtc" TEXT NULL,
+                "LockoutUntilUtc" TEXT NULL,
                 "LastLoginAtUtc" TEXT NULL,
                 "CreatedAtUtc" TEXT NOT NULL,
                 "UpdatedAtUtc" TEXT NULL

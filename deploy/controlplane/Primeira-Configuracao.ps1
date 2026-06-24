@@ -45,6 +45,29 @@ function Read-RequiredValue {
     }
 }
 
+function Test-PasswordPolicy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Password
+    )
+
+    if ($Password.Length -lt 10) { return $false }
+    if ($Password.ToCharArray() | Where-Object { [char]::IsWhiteSpace($_) } | Select-Object -First 1) { return $false }
+
+    $hasLower = $Password.ToCharArray() | Where-Object { [char]::IsLower($_) } | Select-Object -First 1
+    $hasUpper = $Password.ToCharArray() | Where-Object { [char]::IsUpper($_) } | Select-Object -First 1
+    $hasDigit = $Password.ToCharArray() | Where-Object { [char]::IsDigit($_) } | Select-Object -First 1
+    $hasSymbol = $Password.ToCharArray() | Where-Object { -not [char]::IsLetterOrDigit($_) } | Select-Object -First 1
+
+    $categories = 0
+    if ($hasLower) { $categories++ }
+    if ($hasUpper) { $categories++ }
+    if ($hasDigit) { $categories++ }
+    if ($hasSymbol) { $categories++ }
+
+    return $categories -ge 3
+}
+
 $packageRootPath = Resolve-PackageRootPath -PathValue $PackageRoot
 $templatePath = Join-Path $packageRootPath "appsettings.Local.template.json"
 $targetPath = Join-Path $packageRootPath "appsettings.Local.json"
@@ -56,6 +79,10 @@ if (-not (Test-Path $templatePath)) {
 $adminEmail = Read-RequiredValue -Prompt "Email do administrador inicial" -DefaultValue "admin@trat.local"
 $adminDisplayName = Read-RequiredValue -Prompt "Nome do administrador inicial" -DefaultValue "Administrador"
 $adminPassword = Read-RequiredValue -Prompt "Senha do administrador inicial"
+while (-not (Test-PasswordPolicy -Password $adminPassword)) {
+    Write-Host "Senha fraca. Regras: minimo 10 caracteres, sem espacos, e ao menos 3 tipos (maiuscula/minuscula/numero/simbolo)." -ForegroundColor Yellow
+    $adminPassword = Read-RequiredValue -Prompt "Senha do administrador inicial"
+}
 
 $tokenBytes = New-Object byte[] 32
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()

@@ -43,12 +43,16 @@ foreach ($fileName in $requiredFiles) {
     }
 }
 
-foreach ($dirName in @("data", "logs", "artifacts")) {
+foreach ($dirName in @("data", "data\\keys", "logs", "artifacts")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $packageDir $dirName) | Out-Null
 }
 
 Copy-Item -Path (Join-Path $deployRoot "README.md") -Destination (Join-Path $packageDir "README.md") -Force
 Copy-Item -Path (Join-Path $deployRoot "Backup-Painel-Dados.ps1") -Destination (Join-Path $packageDir "Backup-Painel-Dados.ps1") -Force
+Copy-Item -Path (Join-Path $deployRoot "Restaurar-Painel-Dados.ps1") -Destination (Join-Path $packageDir "Restaurar-Painel-Dados.ps1") -Force
+Copy-Item -Path (Join-Path $deployRoot "Coletar-Logs.ps1") -Destination (Join-Path $packageDir "Coletar-Logs.ps1") -Force
+Copy-Item -Path (Join-Path $deployRoot "Instalar-Painel-Como-Servico.ps1") -Destination (Join-Path $packageDir "Instalar-Painel-Como-Servico.ps1") -Force
+Copy-Item -Path (Join-Path $deployRoot "Remover-Painel-Servico.ps1") -Destination (Join-Path $packageDir "Remover-Painel-Servico.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "Iniciar-Painel-Local.cmd") -Destination (Join-Path $packageDir "Iniciar-Painel-Local.cmd") -Force
 Copy-Item -Path (Join-Path $deployRoot "Parar-Painel-Local.ps1") -Destination (Join-Path $packageDir "Parar-Painel-Local.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "Primeira-Configuracao.ps1") -Destination (Join-Path $packageDir "Primeira-Configuracao.ps1") -Force

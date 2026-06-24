@@ -1,4 +1,4 @@
-﻿using ControlPlane.Api.Domain;
+using ControlPlane.Api.Domain;
 using ControlPlane.Api.Services;
 
 namespace ControlPlane.Api.Tests;
@@ -17,7 +17,7 @@ public sealed class HostOperationalStatusServiceTests
 
         Assert.Equal("Pendente AWS", status.Label);
         Assert.Equal("warning", status.CssClass);
-        Assert.Equal("Falha AWS.", status.Message);
+        Assert.StartsWith("Falha AWS.", status.Message);
         Assert.False(status.IsReadyForPolicyAssignment);
     }
 

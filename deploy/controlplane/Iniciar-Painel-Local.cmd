@@ -27,6 +27,8 @@ set "PANEL_PID_FILE=%SCRIPT_DIR%controlplane.pid"
 set "PANEL_STDOUT_LOG_FILE=%SCRIPT_DIR%logs\controlplane.stdout.log"
 set "PANEL_STDERR_LOG_FILE=%SCRIPT_DIR%logs\controlplane.stderr.log"
 
+powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $maxBytes=20MB; $ts=(Get-Date -Format 'yyyyMMdd-HHmmss'); foreach($p in @('%PANEL_STDOUT_LOG_FILE%','%PANEL_STDERR_LOG_FILE%')){ if(Test-Path $p){ $len=(Get-Item $p).Length; if($len -gt $maxBytes){ Move-Item -Path $p -Destination ($p + '.' + $ts + '.bak') -Force } } }" >nul 2>nul
+
 powershell.exe -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Parar-Painel-Local.ps1" -PackageRoot "%SCRIPT_DIR%" >nul 2>nul
 powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $process = Start-Process -FilePath '%SCRIPT_DIR%ControlPlane.Api.exe' -WorkingDirectory '%SCRIPT_DIR%' -ArgumentList '--urls','%PANEL_URL%' -PassThru -WindowStyle Normal -RedirectStandardOutput '%PANEL_STDOUT_LOG_FILE%' -RedirectStandardError '%PANEL_STDERR_LOG_FILE%'; Set-Content -Path '%PANEL_PID_FILE%' -Value $process.Id -Encoding ASCII"
 

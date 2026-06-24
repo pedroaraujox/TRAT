@@ -15,12 +15,12 @@ internal static class InstallerPackagePaths
 {
     public static string DefaultInstallDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-        "WebstationBackup",
+        "TRAT",
         "Agent");
 
     public static string DefaultStateDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "WebstationBackup",
+        "TRAT",
         "Agent");
 
     public static string DefaultSettingsOutputPath(string packageRoot) => Path.Combine(packageRoot, "agent.settings.json");

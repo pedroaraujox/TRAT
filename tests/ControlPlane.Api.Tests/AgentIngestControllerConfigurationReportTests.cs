@@ -1,4 +1,4 @@
-﻿using ControlPlane.Api.Controllers;
+using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Dtos;
 using ControlPlane.Api.Email;
@@ -132,10 +132,14 @@ public sealed class AgentIngestControllerConfigurationReportTests
         var httpContext = new DefaultHttpContext();
         httpContext.Items["AgentCustomerId"] = "customer-01";
 
+        var hostStatus = new HostOperationalStatusService();
+        var operationalAlerts = new OperationalAlertService(db, hostStatus, NullLogger<OperationalAlertService>.Instance);
+
         return new AgentIngestController(
             db,
             new SmtpEmailSender(configuration, NullLogger<SmtpEmailSender>.Instance),
             new PolicyResolutionService(db, NullLogger<PolicyResolutionService>.Instance),
+            operationalAlerts,
             NullLogger<AgentIngestController>.Instance)
         {
             ControllerContext = new ControllerContext

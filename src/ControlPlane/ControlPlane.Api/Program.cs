@@ -3,11 +3,21 @@ using ControlPlane.Api.Email;
 using ControlPlane.Api.Seed;
 using ControlPlane.Api.Security;
 using ControlPlane.Api.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
+
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Host.UseContentRoot(AppContext.BaseDirectory);
+    if (OperatingSystem.IsWindows())
+    {
+        builder.Host.UseWindowsService(options => options.ServiceName = "TRAT ControlPlane");
+    }
+}
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<SmtpEmailSender>();
@@ -22,8 +32,10 @@ builder.Services.AddScoped<PanelBootstrapService>();
 builder.Services.AddScoped<PolicyResolutionService>();
 builder.Services.AddHostedService<OperationalAlertReconciliationHostedService>();
 builder.Services.AddDistributedMemoryCache();
+
 builder.Services.AddSession(options =>
 {
+    options.Cookie.Name = "TRAT.Session";
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
@@ -36,6 +48,17 @@ var sqlitePath = Path.IsPathRooted(configuredSqlitePath)
     ? configuredSqlitePath
     : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, configuredSqlitePath));
 Directory.CreateDirectory(Path.GetDirectoryName(sqlitePath) ?? Path.Combine(builder.Environment.ContentRootPath, "data"));
+
+var dataDir = Path.GetDirectoryName(sqlitePath) ?? Path.Combine(builder.Environment.ContentRootPath, "data");
+var keysDir = Path.Combine(dataDir, "keys");
+Directory.CreateDirectory(keysDir);
+var dataProtection = builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+    .SetApplicationName("TRAT.ControlPlane");
+if (OperatingSystem.IsWindows())
+{
+    dataProtection.ProtectKeysWithDpapi();
+}
 
 var csb = new SqliteConnectionStringBuilder
 {

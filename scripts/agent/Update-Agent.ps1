@@ -2,8 +2,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$PackageRoot,
-    [string]$InstallDir = "C:\Program Files\WebstationBackup\Agent",
-    [string]$StateDir = "C:\ProgramData\WebstationBackup\Agent",
+    [string]$InstallDir = "C:\Program Files\TRAT\Agent",
+    [string]$StateDir = "C:\ProgramData\TRAT\Agent",
     [switch]$DoNotStartService
 )
 
@@ -19,6 +19,15 @@ function Assert-Administrator {
 }
 
 Assert-Administrator
+
+$legacyInstallDir = "C:\Program Files\WebstationBackup\Agent"
+$legacyStateDir = "C:\ProgramData\WebstationBackup\Agent"
+if (-not $MyInvocation.BoundParameters.ContainsKey("InstallDir") -and (Test-Path $legacyInstallDir) -and -not (Test-Path $InstallDir)) {
+    $InstallDir = $legacyInstallDir
+}
+if (-not $MyInvocation.BoundParameters.ContainsKey("StateDir") -and (Test-Path $legacyStateDir) -and -not (Test-Path $StateDir)) {
+    $StateDir = $legacyStateDir
+}
 
 $resolvedPackageRoot = (Resolve-Path $PackageRoot).Path
 $installScriptPath = Join-Path $resolvedPackageRoot "Install-Agent.ps1"

@@ -24,13 +24,26 @@ Pacote local do `ControlPlane` para uso interno, sem publicar na internet.
 - `Iniciar-Painel-Local.cmd`: inicia o painel e abre o navegador.
 - `Parar-Painel-Local.ps1`: encerra o processo do painel iniciado pelo pacote.
 - `Backup-Painel-Dados.ps1`: gera uma copia manual do banco SQLite do painel.
+- `Restaurar-Painel-Dados.ps1`: restaura o banco SQLite a partir de um backup.
+- `Coletar-Logs.ps1`: coleta evidencias do painel e do agent (se instalado na mesma maquina) e gera um ZIP.
 - `Primeira-Configuracao.ps1`: gera a configuracao local inicial.
 - `appsettings.Local.json`: sobrescritas locais do ambiente.
+ - `Instalar-Painel-Como-Servico.ps1`: instala o painel como servico Windows com auto-start e restart em falha.
+ - `Remover-Painel-Servico.ps1`: remove o servico Windows do painel.
 
 ## Observacoes operacionais
 
 - nao copie o pacote para pastas sincronizadas por OneDrive sem validar bloqueios de arquivo;
 - mantenha backup de `data\controlplane.db`;
 - proteja `appsettings.Local.json`, porque ele contem segredo administrativo e senha bootstrap;
+- o painel tenta remover automaticamente a senha bootstrap de `appsettings.Local.json` apos criar/confirmar um admin ativo (para reduzir risco de segredo em texto puro);
 - execute `Backup-Painel-Dados.ps1` antes de atualizacoes do painel ou mudancas relevantes;
 - se quiser trocar a senha bootstrap depois, use a area administrativa do painel e remova o valor de bootstrap do arquivo local quando estabilizar.
+
+## Execucao como servico (recomendado para servidores)
+
+Para ambientes que reiniciam e precisam voltar automaticamente:
+
+1. Execute `Instalar-Painel-Como-Servico.ps1` como administrador.
+2. O servico ficara com startup automatico e politica de restart em falha.
+3. Para remover, execute `Remover-Painel-Servico.ps1`.

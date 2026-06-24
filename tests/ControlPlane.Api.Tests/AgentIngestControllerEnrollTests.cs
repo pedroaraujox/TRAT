@@ -92,10 +92,14 @@ public sealed class AgentIngestControllerEnrollTests
         var httpContext = new DefaultHttpContext();
         httpContext.Items["AgentCustomerId"] = customerId;
  
+        var hostStatus = new HostOperationalStatusService();
+        var operationalAlerts = new OperationalAlertService(db, hostStatus, NullLogger<OperationalAlertService>.Instance);
+
         return new AgentIngestController(
             db,
             new SmtpEmailSender(configuration, NullLogger<SmtpEmailSender>.Instance),
             new PolicyResolutionService(db, NullLogger<PolicyResolutionService>.Instance),
+            operationalAlerts,
             NullLogger<AgentIngestController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -147,4 +151,3 @@ public sealed class AgentIngestControllerEnrollTests
         }
     }
 }
-
