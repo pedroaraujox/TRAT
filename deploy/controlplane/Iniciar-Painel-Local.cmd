@@ -39,9 +39,13 @@ if errorlevel 1 (
 )
 
 timeout /t 2 /nobreak >nul
-start "" "%PANEL_URL%"
 echo Painel iniciado em %PANEL_URL%
 echo Logs: %PANEL_STDOUT_LOG_FILE% e %PANEL_STDERR_LOG_FILE%
+if /I "%TRAT_NO_BROWSER%"=="1" (
+    echo Navegador nao foi aberto automaticamente.
+) else (
+    start "" "%PANEL_URL%"
+)
 
 popd
 exit /b 0

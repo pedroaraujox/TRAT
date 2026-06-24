@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$RebuildLocalPackage,
-    [switch]$ResetLocalState
+    [switch]$ResetLocalState,
+    [switch]$NoBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,21 @@ function Try-StartControlPlaneService {
     }
 
     return $true
+}
+
+function Open-PanelUrl {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url
+    )
+
+    if ($NoBrowser) {
+        Write-Host ("Painel disponivel em: {0}" -f $Url) -ForegroundColor Cyan
+        Write-Host "Abertura automatica do navegador foi desabilitada por parametro." -ForegroundColor Yellow
+        return
+    }
+
+    Start-Process $Url | Out-Null
 }
 
 function Test-DotNetCliAvailable {
@@ -90,7 +106,8 @@ if (-not (Test-Path $packageStartScript)) {
 try {
     if (Try-StartControlPlaneService -ServiceName $serviceName) {
         Write-Host ("TRAT iniciado como Windows Service: {0}" -f $serviceName) -ForegroundColor Green
-        Start-Process $panelUrl | Out-Null
+        Write-Host ("Painel disponivel em: {0}" -f $panelUrl) -ForegroundColor Cyan
+        Write-Host "Modo servico: o navegador nao sera aberto automaticamente." -ForegroundColor Yellow
         return
     }
 }
@@ -99,7 +116,7 @@ catch {
 }
 
 $installServiceScript = Join-Path $packageRoot "Instalar-Painel-Como-Servico.ps1"
-if (Test-Path $installServiceScript -and (Test-IsAdministrator)) {
+if ((Test-Path $installServiceScript) -and (Test-IsAdministrator)) {
     try {
         Write-Host "Instalando TRAT como Windows Service..." -ForegroundColor Cyan
         & powershell.exe -ExecutionPolicy Bypass -File $installServiceScript -PackageRoot $packageRoot -Url $panelUrl
@@ -108,7 +125,8 @@ if (Test-Path $installServiceScript -and (Test-IsAdministrator)) {
         }
 
         Write-Host ("TRAT instalado e iniciado como Windows Service: {0}" -f $serviceName) -ForegroundColor Green
-        Start-Process $panelUrl | Out-Null
+        Write-Host ("Painel disponivel em: {0}" -f $panelUrl) -ForegroundColor Cyan
+        Write-Host "Modo servico: o navegador nao sera aberto automaticamente." -ForegroundColor Yellow
         return
     }
     catch {
@@ -117,7 +135,10 @@ if (Test-Path $installServiceScript -and (Test-IsAdministrator)) {
 }
 
 Write-Host "Iniciando TRAT a partir do pacote local (sem janela do painel)..." -ForegroundColor Green
+$env:TRAT_NO_BROWSER = "1"
 & $packageStartScript
 if ($LASTEXITCODE -ne 0) {
     throw "Falha ao iniciar o painel local do TRAT."
 }
+Remove-Item Env:\TRAT_NO_BROWSER -ErrorAction SilentlyContinue
+Open-PanelUrl -Url $panelUrl
