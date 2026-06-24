@@ -183,7 +183,7 @@
         <div class="definition-grid">
             <div><span>Status</span><strong>@(Model.AwsIntegration.IsConnected ? "Conectada" : "Nao conectada")</strong></div>
             <div><span>Conta esperada</span><strong>@(Model.AwsIntegration.ExpectedAccountId ?? "-")</strong></div>
-            <div><span>Conta validada</span><strong>@(Model.AwsIntegration.ResolvedAccountId ?? "-")</strong></div>
+            <div><span>Conta do servidor/painel</span><strong>@(Model.AwsIntegration.ResolvedAccountId ?? "-")</strong></div>
             <div><span>Bucket atual</span><strong>@(Model.AwsIntegration.SelectedBucket ?? "-")</strong></div>
             <div><span>Regiao</span><strong>@(Model.AwsIntegration.SelectedBucketRegion ?? "-")</strong></div>
             <div class="wide"><span>Diagnostico</span><strong>@Model.AwsIntegration.Message</strong></div>

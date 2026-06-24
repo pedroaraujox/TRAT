@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$RebuildLocalPackage
+    [switch]$RebuildLocalPackage,
+    [switch]$ResetLocalState
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +11,7 @@ $repoRoot = $PSScriptRoot
 $packageRoot = Join-Path $repoRoot "artifacts\trat-local\TRAT.ControlPlane.Local"
 $packageStartScript = Join-Path $packageRoot "Iniciar-Painel-Local.cmd"
 $publishScript = Join-Path $repoRoot "scripts\controlplane\Publish-ControlPlane.ps1"
+$resetScript = Join-Path $repoRoot "Resetar-TRAT.ps1"
 
 function Test-DotNetCliAvailable {
     try {
@@ -34,6 +36,18 @@ if ($RebuildLocalPackage -or -not (Test-Path $packageStartScript)) {
     & powershell.exe -ExecutionPolicy Bypass -File $publishScript
     if ($LASTEXITCODE -ne 0) {
         throw "Falha ao gerar o pacote local do TRAT ControlPlane."
+    }
+}
+
+if ($ResetLocalState) {
+    if (-not (Test-Path $resetScript)) {
+        throw "Script de reset local nao encontrado em: $resetScript"
+    }
+
+    Write-Host "Resetando estado local do TRAT antes da inicializacao..." -ForegroundColor Yellow
+    & powershell.exe -ExecutionPolicy Bypass -File $resetScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha ao resetar o estado local do TRAT."
     }
 }
 

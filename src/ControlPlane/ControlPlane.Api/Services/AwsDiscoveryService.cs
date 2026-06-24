@@ -40,7 +40,7 @@ public sealed class AwsDiscoveryService(ILogger<AwsDiscoveryService> logger)
                     ResolvedAccountId: identity.Account,
                     SelectedBucket: Normalize(selectedBucket),
                     SelectedBucketRegion: null,
-                    Message: $"Conta AWS divergente. Esperado={normalizedExpectedAccountId}. Atual={identity.Account}.",
+                    Message: $"O cliente foi salvo com a conta AWS {normalizedExpectedAccountId}, mas o ControlPlane esta autenticado localmente na conta {identity.Account}. Isso indica credenciais AWS diferentes no servidor/painel, nao erro no cadastro do cliente.",
                     Buckets: Array.Empty<AwsBucketDescriptor>(),
                     Prefixes: Array.Empty<string>());
             }
@@ -113,7 +113,7 @@ public sealed class AwsDiscoveryService(ILogger<AwsDiscoveryService> logger)
             if (!string.IsNullOrWhiteSpace(normalizedExpectedAccountId) &&
                 !string.Equals(identity.Account, normalizedExpectedAccountId, StringComparison.Ordinal))
             {
-                return new AwsBucketPrefixesResult(false, null, Array.Empty<string>(), "Conta AWS divergente para listar prefixos.");
+                return new AwsBucketPrefixesResult(false, null, Array.Empty<string>(), $"O ControlPlane esta autenticado localmente na conta {identity.Account}, mas o cliente espera {normalizedExpectedAccountId}. Corrija as credenciais AWS do painel antes de listar prefixos.");
             }
 
             using var s3 = new AmazonS3Client(credentials, region);

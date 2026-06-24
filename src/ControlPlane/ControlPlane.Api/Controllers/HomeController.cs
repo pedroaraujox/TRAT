@@ -2627,7 +2627,9 @@ public sealed class HomeController(
             latestJobFailed && latestJob is not null,
             "critical",
             "Analisar o ultimo job falho",
-            $"O ultimo job conhecido falhou em {latestJob!.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss}. Revise o erro antes de liberar novos hosts para este mesmo padrao operacional.",
+            latestJob is null
+                ? "Existe indicio de falha no ultimo job, mas os detalhes nao ficaram disponiveis na carga atual. Atualize a pagina e valide o historico do host."
+                : $"O ultimo job conhecido falhou em {latestJob.StartedAtUtc.ToLocalTime():dd/MM/yyyy HH:mm:ss}. Revise o erro antes de liberar novos hosts para este mesmo padrao operacional.",
             latestJob is not null ? "Abrir job" : null,
             latestJob is not null ? $"/admin/jobs/{Uri.EscapeDataString(latestJob.Id)}" : null);
 

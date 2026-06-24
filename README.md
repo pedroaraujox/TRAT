@@ -16,3 +16,10 @@ O script raiz:
 - sobe o painel local e abre o navegador em `http://localhost:5080`.
 
 Para encerrar o painel local, execute `Parar-TRAT.ps1`.
+
+Se quiser reiniciar o teste local do zero sem reaproveitar banco, tokens e configuracao anteriores:
+
+- execute `Resetar-TRAT.ps1`; ou
+- execute `Iniciar-TRAT.ps1 -ResetLocalState`.
+
+O reset faz backup de seguranca do `appsettings.Local.json` e do `controlplane.db` antes de limpar o estado local do pacote.

@@ -44,10 +44,11 @@ public sealed class OperationalAlertService(
             return;
         }
 
-        var configuration = await db.AgentConfigurations.AsNoTracking()
+        var configuration = (await db.AgentConfigurations.AsNoTracking()
             .Where(c => c.CustomerId == customerId && c.HostId == hostId)
+            .ToListAsync(ct))
             .OrderByDescending(c => c.LastConfigSyncAtUtc ?? c.CreatedAtUtc)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefault();
         await ReconcileHostOperationalAlertsAsync(host, configuration, ct);
     }
 
