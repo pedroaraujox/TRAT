@@ -26,7 +26,7 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
         _startupItem = new ToolStripMenuItem("Iniciar com o Windows") { CheckOnClick = true };
         _refreshItem = new ToolStripMenuItem("Atualizar status");
 
-        _statusForm = new TrayStatusForm(OpenPanel, OpenConfigurationFolder, OpenLogsFolder, RefreshStatus);
+        _statusForm = new TrayStatusForm(OpenPanel, OpenConfiguration, RefreshStatus);
 
         var contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add(new ToolStripMenuItem("Abrir status", null, (_, _) => ShowStatusForm()));
@@ -35,8 +35,7 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(_openPanelItem);
         contextMenu.Items.Add(_startupItem);
-        contextMenu.Items.Add(new ToolStripMenuItem("Abrir configuracao", null, (_, _) => OpenConfigurationFolder()));
-        contextMenu.Items.Add(new ToolStripMenuItem("Abrir logs", null, (_, _) => OpenLogsFolder()));
+        contextMenu.Items.Add(new ToolStripMenuItem("Abrir configuracao", null, (_, _) => OpenConfiguration()));
         contextMenu.Items.Add(_refreshItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(new ToolStripMenuItem("Sair", null, (_, _) => ExitTray()));
@@ -108,16 +107,52 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
         OpenShell(snapshot.ControlPlaneBaseUrl);
     }
 
-    private static void OpenConfigurationFolder()
+    private static void OpenConfiguration()
     {
-        Directory.CreateDirectory(AgentPaths.StateDirectory);
-        OpenShell(AgentPaths.StateDirectory);
+        var installerPath = FindInstallerExecutablePath();
+        if (installerPath is null)
+        {
+            MessageBox.Show(
+                "A tela de configuracao do Agent nao foi localizada nesta instalacao.\n\nAtualize o Agent com o pacote completo do painel para disponibilizar o configurador local.",
+                ProductDisplayName,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        OpenShell(installerPath);
     }
 
-    private static void OpenLogsFolder()
+    private static string? FindInstallerExecutablePath()
     {
-        Directory.CreateDirectory(AgentPaths.StateDirectory);
-        OpenShell(AgentPaths.StateDirectory);
+        var candidates = new[]
+        {
+            AgentPaths.PreferredInstallerExecutablePath,
+            AgentPaths.PreferredInstallerSetupPath,
+            Path.Combine(AppContext.BaseDirectory, "..", "installer", "WebstationBackup.Agent.Installer.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "TRAT.Agent.Setup.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "WebstationBackup.Agent.Setup.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "installer", "WebstationBackup.Agent.Installer.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "TRAT.Agent.Setup.exe"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "WebstationBackup.Agent.Setup.exe")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var normalized = Path.GetFullPath(candidate);
+                if (File.Exists(normalized))
+                {
+                    return normalized;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
     }
 
     private static void OpenShell(string target)

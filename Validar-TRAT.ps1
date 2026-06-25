@@ -54,28 +54,34 @@ function Get-AntiForgeryToken {
     return $match.Groups[1].Value
 }
 
-if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+$email = $null
+$password = $null
+
+$packageRootProvided = -not [string]::IsNullOrWhiteSpace($PackageRoot)
+if (-not $packageRootProvided) {
     $PackageRoot = Join-Path $PSScriptRoot "artifacts\trat-local\TRAT.ControlPlane.Local"
 }
 
-$packageRootPath = Resolve-ExistingPath -PathValue $PackageRoot
-$localSettingsPath = Join-Path $packageRootPath "appsettings.Local.json"
-if (-not (Test-Path $localSettingsPath)) {
-    throw "Arquivo de configuracao local nao encontrado em: $localSettingsPath"
-}
+$localSettingsPath = $null
+if (Test-Path $PackageRoot) {
+    $packageRootPath = Resolve-ExistingPath -PathValue $PackageRoot
+    $localSettingsPath = Join-Path $packageRootPath "appsettings.Local.json"
+    if (Test-Path $localSettingsPath) {
+        $settings = Get-Content -Path $localSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $controlPlaneSettings = $settings.ControlPlane
+        if ($null -eq $controlPlaneSettings) {
+            throw "Secao ControlPlane nao encontrada em appsettings.Local.json"
+        }
 
-$settings = Get-Content -Path $localSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$controlPlaneSettings = $settings.ControlPlane
-if ($null -eq $controlPlaneSettings) {
-    throw "Secao ControlPlane nao encontrada em appsettings.Local.json"
+        $bootstrapAdmin = $controlPlaneSettings.BootstrapAdmin
+        if ($null -ne $bootstrapAdmin) {
+            $email = $bootstrapAdmin.PSObject.Properties["Email"]?.Value
+            $password = $bootstrapAdmin.PSObject.Properties["Password"]?.Value
+        }
+    }
 }
-
-$bootstrapAdmin = $controlPlaneSettings.BootstrapAdmin
-$email = $null
-$password = $null
-if ($null -ne $bootstrapAdmin) {
-    $email = $bootstrapAdmin.PSObject.Properties["Email"]?.Value
-    $password = $bootstrapAdmin.PSObject.Properties["Password"]?.Value
+elseif ($packageRootProvided) {
+    throw "PackageRoot nao encontrado: $PackageRoot"
 }
 
 if ([string]::IsNullOrWhiteSpace([string]$email)) {
@@ -86,6 +92,10 @@ if ([string]::IsNullOrWhiteSpace([string]$password)) {
 }
 
 if ([string]::IsNullOrWhiteSpace([string]$email) -or [string]::IsNullOrWhiteSpace([string]$password)) {
+    if ($null -ne $localSettingsPath -and -not (Test-Path $localSettingsPath)) {
+        throw "Credenciais nao encontradas. Informe -AdminEmail e -AdminPassword ou crie o arquivo $localSettingsPath."
+    }
+
     throw "Credenciais nao encontradas. Informe -AdminEmail e -AdminPassword (a senha bootstrap pode ter sido removida do appsettings.Local.json por seguranca)."
 }
 

@@ -26,7 +26,11 @@
 7. O `Tray App` passa a funcionar como aplicativo instalado do TRAT; atualizacoes devem substituir a versao anterior sem exigir fechamento manual do icone oculto.
 
 ## Regra operacional
+- Antes de validar qualquer alteracao, siga tambem o checklist global em `docs\CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md`.
 - Apos qualquer mudanca de codigo, configuracao ou empacotamento, reexecute o `ControlPlane` antes de validar o ambiente.
+- Apos qualquer mudanca em `src\Agent`, `scripts\agent`, `deploy\agent` ou no fluxo de download do Agent, regenere o pacote com `scripts\agent\Publish-Agent.ps1` antes de testar instalacao, update ou download pelo painel.
+- Se o painel estiver distribuindo o Agent pela pagina de downloads, regenere tambem o pacote local do painel com `scripts\controlplane\Publish-ControlPlane.ps1` para embutir os artifacts atualizados.
+- Nao considere a alteracao pronta enquanto a pagina `/admin/downloads` nao servir novamente o ZIP e o Setup atualizados do Agent.
 - No host afetado, rode novamente o `Agent` em `dry-run` antes de iniciar ou liberar o servico real.
 - Nao considere a mudanca validada sem rechecagem de painel, onboarding, heartbeat e logs locais.
 

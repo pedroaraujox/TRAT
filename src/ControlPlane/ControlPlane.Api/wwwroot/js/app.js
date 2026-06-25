@@ -157,4 +157,12 @@
       updatePrefixOptions();
     });
   }
+
+  const autoRefreshHost = document.querySelector('[data-auto-refresh-seconds][data-auto-refresh-active="true"]');
+  if (autoRefreshHost) {
+    const seconds = Number.parseInt(autoRefreshHost.getAttribute('data-auto-refresh-seconds') || '0', 10);
+    if (Number.isFinite(seconds) && seconds >= 5) {
+      window.setTimeout(() => window.location.reload(), seconds * 1000);
+    }
+  }
 })();

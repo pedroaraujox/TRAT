@@ -84,6 +84,58 @@ public sealed class JobRowViewModel
     public long UploadedItems { get; init; }
     public string? FailureCode { get; init; }
     public string? FailureMessage { get; init; }
+
+    public bool IsActive =>
+        string.Equals(State, "STARTED", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "PRECHECK", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "SCANNING", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "UPLOADING", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "VERIFYING", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "FINALIZING", StringComparison.OrdinalIgnoreCase);
+
+    public int ProgressPercent
+    {
+        get
+        {
+            if (string.Equals(State, "SUCCEEDED", StringComparison.OrdinalIgnoreCase))
+            {
+                return 100;
+            }
+
+            if (PlannedBytes > 0)
+            {
+                return ToPercent(UploadedBytes, PlannedBytes);
+            }
+
+            if (PlannedItems > 0)
+            {
+                return ToPercent(UploadedItems, PlannedItems);
+            }
+
+            return IsActive ? 5 : 0;
+        }
+    }
+
+    private static int ToPercent(long current, long total)
+    {
+        if (total <= 0)
+        {
+            return 0;
+        }
+
+        if (current <= 0)
+        {
+            return 0;
+        }
+
+        if (current >= total)
+        {
+            return 100;
+        }
+
+        var percent = (int)((current * 100L) / total);
+        return Math.Clamp(percent, 0, 100);
+    }
 }
 
 public sealed class AlertRowViewModel

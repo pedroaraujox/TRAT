@@ -17,15 +17,13 @@ internal sealed class TrayStatusForm : Form
     private readonly Label _rulesValue;
     private readonly Button _openPanelButton;
     private readonly Action _openPanel;
-    private readonly Action _openConfigFolder;
-    private readonly Action _openLogsFolder;
+    private readonly Action _openConfiguration;
     private readonly Action _refresh;
 
-    public TrayStatusForm(Action openPanel, Action openConfigFolder, Action openLogsFolder, Action refresh)
+    public TrayStatusForm(Action openPanel, Action openConfiguration, Action refresh)
     {
         _openPanel = openPanel;
-        _openConfigFolder = openConfigFolder;
-        _openLogsFolder = openLogsFolder;
+        _openConfiguration = openConfiguration;
         _refresh = refresh;
 
         Text = "TRAT Agent";
@@ -84,14 +82,7 @@ internal sealed class TrayStatusForm : Form
             Text = "Configuracao",
             AutoSize = true
         };
-        configButton.Click += (_, _) => _openConfigFolder();
-
-        var logsButton = new Button
-        {
-            Text = "Logs",
-            AutoSize = true
-        };
-        logsButton.Click += (_, _) => _openLogsFolder();
+        configButton.Click += (_, _) => _openConfiguration();
 
         var refreshButton = new Button
         {
@@ -102,7 +93,6 @@ internal sealed class TrayStatusForm : Form
 
         buttonPanel.Controls.Add(_openPanelButton);
         buttonPanel.Controls.Add(configButton);
-        buttonPanel.Controls.Add(logsButton);
         buttonPanel.Controls.Add(refreshButton);
 
         layout.Controls.Add(buttonPanel, 0, 9);

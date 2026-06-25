@@ -314,6 +314,7 @@ if (-not $MyInvocation.BoundParameters.ContainsKey("StateDir") -and (Test-Path $
 $resolvedPackageRoot = (Resolve-Path $PackageRoot).Path
 $binSourceDir = Join-Path $resolvedPackageRoot "bin"
 $traySourceDir = Join-Path $resolvedPackageRoot "tray"
+$installerSourceDir = Join-Path $resolvedPackageRoot "installer"
 $rootAgentExeSource = Join-Path $resolvedPackageRoot "WebstationBackup.Agent.Service.exe"
 $useEmbeddedBinLayout = Test-Path (Join-Path $binSourceDir "WebstationBackup.Agent.Service.exe")
 $agentExeSource = if ($useEmbeddedBinLayout) {
@@ -353,6 +354,12 @@ if (Test-Path (Join-Path $traySourceDir "WebstationBackup.Agent.Tray.exe")) {
     $trayInstallDir = Join-Path $InstallDir "tray"
     New-Item -ItemType Directory -Force -Path $trayInstallDir | Out-Null
     Copy-Item -Path (Join-Path $traySourceDir "*") -Destination $trayInstallDir -Recurse -Force
+}
+
+if (Test-Path (Join-Path $installerSourceDir "WebstationBackup.Agent.Installer.exe")) {
+    $installerInstallDir = Join-Path $InstallDir "installer"
+    New-Item -ItemType Directory -Force -Path $installerInstallDir | Out-Null
+    Copy-Item -Path (Join-Path $installerSourceDir "*") -Destination $installerInstallDir -Recurse -Force
 }
 
 Copy-MaintenanceScripts -PackageRoot $resolvedPackageRoot -StateDir $StateDir

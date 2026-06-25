@@ -400,6 +400,7 @@ public sealed class AgentIngestController(
             return NotFound("Job não encontrado.");
         }
 
+        var isReplay = job.FinishedAtUtc.HasValue;
         job.State = report.FinalState;
         job.FinishedAtUtc = report.FinishedAtUtc;
         job.PlannedBytes = report.PlannedBytes;
@@ -425,8 +426,19 @@ public sealed class AgentIngestController(
             }
         }
 
+        var existingArtifactKeys = await db.Artifacts.AsNoTracking()
+            .Where(a => a.JobId == job.Id)
+            .Select(a => a.Type + "\n" + a.Location)
+            .ToListAsync(ct);
+        var existingArtifactSet = new HashSet<string>(existingArtifactKeys, StringComparer.OrdinalIgnoreCase);
         foreach (var a in report.Artifacts)
         {
+            var artifactKey = a.Type + "\n" + a.Location;
+            if (!existingArtifactSet.Add(artifactKey))
+            {
+                continue;
+            }
+
             db.Artifacts.Add(new Artifact
             {
                 Id = Guid.NewGuid().ToString("N"),
@@ -438,11 +450,14 @@ public sealed class AgentIngestController(
         }
 
         await db.SaveChangesAsync(ct);
-        await operationalAlertService.ObserveJobFinalStateAsync(job, ct);
+        if (!isReplay)
+        {
+            await operationalAlertService.ObserveJobFinalStateAsync(job, ct);
+        }
         await operationalAlertService.ReconcileHostAsync(customerId, hostId, ct);
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId, ct);
-        if (customer is not null)
+        if (!isReplay && customer is not null)
         {
             var recipients = ParseEmails(customer.NotificationEmailsCsv);
             var subject = $"Backup {report.FinalState} - Cliente {customer.Name} - Host {hostId}";
@@ -465,7 +480,13 @@ public sealed class AgentIngestController(
             }
         }
 
-        logger.LogInformation("Job finalizado: customer={CustomerId} host={HostId} job={JobId} state={State}", customerId, hostId, jobId, report.FinalState);
+        logger.LogInformation(
+            "Job finalizado: customer={CustomerId} host={HostId} job={JobId} state={State} replay={Replay}",
+            customerId,
+            hostId,
+            jobId,
+            report.FinalState,
+            isReplay);
         return Ok();
     }
 

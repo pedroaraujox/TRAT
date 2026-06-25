@@ -245,6 +245,72 @@ body[data-theme="light"] .topbar-title {
     align-items: center;
 }
 
+.progress-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.progress-card-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.progress-track {
+    position: relative;
+    width: 100%;
+    height: 14px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.18);
+    border: 1px solid var(--border);
+}
+
+.progress-track.compact {
+    height: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--primary), #60a5fa);
+    transition: width 220ms ease;
+}
+
+.progress-fill.active {
+    background: linear-gradient(90deg, var(--primary), var(--success), var(--primary));
+    background-size: 200% 100%;
+    animation: progress-shift 2.2s linear infinite;
+}
+
+.progress-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+}
+
+.progress-caption {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+@keyframes progress-shift {
+    0% { background-position: 0 0; }
+    100% { background-position: 200% 0; }
+}
+
 .icon-button {
     width: 44px;
     height: 44px;

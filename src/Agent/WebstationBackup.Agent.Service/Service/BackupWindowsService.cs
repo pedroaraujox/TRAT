@@ -56,6 +56,8 @@ internal sealed class AgentWorkerOptions
 
 internal static class AgentWorker
 {
+    private static readonly TimeSpan JobTelemetryHeartbeatInterval = TimeSpan.FromMinutes(1);
+
     private sealed class ManualRunContext
     {
         public required string RunRequestId { get; init; }
@@ -72,6 +74,76 @@ internal static class AgentWorker
         public string? AwsCredentialTargetName { get; init; }
     }
 
+    private sealed class FinalJobReportPayload
+    {
+        public required string CustomerId { get; init; }
+        public required string HostId { get; init; }
+        public required string JobId { get; init; }
+        public required string FinalState { get; init; }
+        public required long PlannedBytes { get; init; }
+        public required long PlannedItems { get; init; }
+        public required long UploadedBytes { get; init; }
+        public required long UploadedItems { get; init; }
+        public string? FailureCode { get; init; }
+        public string? FailureMessage { get; init; }
+        public required DateTimeOffset FinishedAtUtc { get; init; }
+        public required FinalJobArtifactPayload[] Artifacts { get; init; }
+        public string? RunRequestId { get; init; }
+    }
+
+    private sealed class FinalJobArtifactPayload
+    {
+        public required string Type { get; init; }
+        public required string Location { get; init; }
+    }
+
+    private sealed class PersistedFinalJobReport
+    {
+        public required DateTimeOffset SavedAtUtc { get; init; }
+        public required FinalJobReportPayload Payload { get; init; }
+    }
+
+    private sealed class PendingFinalJobReport
+    {
+        public required string FilePath { get; init; }
+        public required PersistedFinalJobReport Content { get; init; }
+    }
+
+    private sealed class JobTelemetrySnapshot
+    {
+        private readonly object _sync = new();
+        private string _state;
+        private long _plannedBytes;
+        private long _plannedItems;
+        private long _uploadedBytes;
+        private long _uploadedItems;
+
+        public JobTelemetrySnapshot(string initialState)
+        {
+            _state = string.IsNullOrWhiteSpace(initialState) ? "STARTED" : initialState.Trim();
+        }
+
+        public void Update(string state, long plannedBytes, long plannedItems, long uploadedBytes, long uploadedItems)
+        {
+            lock (_sync)
+            {
+                _state = string.IsNullOrWhiteSpace(state) ? _state : state.Trim();
+                _plannedBytes = Math.Max(0, plannedBytes);
+                _plannedItems = Math.Max(0, plannedItems);
+                _uploadedBytes = Math.Max(0, uploadedBytes);
+                _uploadedItems = Math.Max(0, uploadedItems);
+            }
+        }
+
+        public (string State, long PlannedBytes, long PlannedItems, long UploadedBytes, long UploadedItems) Capture()
+        {
+            lock (_sync)
+            {
+                return (_state, _plannedBytes, _plannedItems, _uploadedBytes, _uploadedItems);
+            }
+        }
+    }
+
     public static async Task RunLoopAsync(AgentWorkerOptions options, CancellationToken ct)
     {
         var runtime = BootstrapOrThrow(options);
@@ -81,6 +153,7 @@ internal static class AgentWorker
             var nextRunDelay = TimeSpan.FromMinutes(1);
             try
             {
+                await FlushPendingFinalReportsAsync(runtime, ct);
                 var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
                 await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
                 await ReportConfigurationIfDueAsync(runtime, options.DryRun, effectivePolicy, ct);
@@ -140,6 +213,7 @@ internal static class AgentWorker
     public static async Task RunOnceAsync(AgentWorkerOptions options, CancellationToken ct)
     {
         var runtime = BootstrapOrThrow(options);
+        await FlushPendingFinalReportsAsync(runtime, ct);
         var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
         await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
         await ReportConfigurationAsync(runtime, options.DryRun, effectivePolicy, ct);
@@ -585,6 +659,276 @@ internal static class AgentWorker
         }
     }
 
+    private static async Task FlushPendingFinalReportsAsync(Runtime runtime, CancellationToken ct)
+    {
+        foreach (var pendingReport in LoadPendingFinalReports(runtime))
+        {
+            try
+            {
+                await runtime.ControlPlane.ReportFinalAsync(pendingReport.Content.Payload, ct);
+                DeletePendingFinalReport(pendingReport.FilePath, runtime.Logger);
+                runtime.Logger.Info("Report final pendente reenviado com sucesso.", new Dictionary<string, object?>
+                {
+                    ["jobId"] = pendingReport.Content.Payload.JobId,
+                    ["filePath"] = pendingReport.FilePath,
+                    ["savedAtUtc"] = pendingReport.Content.SavedAtUtc
+                });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                runtime.Logger.Warn("Falha ao reenviar report final pendente.", new Dictionary<string, object?>
+                {
+                    ["jobId"] = pendingReport.Content.Payload.JobId,
+                    ["filePath"] = pendingReport.FilePath,
+                    ["exceptionType"] = ex.GetType().FullName,
+                    ["message"] = ex.Message
+                });
+                return;
+            }
+        }
+    }
+
+    private static IReadOnlyList<PendingFinalJobReport> LoadPendingFinalReports(Runtime runtime)
+    {
+        var outboxDir = GetFinalReportOutboxDirectory(runtime.StateDir);
+        if (!Directory.Exists(outboxDir))
+        {
+            return Array.Empty<PendingFinalJobReport>();
+        }
+
+        var results = new List<PendingFinalJobReport>();
+        foreach (var filePath in Directory.GetFiles(outboxDir, "*.json").OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var raw = File.ReadAllText(filePath);
+                var content = JsonConvert.DeserializeObject<PersistedFinalJobReport>(raw);
+                if (content?.Payload is null)
+                {
+                    throw new InvalidOperationException("Arquivo de outbox sem payload válido.");
+                }
+
+                results.Add(new PendingFinalJobReport
+                {
+                    FilePath = filePath,
+                    Content = content
+                });
+            }
+            catch (Exception ex)
+            {
+                runtime.Logger.Warn("Arquivo de outbox de report final ignorado por falha de leitura.", new Dictionary<string, object?>
+                {
+                    ["filePath"] = filePath,
+                    ["exceptionType"] = ex.GetType().FullName,
+                    ["message"] = ex.Message
+                });
+                MarkPendingFinalReportAsCorrupted(filePath, runtime.Logger);
+            }
+        }
+
+        return results;
+    }
+
+    private static async Task TrySendOrPersistFinalReportAsync(Runtime runtime, FinalJobReportPayload payload, CancellationToken ct)
+    {
+        try
+        {
+            await runtime.ControlPlane.ReportFinalAsync(payload, ct);
+        }
+        catch (Exception ex)
+        {
+            var pendingPath = PersistPendingFinalReport(runtime, payload);
+            runtime.Logger.Error("Falha ao enviar report final; payload persistido para reenvio.", ex, new Dictionary<string, object?>
+            {
+                ["jobId"] = payload.JobId,
+                ["filePath"] = pendingPath,
+                ["finalState"] = payload.FinalState
+            });
+        }
+    }
+
+    private static string PersistPendingFinalReport(Runtime runtime, FinalJobReportPayload payload)
+    {
+        var outboxDir = GetFinalReportOutboxDirectory(runtime.StateDir);
+        Directory.CreateDirectory(outboxDir);
+
+        var fileName = string.Format(
+            "job-final-{0:yyyyMMddHHmmssfff}-{1}.json",
+            payload.FinishedAtUtc.UtcDateTime,
+            payload.JobId);
+        var filePath = Path.Combine(outboxDir, fileName);
+        var persisted = new PersistedFinalJobReport
+        {
+            SavedAtUtc = DateTimeOffset.UtcNow,
+            Payload = payload
+        };
+
+        WriteJsonAtomically(filePath, persisted);
+        return filePath;
+    }
+
+    private static string GetFinalReportOutboxDirectory(string stateDir)
+    {
+        return Path.Combine(stateDir, "outbox", "job-final");
+    }
+
+    private static void WriteJsonAtomically(string path, object payload)
+    {
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var tempPath = path + ".tmp";
+        File.WriteAllText(tempPath, JsonConvert.SerializeObject(payload, Formatting.Indented));
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+
+        File.Move(tempPath, path);
+    }
+
+    private static void DeletePendingFinalReport(string filePath, JsonFileLogger logger)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Warn("Nao foi possivel remover arquivo de outbox de report final ja reenviado.", new Dictionary<string, object?>
+            {
+                ["filePath"] = filePath,
+                ["exceptionType"] = ex.GetType().FullName,
+                ["message"] = ex.Message
+            });
+        }
+    }
+
+    private static void MarkPendingFinalReportAsCorrupted(string filePath, JsonFileLogger logger)
+    {
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                return;
+            }
+
+            var corruptedPath = filePath + ".corrupt";
+            if (File.Exists(corruptedPath))
+            {
+                File.Delete(corruptedPath);
+            }
+
+            File.Move(filePath, corruptedPath);
+        }
+        catch (Exception ex)
+        {
+            logger.Warn("Nao foi possivel isolar arquivo corrompido do outbox de report final.", new Dictionary<string, object?>
+            {
+                ["filePath"] = filePath,
+                ["exceptionType"] = ex.GetType().FullName,
+                ["message"] = ex.Message
+            });
+        }
+    }
+
+    private static Task StartJobTelemetryLoopAsync(Runtime runtime, string jobId, JobTelemetrySnapshot snapshot, CancellationToken ct)
+    {
+        return Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(JobTelemetryHeartbeatInterval, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                var telemetry = snapshot.Capture();
+                try
+                {
+                    await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
+                    await runtime.ControlPlane.ReportProgressAsync(new
+                    {
+                        customerId = runtime.Settings.CustomerId,
+                        hostId = runtime.Settings.HostId,
+                        jobId,
+                        state = telemetry.State,
+                        plannedBytes = telemetry.PlannedBytes,
+                        plannedItems = telemetry.PlannedItems,
+                        uploadedBytes = telemetry.UploadedBytes,
+                        uploadedItems = telemetry.UploadedItems,
+                        timestampUtc = DateTimeOffset.UtcNow
+                    }, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    runtime.Logger.Warn("Falha ao publicar telemetria periodica do job.", new Dictionary<string, object?>
+                    {
+                        ["jobId"] = jobId,
+                        ["state"] = telemetry.State,
+                        ["exceptionType"] = ex.GetType().FullName,
+                        ["message"] = ex.Message
+                    });
+                }
+            }
+        }, CancellationToken.None);
+    }
+
+    private static async Task StopJobTelemetryLoopAsync(CancellationTokenSource? cts, Task? task, JsonFileLogger logger, string jobId)
+    {
+        if (cts is not null)
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
+
+        if (task is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await task;
+        }
+        catch (Exception ex)
+        {
+            logger.Warn("Loop de telemetria do job terminou com erro.", new Dictionary<string, object?>
+            {
+                ["jobId"] = jobId,
+                ["exceptionType"] = ex.GetType().FullName,
+                ["message"] = ex.Message
+            });
+        }
+    }
+
     private static async Task ExecuteOneJobAsync(Runtime runtime, EffectiveRuntimePolicy effectivePolicy, bool dryRun, CancellationToken ct, ManualRunContext? manualRun)
     {
         var rules = runtime.Rules;
@@ -633,6 +977,9 @@ internal static class AgentWorker
         string? failureCode = null;
         string? failureMessage = null;
         var processingIssues = new List<BackupProcessingIssue>();
+        var telemetrySnapshot = new JobTelemetrySnapshot("STARTED");
+        CancellationTokenSource? telemetryCts = null;
+        Task? telemetryTask = null;
 
         await controlPlane.StartJobAsync(new
         {
@@ -642,6 +989,9 @@ internal static class AgentWorker
             startedAtUtc = DateTimeOffset.UtcNow,
             runRequestId = manualRun?.RunRequestId
         }, ct);
+
+        telemetryCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        telemetryTask = StartJobTelemetryLoopAsync(runtime, jobId, telemetrySnapshot, telemetryCts.Token);
 
         try
         {
@@ -655,6 +1005,7 @@ internal static class AgentWorker
             processingIssues.AddRange(buildResult.Issues);
 
             manifestPath = builder.SaveToFile(manifest, runtime.StateDir);
+            telemetrySnapshot.Update("SCANNING", manifest.PlannedBytes, manifest.PlannedItems, uploadedBytes, uploadedItems);
             logger.Info("Manifest gerado", new Dictionary<string, object?>
             {
                 ["jobId"] = jobId,
@@ -686,6 +1037,7 @@ internal static class AgentWorker
             {
                 uploadedBytes = manifest.PlannedBytes;
                 uploadedItems = manifest.PlannedItems;
+                telemetrySnapshot.Update("FINALIZING", manifest.PlannedBytes, manifest.PlannedItems, uploadedBytes, uploadedItems);
             }
             else
             {
@@ -732,6 +1084,7 @@ internal static class AgentWorker
                         continue;
                     }
 
+                    telemetrySnapshot.Update("UPLOADING", manifest.PlannedBytes, manifest.PlannedItems, uploadedBytes, uploadedItems);
                     if (uploadedItems % 100 == 0)
                     {
                         await controlPlane.ReportProgressAsync(new
@@ -781,25 +1134,29 @@ internal static class AgentWorker
         {
             failureCode = ex.GetType().Name.ToUpperInvariant();
             failureMessage = ex.Message;
+            telemetrySnapshot.Update("FAILED", manifest?.PlannedBytes ?? 0, manifest?.PlannedItems ?? 0, uploadedBytes, uploadedItems);
             logger.Error("Execucao do job falhou.", ex);
         }
+        telemetrySnapshot.Update(finalState, manifest?.PlannedBytes ?? 0, manifest?.PlannedItems ?? 0, uploadedBytes, uploadedItems);
+        await StopJobTelemetryLoopAsync(telemetryCts, telemetryTask, logger, jobId);
 
-        await controlPlane.ReportFinalAsync(new
+        var finalReport = new FinalJobReportPayload
         {
-            customerId = settings.CustomerId,
-            hostId = settings.HostId,
-            jobId,
-            finalState,
-            plannedBytes = manifest?.PlannedBytes ?? 0,
-            plannedItems = manifest?.PlannedItems ?? 0,
-            uploadedBytes,
-            uploadedItems,
-            failureCode,
-            failureMessage,
-            finishedAtUtc = DateTimeOffset.UtcNow,
-            artifacts = BuildArtifacts(manifestPath, issueReportPath, dryRun),
-            runRequestId = manualRun?.RunRequestId
-        }, ct);
+            CustomerId = settings.CustomerId,
+            HostId = settings.HostId,
+            JobId = jobId,
+            FinalState = finalState,
+            PlannedBytes = manifest?.PlannedBytes ?? 0,
+            PlannedItems = manifest?.PlannedItems ?? 0,
+            UploadedBytes = uploadedBytes,
+            UploadedItems = uploadedItems,
+            FailureCode = failureCode,
+            FailureMessage = failureMessage,
+            FinishedAtUtc = DateTimeOffset.UtcNow,
+            Artifacts = BuildArtifacts(manifestPath, issueReportPath, dryRun),
+            RunRequestId = manualRun?.RunRequestId
+        };
+        await TrySendOrPersistFinalReportAsync(runtime, finalReport, ct);
 
         var state = stateStore.Load();
         state.LastJobId = jobId;
@@ -807,22 +1164,22 @@ internal static class AgentWorker
         stateStore.Save(state);
     }
 
-    private static object[] BuildArtifacts(string? manifestPath, string? issueReportPath, bool dryRun)
+    private static FinalJobArtifactPayload[] BuildArtifacts(string? manifestPath, string? issueReportPath, bool dryRun)
     {
-        var artifacts = new List<object>();
+        var artifacts = new List<FinalJobArtifactPayload>();
         if (!string.IsNullOrWhiteSpace(manifestPath))
         {
-            artifacts.Add(new { type = "MANIFEST_LOCAL", location = manifestPath });
+            artifacts.Add(new FinalJobArtifactPayload { Type = "MANIFEST_LOCAL", Location = manifestPath! });
         }
 
         if (!string.IsNullOrWhiteSpace(issueReportPath))
         {
-            artifacts.Add(new { type = "JOB_ISSUES_LOCAL", location = issueReportPath });
+            artifacts.Add(new FinalJobArtifactPayload { Type = "JOB_ISSUES_LOCAL", Location = issueReportPath! });
         }
 
         if (dryRun)
         {
-            artifacts.Add(new { type = "DRY_RUN", location = "dry-run://no-upload" });
+            artifacts.Add(new FinalJobArtifactPayload { Type = "DRY_RUN", Location = "dry-run://no-upload" });
         }
 
         return artifacts.ToArray();

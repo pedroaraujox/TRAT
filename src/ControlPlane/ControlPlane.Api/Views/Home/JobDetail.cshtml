@@ -3,7 +3,7 @@
     ViewData["Title"] = $"Job {Model.Job.Id}";
 }
 
-<div class="page-header">
+<div class="page-header" data-auto-refresh-seconds="15" data-auto-refresh-active="@(Model.Job.IsActive ? "true" : "false")">
     <div>
         <h1>Job @Model.Job.Id</h1>
         <p>@(Model.Job.CustomerName ?? Model.Job.CustomerId) | @(Model.Job.Hostname ?? Model.Job.HostId)</p>
@@ -30,6 +30,29 @@
     <div class="stat-card">
         <span>Falha</span>
         <strong class="small-stat">@(string.IsNullOrWhiteSpace(Model.Job.FailureCode) ? "-" : Model.Job.FailureCode)</strong>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2>Progresso</h2>
+        @if (Model.Job.IsActive)
+        {
+            <span class="badge warning">Atualizacao automatica a cada 15s</span>
+        }
+    </div>
+    <div class="progress-card">
+        <div class="progress-card-header">
+            <strong>@ProgressSummary(Model.Job)</strong>
+            <span>@Model.Job.ProgressPercent%</span>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Model.Job.ProgressPercent" aria-label="Progresso do job">
+            <div class="progress-fill @(Model.Job.IsActive ? "active" : string.Empty)" style="width:@($"{Model.Job.ProgressPercent}%")"></div>
+        </div>
+        <div class="progress-meta">
+            <span>@ProgressDetail(Model.Job)</span>
+            <span>@StageLabel(Model.Job.State)</span>
+        </div>
     </div>
 </section>
 
@@ -123,6 +146,47 @@
 </section>
 
 @functions {
+    private static string ProgressSummary(JobRowViewModel job)
+    {
+        if (job.IsActive)
+        {
+            return "Job em execucao";
+        }
+
+        if (string.Equals(job.State, "SUCCEEDED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Job concluido com sucesso";
+        }
+
+        if (string.Equals(job.State, "FAILED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Job finalizado com falha";
+        }
+
+        return "Job encerrado";
+    }
+
+    private static string ProgressDetail(JobRowViewModel job)
+    {
+        return $"{job.UploadedItems:N0} / {job.PlannedItems:N0} itens | {FormatBytes(job.UploadedBytes)} / {FormatBytes(job.PlannedBytes)}";
+    }
+
+    private static string StageLabel(string state)
+    {
+        return state switch
+        {
+            "STARTED" => "Preparando",
+            "PRECHECK" => "Validando",
+            "SCANNING" => "Mapeando arquivos",
+            "UPLOADING" => "Enviando para AWS",
+            "VERIFYING" => "Validando integridade",
+            "FINALIZING" => "Finalizando",
+            "SUCCEEDED" => "Concluido",
+            "FAILED" => "Falha",
+            _ => state
+        };
+    }
+
     private static string FormatBytes(long value)
     {
         string[] suffixes = ["B", "KB", "MB", "GB", "TB"];

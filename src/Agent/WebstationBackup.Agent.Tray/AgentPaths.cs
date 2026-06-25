@@ -57,4 +57,6 @@ internal static class AgentPaths
     public static string SettingsFilePath => Path.Combine(StateDirectory, "agent.settings.json");
     public static string LogFilePath => Path.Combine(StateDirectory, "agent.log.jsonl");
     public static string RulesFilePath => Path.Combine(StateDirectory, "project.rules.json");
+    public static string PreferredInstallerExecutablePath => Path.Combine(InstallDirectory, "installer", "WebstationBackup.Agent.Installer.exe");
+    public static string PreferredInstallerSetupPath => Path.Combine(InstallDirectory, "TRAT.Agent.Setup.exe");
 }

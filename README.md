@@ -1,5 +1,13 @@
 # TRAT
 
+## Regra operacional geral
+
+- Qualquer alteracao no projeto exige rebuild ou republish dos artefatos afetados antes de validar.
+- Nenhuma mudanca e considerada pronta apenas porque compilou no codigo-fonte; a validacao deve acontecer no artefato real distribuido.
+- Checklist operacional completo: `docs\CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md`.
+- Fluxo unico recomendado: `.\Liberar-TRAT.ps1`.
+- Evidencia obrigatoria: `.\Liberar-TRAT.ps1` gera `release report` em `artifacts\release-reports`.
+
 ## Execucao local simples
 
 Para testar em outro servidor sem publicar na internet:
