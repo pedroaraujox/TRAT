@@ -15,6 +15,34 @@ internal sealed class BackupManifest
     public required ManifestIntegrityPolicy Integrity { get; init; }
 }
 
+internal sealed class BackupProcessingIssue
+{
+    public required string Stage { get; init; }
+    public required string Path { get; init; }
+    public required string Code { get; init; }
+    public required string Message { get; init; }
+    public bool IsBlocking { get; init; }
+}
+
+internal sealed class ConfiguredPathValidationResult
+{
+    public required IReadOnlyList<string> IncludePaths { get; init; }
+    public required IReadOnlyList<string> ExcludePaths { get; init; }
+    public required IReadOnlyList<BackupProcessingIssue> Issues { get; init; }
+}
+
+internal sealed class FileScanResult
+{
+    public required IReadOnlyList<string> Files { get; init; }
+    public required IReadOnlyList<BackupProcessingIssue> Issues { get; init; }
+}
+
+internal sealed class ManifestBuildResult
+{
+    public required BackupManifest Manifest { get; init; }
+    public required IReadOnlyList<BackupProcessingIssue> Issues { get; init; }
+}
+
 internal sealed class ManifestIntegrityPolicy
 {
     public required bool HashesEnabled { get; init; }
@@ -30,4 +58,3 @@ internal sealed class ManifestItem
     public required DateTimeOffset LastWriteTimeUtc { get; init; }
     public string? Sha256Base64 { get; init; }
 }
-

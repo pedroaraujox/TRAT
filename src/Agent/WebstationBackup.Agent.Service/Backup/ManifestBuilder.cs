@@ -10,13 +10,17 @@ namespace WebstationBackup.Agent.Service.Backup;
 
 internal sealed class ManifestBuilder
 {
-    public BackupManifest Build(string jobId, AgentSettings settings, ProjectRules rules, IReadOnlyList<string> files)
+    public ManifestBuildResult Build(string jobId, AgentSettings settings, ProjectRules rules, IReadOnlyList<string> files)
     {
         var items = new List<ManifestItem>(files.Count);
+        var issues = new List<BackupProcessingIssue>();
         long plannedBytes = 0;
 
         var hashesEnabled = rules.Defaults.Scan.UseHashes.Enabled && rules.JobDefinition.OkCriteria.Integrity.RequireChecksumWhenAvailable;
         var hashLimit = rules.Defaults.Scan.UseHashes.HashSmallFilesUpToBytes;
+        var maxAttempts = Math.Max(1, rules.Defaults.Upload.Retry.MaxAttempts);
+        var initialDelay = Math.Max(0, rules.Defaults.Upload.Retry.InitialDelaySeconds);
+        var maxDelay = Math.Max(initialDelay, rules.Defaults.Upload.Retry.MaxDelaySeconds);
 
         foreach (var file in files)
         {
@@ -26,11 +30,13 @@ internal sealed class ManifestBuilder
                 fi = new FileInfo(file);
                 if (!fi.Exists)
                 {
+                    issues.Add(CreateIssue("manifest", file, "FILE_MISSING", "Arquivo nao estava mais disponivel durante a montagem do manifest.", isBlocking: true));
                     continue;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                issues.Add(CreateIssue("manifest", file, BuildIssueCode(ex), $"Falha ao inspecionar arquivo durante a montagem do manifest. {ex.Message}", isBlocking: true));
                 continue;
             }
 
@@ -39,10 +45,25 @@ internal sealed class ManifestBuilder
             string? sha256 = null;
             if (hashesEnabled && fi.Length <= hashLimit)
             {
-                sha256 = ComputeSha256Base64(file);
+                var hashResult = ComputeSha256Base64(file, maxAttempts, initialDelay, maxDelay);
+                sha256 = hashResult.Value;
+                if (hashResult.Issue is not null)
+                {
+                    issues.Add(hashResult.Issue);
+                }
             }
 
-            var rel = MakeRelativePathForKey(settings.IncludePaths, file);
+            string rel;
+            try
+            {
+                rel = MakeRelativePathForKey(settings.IncludePaths, file);
+            }
+            catch (Exception ex)
+            {
+                issues.Add(CreateIssue("manifest", file, BuildIssueCode(ex), $"Falha ao calcular caminho relativo para upload. {ex.Message}", isBlocking: true));
+                continue;
+            }
+
             items.Add(new ManifestItem
             {
                 AbsolutePath = file,
@@ -53,21 +74,25 @@ internal sealed class ManifestBuilder
             });
         }
 
-        return new BackupManifest
+        return new ManifestBuildResult
         {
-            JobId = jobId,
-            CustomerId = settings.CustomerId,
-            HostId = settings.HostId,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            Items = items,
-            PlannedBytes = plannedBytes,
-            PlannedItems = items.Count,
-            Integrity = new ManifestIntegrityPolicy
+            Manifest = new BackupManifest
             {
-                HashesEnabled = hashesEnabled,
-                HashSmallFilesUpToBytes = hashLimit,
-                Algorithm = "SHA256"
-            }
+                JobId = jobId,
+                CustomerId = settings.CustomerId,
+                HostId = settings.HostId,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                Items = items,
+                PlannedBytes = plannedBytes,
+                PlannedItems = items.Count,
+                Integrity = new ManifestIntegrityPolicy
+                {
+                    HashesEnabled = hashesEnabled,
+                    HashSmallFilesUpToBytes = hashLimit,
+                    Algorithm = "SHA256"
+                }
+            },
+            Issues = issues
         };
     }
 
@@ -79,21 +104,50 @@ internal sealed class ManifestBuilder
         return filePath;
     }
 
-    private static string? ComputeSha256Base64(string path)
+    private static HashComputationResult ComputeSha256Base64(string path, int maxAttempts, int initialDelaySeconds, int maxDelaySeconds)
     {
-        try
+        Exception? lastException = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (var sha = SHA256.Create())
+            try
             {
-                var hash = sha.ComputeHash(fs);
-                return Convert.ToBase64String(hash);
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                using (var sha = SHA256.Create())
+                {
+                    var hash = sha.ComputeHash(fs);
+                    return new HashComputationResult
+                    {
+                        Value = Convert.ToBase64String(hash),
+                        Issue = null
+                    };
+                }
+            }
+
+            catch (Exception ex) when (attempt < maxAttempts && IsRetryableAccessException(ex))
+            {
+                lastException = ex;
+                var delaySeconds = Math.Min(maxDelaySeconds, Math.Max(initialDelaySeconds, initialDelaySeconds * attempt));
+                if (delaySeconds > 0)
+                {
+                    System.Threading.Thread.Sleep(TimeSpan.FromSeconds(delaySeconds));
+                }
+            }
+            catch (Exception ex)
+            {
+                return new HashComputationResult
+                {
+                    Value = null,
+                    Issue = CreateIssue("hash", path, BuildIssueCode(ex), $"Checksum SHA256 indisponivel para o arquivo. O item seguira para upload sem checksum local. {ex.Message}", isBlocking: false)
+                };
             }
         }
-        catch
+
+        return new HashComputationResult
         {
-            return null;
-        }
+            Value = null,
+            Issue = CreateIssue("hash", path, BuildIssueCode(lastException), $"Checksum SHA256 indisponivel apos tentativas de leitura. O item seguira para upload sem checksum local. {lastException?.Message}", isBlocking: false)
+        };
     }
 
     private static string MakeRelativePathForKey(string[] includePaths, string fullPath)
@@ -116,5 +170,50 @@ internal sealed class ManifestBuilder
 
         return Path.GetFileName(fullPath);
     }
-}
 
+    private sealed class HashComputationResult
+    {
+        public string? Value { get; init; }
+        public BackupProcessingIssue? Issue { get; init; }
+    }
+
+    private static BackupProcessingIssue CreateIssue(string stage, string path, string code, string message, bool isBlocking)
+    {
+        return new BackupProcessingIssue
+        {
+            Stage = stage,
+            Path = path,
+            Code = code,
+            Message = message,
+            IsBlocking = isBlocking
+        };
+    }
+
+    private static bool IsRetryableAccessException(Exception ex)
+    {
+        return ex switch
+        {
+            IOException ioEx => IsSharingOrLockViolation(ioEx),
+            _ => false
+        };
+    }
+
+    private static string BuildIssueCode(Exception? ex)
+    {
+        return ex switch
+        {
+            null => "IO_ERROR",
+            PathTooLongException => "PATH_TOO_LONG",
+            UnauthorizedAccessException => "ACCESS_DENIED",
+            IOException ioEx when IsSharingOrLockViolation(ioEx) => "FILE_IN_USE",
+            IOException => "IO_ERROR",
+            _ => ex.GetType().Name.ToUpperInvariant()
+        };
+    }
+
+    private static bool IsSharingOrLockViolation(IOException ex)
+    {
+        var win32Code = ex.HResult & 0xFFFF;
+        return win32Code == 32 || win32Code == 33;
+    }
+}

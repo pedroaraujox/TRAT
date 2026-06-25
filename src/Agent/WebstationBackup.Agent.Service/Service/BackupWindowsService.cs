@@ -7,6 +7,7 @@ using System.Reflection;
 using System.ServiceProcess;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using WebstationBackup.Agent.Service.Aws;
 using WebstationBackup.Agent.Service.Backup;
 using WebstationBackup.Agent.Service.Core;
@@ -364,6 +365,29 @@ internal static class AgentWorker
 
         var stagingPath = "N/A";
         var diskOk = true;
+        var fileScanner = new FileScanner();
+        var configuredPathValidation = fileScanner.ValidateConfiguredPaths(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
+        var blockingPathIssues = configuredPathValidation.Issues.Where(i => i.IsBlocking).ToArray();
+        if (blockingPathIssues.Length > 0)
+        {
+            diskOk = false;
+            precheckOk = false;
+            precheckMessages.Add(BuildIssueSummary(blockingPathIssues));
+            logger.Warn("Precheck de paths encontrou problemas bloqueantes.", new Dictionary<string, object?>
+            {
+                ["issueCount"] = blockingPathIssues.Length,
+                ["issues"] = blockingPathIssues.Select(i => new { i.Code, i.Path, i.Message }).ToArray()
+            });
+        }
+        else if (configuredPathValidation.Issues.Count > 0)
+        {
+            precheckMessages.Add(BuildIssueSummary(configuredPathValidation.Issues));
+            logger.Warn("Precheck de paths encontrou alertas nao bloqueantes.", new Dictionary<string, object?>
+            {
+                ["issueCount"] = configuredPathValidation.Issues.Count,
+                ["issues"] = configuredPathValidation.Issues.Select(i => new { i.Code, i.Path, i.Message }).ToArray()
+            });
+        }
 
         var credOk = true;
         string? awsCredentialSource = null;
@@ -602,11 +626,13 @@ internal static class AgentWorker
         var jobId = Guid.NewGuid().ToString("N");
         BackupManifest? manifest = null;
         string? manifestPath = null;
+        string? issueReportPath = null;
         long uploadedBytes = 0;
         long uploadedItems = 0;
         var finalState = "FAILED";
         string? failureCode = null;
         string? failureMessage = null;
+        var processingIssues = new List<BackupProcessingIssue>();
 
         await controlPlane.StartJobAsync(new
         {
@@ -620,10 +646,13 @@ internal static class AgentWorker
         try
         {
             var scanner = new FileScanner();
-            var files = scanner.ScanFiles(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
+            var scanResult = scanner.ScanFiles(effectivePolicy.IncludePaths, effectivePolicy.ExcludePaths);
+            processingIssues.AddRange(scanResult.Issues);
 
             var builder = new ManifestBuilder();
-            manifest = builder.Build(jobId, settings, rules, files);
+            var buildResult = builder.Build(jobId, settings, rules, scanResult.Files);
+            manifest = buildResult.Manifest;
+            processingIssues.AddRange(buildResult.Issues);
 
             manifestPath = builder.SaveToFile(manifest, runtime.StateDir);
             logger.Info("Manifest gerado", new Dictionary<string, object?>
@@ -636,7 +665,8 @@ internal static class AgentWorker
                 ["policyId"] = effectivePolicy.PolicyId,
                 ["cpuLimitPercent"] = effectivePolicy.CpuLimitPercent,
                 ["networkLimitMbit"] = effectivePolicy.NetworkLimitMbit,
-                ["triggerType"] = manualRun?.TriggerType ?? "scheduled"
+                ["triggerType"] = manualRun?.TriggerType ?? "scheduled",
+                ["issueCount"] = processingIssues.Count
             });
 
             await controlPlane.ReportProgressAsync(new
@@ -659,6 +689,7 @@ internal static class AgentWorker
             }
             else
             {
+                var retrySettings = rules.Defaults.Upload.Retry;
                 var resolvedCredentials = AwsCredentialResolver.ResolveOrThrow(
                     targetSettings.AwsCredentialTargetName,
                     targetSettings.AwsCredentialDpapiProtected);
@@ -667,14 +698,39 @@ internal static class AgentWorker
                     ["credentialSource"] = resolvedCredentials.Source,
                     ["credentialReference"] = resolvedCredentials.Reference
                 });
-                var uploader = new S3Uploader(targetSettings.AwsRegion!, targetSettings.S3BucketName!, targetSettings.S3KeyPrefix!, resolvedCredentials.Credentials, logger);
+                var uploader = new S3Uploader(
+                    targetSettings.AwsRegion!,
+                    targetSettings.S3BucketName!,
+                    targetSettings.S3KeyPrefix!,
+                    resolvedCredentials.Credentials,
+                    logger,
+                    Math.Max(1, retrySettings.MaxAttempts),
+                    TimeSpan.FromSeconds(Math.Max(0, retrySettings.InitialDelaySeconds)),
+                    TimeSpan.FromSeconds(Math.Max(retrySettings.InitialDelaySeconds, retrySettings.MaxDelaySeconds)));
 
                 foreach (var item in manifest.Items)
                 {
                     ct.ThrowIfCancellationRequested();
-                    await uploader.UploadFileAndVerifyAsync(item.AbsolutePath, item.RelativePath, item.Sha256Base64, ct);
-                    uploadedBytes += item.SizeBytes;
-                    uploadedItems += 1;
+                    try
+                    {
+                        await uploader.UploadFileAndVerifyAsync(item.AbsolutePath, item.RelativePath, item.Sha256Base64, ct);
+                        uploadedBytes += item.SizeBytes;
+                        uploadedItems += 1;
+                    }
+                    catch (Exception ex)
+                    {
+                        var issue = CreateProcessingIssue("upload", item.AbsolutePath, BuildIssueCode(ex), $"Arquivo ignorado durante upload. {ex.Message}", isBlocking: true);
+                        processingIssues.Add(issue);
+                        logger.Warn("Arquivo ignorado durante upload.", new Dictionary<string, object?>
+                        {
+                            ["jobId"] = jobId,
+                            ["path"] = item.AbsolutePath,
+                            ["relativePath"] = item.RelativePath,
+                            ["exceptionType"] = ex.GetType().FullName,
+                            ["message"] = ex.Message
+                        });
+                        continue;
+                    }
 
                     if (uploadedItems % 100 == 0)
                     {
@@ -694,20 +750,32 @@ internal static class AgentWorker
                 }
             }
 
-            finalState = "SUCCEEDED";
-            if (rules.JobDefinition.OkCriteria.BytesPlannedMustEqualBytesConfirmedOnS3 && uploadedBytes != manifest.PlannedBytes)
+            if (processingIssues.Any(i => i.IsBlocking))
+            {
+                finalState = "FAILED";
+                failureCode = BuildFailureCode(processingIssues);
+                failureMessage = BuildIssueSummary(processingIssues);
+            }
+            else
+            {
+                finalState = "SUCCEEDED";
+            }
+
+            if (finalState == "SUCCEEDED" && rules.JobDefinition.OkCriteria.BytesPlannedMustEqualBytesConfirmedOnS3 && uploadedBytes != manifest.PlannedBytes)
             {
                 finalState = "FAILED";
                 failureCode = "BYTES_MISMATCH";
                 failureMessage = $"Bytes enviados ({uploadedBytes}) diferem do planejado ({manifest.PlannedBytes}).";
             }
 
-            if (rules.JobDefinition.OkCriteria.CountPlannedMustEqualCountConfirmedOnS3 && uploadedItems != manifest.PlannedItems)
+            if (finalState == "SUCCEEDED" && rules.JobDefinition.OkCriteria.CountPlannedMustEqualCountConfirmedOnS3 && uploadedItems != manifest.PlannedItems)
             {
                 finalState = "FAILED";
                 failureCode = "ITEMS_MISMATCH";
                 failureMessage = $"Itens enviados ({uploadedItems}) diferem do planejado ({manifest.PlannedItems}).";
             }
+
+            issueReportPath = SaveIssueReportIfNeeded(jobId, runtime.StateDir, processingIssues);
         }
         catch (Exception ex)
         {
@@ -729,11 +797,7 @@ internal static class AgentWorker
             failureCode,
             failureMessage,
             finishedAtUtc = DateTimeOffset.UtcNow,
-            artifacts = dryRun
-                ? new[] { new { type = "MANIFEST_LOCAL", location = manifestPath ?? "N/A" }, new { type = "DRY_RUN", location = "dry-run://no-upload" } }
-                : manifestPath is null
-                    ? Array.Empty<object>()
-                    : new[] { new { type = "MANIFEST_LOCAL", location = manifestPath } },
+            artifacts = BuildArtifacts(manifestPath, issueReportPath, dryRun),
             runRequestId = manualRun?.RunRequestId
         }, ct);
 
@@ -741,6 +805,121 @@ internal static class AgentWorker
         state.LastJobId = jobId;
         state.LastFinalState = finalState;
         stateStore.Save(state);
+    }
+
+    private static object[] BuildArtifacts(string? manifestPath, string? issueReportPath, bool dryRun)
+    {
+        var artifacts = new List<object>();
+        if (!string.IsNullOrWhiteSpace(manifestPath))
+        {
+            artifacts.Add(new { type = "MANIFEST_LOCAL", location = manifestPath });
+        }
+
+        if (!string.IsNullOrWhiteSpace(issueReportPath))
+        {
+            artifacts.Add(new { type = "JOB_ISSUES_LOCAL", location = issueReportPath });
+        }
+
+        if (dryRun)
+        {
+            artifacts.Add(new { type = "DRY_RUN", location = "dry-run://no-upload" });
+        }
+
+        return artifacts.ToArray();
+    }
+
+    private static string? SaveIssueReportIfNeeded(string jobId, string stateDir, IReadOnlyCollection<BackupProcessingIssue> issues)
+    {
+        if (issues.Count == 0)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(stateDir);
+        var reportPath = Path.Combine(stateDir, $"issues.{jobId}.json");
+        var payload = new
+        {
+            jobId,
+            createdAtUtc = DateTimeOffset.UtcNow,
+            issueCount = issues.Count,
+            issues
+        };
+
+        File.WriteAllText(reportPath, JsonConvert.SerializeObject(payload, Formatting.Indented));
+        return reportPath;
+    }
+
+    private static string BuildFailureCode(IReadOnlyCollection<BackupProcessingIssue> issues)
+    {
+        if (issues.Any(i => string.Equals(i.Code, "INCLUDE_PATH_MISSING", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "PATH_VALIDATION_FAILED";
+        }
+
+        if (issues.Any(i => string.Equals(i.Code, "PATH_TOO_LONG", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "LONG_PATH_NOT_SUPPORTED";
+        }
+
+        if (issues.Any(i => string.Equals(i.Code, "FILE_IN_USE", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "FILES_IN_USE_SKIPPED";
+        }
+
+        if (issues.Any(i => string.Equals(i.Stage, "upload", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "FILES_SKIPPED";
+        }
+
+        return "JOB_HAS_SKIPPED_ITEMS";
+    }
+
+    private static string BuildIssueSummary(IEnumerable<BackupProcessingIssue> issues)
+    {
+        var materialized = issues.ToArray();
+        if (materialized.Length == 0)
+        {
+            return "Nenhum problema de path/arquivo foi detectado.";
+        }
+
+        var sample = materialized
+            .Take(3)
+            .Select(i => $"[{i.Code}] {i.Path}")
+            .ToArray();
+
+        return $"Foram detectados {materialized.Length} problema(s) que podem comprometer a integridade do backup. Exemplos: {string.Join("; ", sample)}.";
+    }
+
+    private static BackupProcessingIssue CreateProcessingIssue(string stage, string path, string code, string message, bool isBlocking)
+    {
+        return new BackupProcessingIssue
+        {
+            Stage = stage,
+            Path = path,
+            Code = code,
+            Message = message,
+            IsBlocking = isBlocking
+        };
+    }
+
+    private static string BuildIssueCode(Exception ex)
+    {
+        return ex switch
+        {
+            PathTooLongException => "PATH_TOO_LONG",
+            UnauthorizedAccessException => "ACCESS_DENIED",
+            IOException ioEx when IsSharingOrLockViolation(ioEx) => "FILE_IN_USE",
+            FileNotFoundException => "FILE_MISSING",
+            DirectoryNotFoundException => "DIRECTORY_MISSING",
+            IOException => "IO_ERROR",
+            _ => ex.GetType().Name.ToUpperInvariant()
+        };
+    }
+
+    private static bool IsSharingOrLockViolation(IOException ex)
+    {
+        var win32Code = ex.HResult & 0xFFFF;
+        return win32Code == 32 || win32Code == 33;
     }
 
     private static bool IsPlaceholderAwsConfiguration(ExecutionTargetSettings settings)

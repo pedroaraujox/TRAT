@@ -18,12 +18,18 @@ internal sealed class S3Uploader
     private readonly ILogger _logger;
     private readonly string _bucket;
     private readonly string _keyPrefix;
+    private readonly int _maxAttempts;
+    private readonly TimeSpan _initialDelay;
+    private readonly TimeSpan _maxDelay;
 
-    public S3Uploader(string region, string bucket, string keyPrefix, AWSCredentials credentials, ILogger logger)
+    public S3Uploader(string region, string bucket, string keyPrefix, AWSCredentials credentials, ILogger logger, int maxAttempts, TimeSpan initialDelay, TimeSpan maxDelay)
     {
         _bucket = bucket;
         _keyPrefix = keyPrefix.Trim().TrimEnd('/') + "/";
         _logger = logger;
+        _maxAttempts = Math.Max(1, maxAttempts);
+        _initialDelay = initialDelay < TimeSpan.Zero ? TimeSpan.Zero : initialDelay;
+        _maxDelay = maxDelay < _initialDelay ? _initialDelay : maxDelay;
 
         _s3 = new AmazonS3Client(credentials, RegionEndpoint.GetBySystemName(region));
     }
@@ -38,21 +44,22 @@ internal sealed class S3Uploader
             throw new FileNotFoundException("Arquivo não encontrado para upload.", absolutePath);
         }
 
-        var put = new PutObjectRequest
-        {
-            BucketName = _bucket,
-            Key = key,
-            FilePath = absolutePath,
-            AutoCloseStream = true
-        };
-
-        if (!string.IsNullOrWhiteSpace(sha256Base64))
-        {
-            put.Metadata.Add("sha256b64", sha256Base64);
-        }
-
         try
         {
+            using var stream = await OpenReadableStreamWithRetryAsync(absolutePath, ct);
+            var put = new PutObjectRequest
+            {
+                BucketName = _bucket,
+                Key = key,
+                InputStream = stream,
+                AutoCloseStream = false
+            };
+
+            if (!string.IsNullOrWhiteSpace(sha256Base64))
+            {
+                put.Metadata.Add("sha256b64", sha256Base64);
+            }
+
             var resp = await _s3.PutObjectAsync(put, ct);
             _logger.Info("S3 put_object ok", new Dictionary<string, object?>
             {
@@ -85,5 +92,72 @@ internal sealed class S3Uploader
                 throw new InvalidOperationException("Falha de verificação: metadata sha256b64 no S3 não confere.");
             }
         }
+    }
+
+    private async Task<FileStream> OpenReadableStreamWithRetryAsync(string path, CancellationToken ct)
+    {
+        Exception? lastException = null;
+
+        for (var attempt = 1; attempt <= _maxAttempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            }
+            catch (Exception ex) when (attempt < _maxAttempts && IsRetryableReadException(ex))
+            {
+                lastException = ex;
+                var delay = CalculateDelay(attempt);
+                if (delay > TimeSpan.Zero)
+                {
+                    await Task.Delay(delay, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw BuildOpenFailure(path, ex, attempt);
+            }
+        }
+
+        throw BuildOpenFailure(path, lastException ?? new IOException("Falha ao abrir arquivo para upload."), _maxAttempts);
+    }
+
+    private TimeSpan CalculateDelay(int attempt)
+    {
+        var multiplier = Math.Max(1, attempt);
+        var delay = TimeSpan.FromMilliseconds(_initialDelay.TotalMilliseconds * multiplier);
+        return delay <= _maxDelay ? delay : _maxDelay;
+    }
+
+    private static bool IsRetryableReadException(Exception ex)
+    {
+        return ex switch
+        {
+            IOException ioEx => IsSharingOrLockViolation(ioEx),
+            _ => false
+        };
+    }
+
+    private static Exception BuildOpenFailure(string path, Exception ex, int attempts)
+    {
+        var message = ex switch
+        {
+            PathTooLongException => $"Path muito longo para upload: '{path}'.",
+            UnauthorizedAccessException => $"Acesso negado ao abrir o arquivo para upload: '{path}'.",
+            IOException ioEx when IsSharingOrLockViolation(ioEx) => $"Arquivo em uso ou bloqueado para leitura apos {attempts} tentativa(s): '{path}'.",
+            FileNotFoundException => $"Arquivo nao encontrado para upload: '{path}'.",
+            DirectoryNotFoundException => $"Diretorio nao encontrado para upload: '{path}'.",
+            _ => $"Falha ao abrir o arquivo para upload: '{path}'. {ex.Message}"
+        };
+
+        return new IOException(message, ex);
+    }
+
+    private static bool IsSharingOrLockViolation(IOException ex)
+    {
+        var win32Code = ex.HResult & 0xFFFF;
+        return win32Code == 32 || win32Code == 33;
     }
 }

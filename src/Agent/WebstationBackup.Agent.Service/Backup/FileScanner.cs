@@ -20,10 +20,25 @@ internal sealed class FileScanner
         "$RECYCLE.BIN"
     };
 
-    public IReadOnlyList<string> ScanFiles(IEnumerable<string> includePaths, IEnumerable<string> excludePaths)
+    public ConfiguredPathValidationResult ValidateConfiguredPaths(IEnumerable<string> includePaths, IEnumerable<string> excludePaths)
     {
-        var includes = includePaths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var excludes = excludePaths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizePath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var issues = new List<BackupProcessingIssue>();
+        var includes = NormalizeConfiguredPaths(includePaths, "include", issues);
+        var excludes = NormalizeConfiguredPaths(excludePaths, "exclude", issues);
+
+        return new ConfiguredPathValidationResult
+        {
+            IncludePaths = includes,
+            ExcludePaths = excludes,
+            Issues = issues
+        };
+    }
+
+    public FileScanResult ScanFiles(IEnumerable<string> includePaths, IEnumerable<string> excludePaths)
+    {
+        var validation = ValidateConfiguredPaths(includePaths, excludePaths);
+        var includes = validation.IncludePaths.ToArray();
+        var excludes = validation.ExcludePaths.ToArray();
 
         var results = new List<string>(capacity: 4096);
         foreach (var root in includes)
@@ -42,7 +57,7 @@ internal sealed class FileScanner
                 continue;
             }
 
-            foreach (var file in EnumerateFilesSafe(root))
+            foreach (var file in EnumerateFilesSafe(root, validation.Issues))
             {
                 if (IsExcluded(file, excludes) || IsIgnoredMetadataFile(file))
                 {
@@ -52,10 +67,56 @@ internal sealed class FileScanner
             }
         }
 
-        return results.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return new FileScanResult
+        {
+            Files = results.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            Issues = validation.Issues
+        };
     }
 
-    private static IEnumerable<string> EnumerateFilesSafe(string root)
+    private static IReadOnlyList<string> NormalizeConfiguredPaths(IEnumerable<string> paths, string scope, ICollection<BackupProcessingIssue> issues)
+    {
+        var normalized = new List<string>();
+
+        foreach (var rawPath in paths.Where(p => !string.IsNullOrWhiteSpace(p)))
+        {
+            string candidate;
+            try
+            {
+                candidate = NormalizePath(rawPath);
+            }
+            catch (Exception ex)
+            {
+                issues.Add(CreateIssue("path_validation", rawPath ?? string.Empty, BuildIssueCode(ex), $"Falha ao normalizar path configurado de {scope}. {ex.Message}", isBlocking: scope == "include"));
+                continue;
+            }
+
+            var existsAsFile = false;
+            var existsAsDirectory = false;
+            try
+            {
+                existsAsFile = File.Exists(candidate);
+                existsAsDirectory = Directory.Exists(candidate);
+            }
+            catch (Exception ex)
+            {
+                issues.Add(CreateIssue("path_validation", candidate, BuildIssueCode(ex), $"Falha ao validar path configurado de {scope}. {ex.Message}", isBlocking: scope == "include"));
+                continue;
+            }
+
+            if (!existsAsFile && !existsAsDirectory)
+            {
+                issues.Add(CreateIssue("path_validation", candidate, scope == "include" ? "INCLUDE_PATH_MISSING" : "EXCLUDE_PATH_MISSING", $"Path configurado de {scope} nao foi encontrado no host.", isBlocking: scope == "include"));
+                continue;
+            }
+
+            normalized.Add(candidate);
+        }
+
+        return normalized.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IEnumerable<string> EnumerateFilesSafe(string root, IReadOnlyList<BackupProcessingIssue> issues)
     {
         var stack = new Stack<string>();
         stack.Push(root);
@@ -68,8 +129,9 @@ internal sealed class FileScanner
             {
                 files = Directory.EnumerateFiles(current);
             }
-            catch
+            catch (Exception ex)
             {
+                AddIssue(issues, CreateIssue("scan", current, BuildIssueCode(ex), $"Falha ao enumerar arquivos em '{current}'. {ex.Message}", isBlocking: true));
                 continue;
             }
 
@@ -83,8 +145,9 @@ internal sealed class FileScanner
             {
                 dirs = Directory.EnumerateDirectories(current);
             }
-            catch
+            catch (Exception ex)
             {
+                AddIssue(issues, CreateIssue("scan", current, BuildIssueCode(ex), $"Falha ao enumerar diretorios em '{current}'. {ex.Message}", isBlocking: true));
                 continue;
             }
 
@@ -97,6 +160,14 @@ internal sealed class FileScanner
 
                 stack.Push(d);
             }
+        }
+    }
+
+    private static void AddIssue(IReadOnlyList<BackupProcessingIssue> issues, BackupProcessingIssue issue)
+    {
+        if (issues is List<BackupProcessingIssue> mutableIssues)
+        {
+            mutableIssues.Add(issue);
         }
     }
 
@@ -138,4 +209,34 @@ internal sealed class FileScanner
     }
 
     private static string NormalizePath(string p) => Path.GetFullPath(p.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+    private static BackupProcessingIssue CreateIssue(string stage, string path, string code, string message, bool isBlocking)
+    {
+        return new BackupProcessingIssue
+        {
+            Stage = stage,
+            Path = path,
+            Code = code,
+            Message = message,
+            IsBlocking = isBlocking
+        };
+    }
+
+    private static string BuildIssueCode(Exception ex)
+    {
+        return ex switch
+        {
+            PathTooLongException => "PATH_TOO_LONG",
+            UnauthorizedAccessException => "ACCESS_DENIED",
+            IOException ioEx when IsSharingOrLockViolation(ioEx) => "FILE_IN_USE",
+            IOException => "IO_ERROR",
+            _ => ex.GetType().Name.ToUpperInvariant()
+        };
+    }
+
+    private static bool IsSharingOrLockViolation(IOException ex)
+    {
+        var win32Code = ex.HResult & 0xFFFF;
+        return win32Code == 32 || win32Code == 33;
+    }
 }
