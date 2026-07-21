@@ -17,6 +17,45 @@ $sourceAgentArtifactsDir = Join-Path $repoRoot "artifacts\agent-package"
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
 $packageDir = Join-Path $outputRoot "TRAT.ControlPlane.Local"
 $zipPath = Join-Path $outputRoot "TRAT.ControlPlane.Local.zip"
+$stopScript = Join-Path $deployRoot "Parar-Painel-Local.ps1"
+
+# Garante que o painel local nao esteja rodando antes de mexer no pacote, para nao
+# copiar/preservar arquivos (banco SQLite, logs) parcialmente travados por processo ativo.
+if ((Test-Path $packageDir) -and (Test-Path $stopScript)) {
+    try {
+        & powershell.exe -ExecutionPolicy Bypass -File $stopScript -PackageRoot $packageDir
+    }
+    catch {
+        Write-Host ("Aviso: falha ao parar o painel local antes do publish. {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+    }
+}
+
+# Preserva dados locais (banco, chaves de criptografia, config de admin, logs) entre
+# republishes. Republish e uma operacao de atualizacao de codigo, nao deve destruir
+# estado local (clientes, hosts, jobs ja cadastrados no pacote local de teste).
+$preserveStagingDir = Join-Path $env:TEMP ("TRAT-ControlPlane-Preserve-" + [Guid]::NewGuid().ToString("N"))
+$preservedSomething = $false
+if (Test-Path $packageDir) {
+    New-Item -ItemType Directory -Force -Path $preserveStagingDir | Out-Null
+
+    $dataSource = Join-Path $packageDir "data"
+    if (Test-Path $dataSource) {
+        Copy-Item -Path $dataSource -Destination (Join-Path $preserveStagingDir "data") -Recurse -Force
+        $preservedSomething = $true
+    }
+
+    $logsSource = Join-Path $packageDir "logs"
+    if (Test-Path $logsSource) {
+        Copy-Item -Path $logsSource -Destination (Join-Path $preserveStagingDir "logs") -Recurse -Force
+        $preservedSomething = $true
+    }
+
+    $localSettingsSource = Join-Path $packageDir "appsettings.Local.json"
+    if (Test-Path $localSettingsSource) {
+        Copy-Item -Path $localSettingsSource -Destination (Join-Path $preserveStagingDir "appsettings.Local.json") -Force
+        $preservedSomething = $true
+    }
+}
 
 if (Test-Path $outputRoot) {
     Remove-Item -Path $outputRoot -Recurse -Force
@@ -45,6 +84,26 @@ foreach ($fileName in $requiredFiles) {
 
 foreach ($dirName in @("data", "data\\keys", "logs", "artifacts")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $packageDir $dirName) | Out-Null
+}
+
+if ($preservedSomething) {
+    $preservedData = Join-Path $preserveStagingDir "data"
+    if (Test-Path $preservedData) {
+        Copy-Item -Path (Join-Path $preservedData "*") -Destination (Join-Path $packageDir "data") -Recurse -Force
+    }
+
+    $preservedLogs = Join-Path $preserveStagingDir "logs"
+    if (Test-Path $preservedLogs) {
+        Copy-Item -Path (Join-Path $preservedLogs "*") -Destination (Join-Path $packageDir "logs") -Recurse -Force
+    }
+
+    $preservedLocalSettings = Join-Path $preserveStagingDir "appsettings.Local.json"
+    if (Test-Path $preservedLocalSettings) {
+        Copy-Item -Path $preservedLocalSettings -Destination (Join-Path $packageDir "appsettings.Local.json") -Force
+    }
+
+    Remove-Item -Path $preserveStagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "Dados locais preservados (data/, logs/, appsettings.Local.json) do pacote anterior." -ForegroundColor Green
 }
 
 Copy-Item -Path (Join-Path $deployRoot "README.md") -Destination (Join-Path $packageDir "README.md") -Force

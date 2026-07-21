@@ -2,21 +2,30 @@
 @{
     ViewData["Title"] = Model.IsEditMode ? "Editar Host" : "Novo Host";
     var postUrl = Model.IsEditMode ? $"/admin/hosts/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit" : "/admin/hosts/new";
-    var cancelUrl = Model.IsEditMode ? "/admin/hosts" : "/admin/hosts";
+    var cancelUrl = "/admin/hosts";
     var deleteReturnUrl = $"/admin/hosts/{Uri.EscapeDataString(Model.OriginalId ?? Model.Id)}/edit";
+    var selectedDays = Model.BootstrapPolicyDraft is null
+        ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        : new HashSet<string>(Model.BootstrapPolicyDraft.ScheduleDays, StringComparer.OrdinalIgnoreCase);
+    var dayOptions = new[]
+    {
+        new { Value = "MON", Label = "Segunda" },
+        new { Value = "TUE", Label = "Terca" },
+        new { Value = "WED", Label = "Quarta" },
+        new { Value = "THU", Label = "Quinta" },
+        new { Value = "FRI", Label = "Sexta" },
+        new { Value = "SAT", Label = "Sabado" },
+        new { Value = "SUN", Label = "Domingo" }
+    };
 }
 
 <div class="page-header">
     <div>
         <h1>@ViewData["Title"]</h1>
-        <p>Gerencie o cadastro operacional do servidor monitorado pelo control plane.</p>
+        <p>Gerencie o cadastro, a politica de backup e a execucao deste host.</p>
     </div>
     <div class="page-actions">
         <a class="button secondary" href="/admin/hosts">Voltar</a>
-        @if (Model.IsEditMode && !string.IsNullOrWhiteSpace(Model.ConfigurationId))
-        {
-            <a class="button primary" href="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId)">Abrir configuracao</a>
-        }
     </div>
 </div>
 
@@ -38,16 +47,8 @@
     {
         <div class="definition-grid form-summary">
             <div>
-                <span>Primeira deteccao</span>
-                <strong>@(Model.FirstSeenAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong>
-            </div>
-            <div>
                 <span>Ultimo heartbeat</span>
                 <strong>@(Model.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong>
-            </div>
-            <div>
-                <span>Configuracao</span>
-                <strong>@(Model.ConfigurationId ?? "Pendente de sync do agent")</strong>
             </div>
             <div>
                 <span>Versao do Agent</span>
@@ -58,174 +59,14 @@
                 <strong>@(Model.ServiceStatus ?? "-")</strong>
             </div>
             <div>
-                <span>Politica atual</span>
-                <strong>@(Model.AssignedPolicyName ?? "Nao vinculada")</strong>
-            </div>
-            <div>
                 <span>Prontidao</span>
                 <strong><span class="badge @(Model.OperationalStatusCssClass ?? "not-ready")">@(Model.OperationalStatusLabel ?? "Nao validado")</span></strong>
             </div>
             <div class="wide">
-                <span>Diagnostico operacional</span>
+                <span>Diagnostico</span>
                 <strong>@(Model.OperationalStatusMessage ?? "Sem diagnostico disponivel.")</strong>
             </div>
-            <div class="wide">
-                <span>Bootstrap IncludePaths (reportado pelo Agent)</span>
-                <strong>@(string.IsNullOrWhiteSpace(Model.BootstrapIncludePathsCsv) ? "-" : Model.BootstrapIncludePathsCsv)</strong>
-            </div>
-            <div class="wide">
-                <span>Bootstrap ExcludePaths (reportado pelo Agent)</span>
-                <strong>@(string.IsNullOrWhiteSpace(Model.BootstrapExcludePathsCsv) ? "-" : Model.BootstrapExcludePathsCsv)</strong>
-            </div>
         </div>
-
-        @if (Model.OperationalHealth is not null)
-        {
-            <div class="ops-health-panel">
-                <div class="panel-header">
-                    <h2>Saude operacional</h2>
-                </div>
-                <div class="status-banner">
-                    <span class="badge @Model.OperationalHealth.RiskLevelCssClass">@Model.OperationalHealth.RiskLevelLabel</span>
-                    @Model.OperationalHealth.Summary
-                </div>
-                <div class="ops-signal-grid">
-                    @foreach (var signal in Model.OperationalHealth.Signals)
-                    {
-                        <div class="ops-signal-card">
-                            <div class="ops-signal-header">
-                                <span>@signal.Name</span>
-                                <span class="badge @signal.StatusCssClass">@signal.StatusLabel</span>
-                            </div>
-                            <div class="ops-signal-detail">@signal.Detail</div>
-                        </div>
-                    }
-                </div>
-            </div>
-
-            <div class="ops-health-panel">
-                <div class="panel-header">
-                    <h2>Recuperacao guiada</h2>
-                </div>
-                <div class="ops-recovery-list">
-                    @foreach (var step in Model.OperationalHealth.RecoverySteps)
-                    {
-                        <article class="ops-recovery-card">
-                            <div class="ops-signal-header">
-                                <strong>@step.Title</strong>
-                                <span class="badge @step.Severity">@step.Severity.ToUpperInvariant()</span>
-                            </div>
-                            <p>@step.Message</p>
-                            @if (!string.IsNullOrWhiteSpace(step.LinkText) && !string.IsNullOrWhiteSpace(step.LinkUrl))
-                            {
-                                <a href="@step.LinkUrl">@step.LinkText</a>
-                            }
-                        </article>
-                    }
-                </div>
-            </div>
-
-            @if (Model.AlertAnalytics is not null)
-            {
-                <div class="ops-health-panel">
-                    <div class="panel-header">
-                        <h2>Relatorio de alertas</h2>
-                    </div>
-                    <div class="card-grid">
-                        <div class="info-card">
-                            <div class="info-title">Em aberto</div>
-                            <div class="info-line"><strong>@Model.AlertAnalytics.OpenAlertCount</strong> alerta(s).</div>
-                        </div>
-                        <div class="info-card">
-                            <div class="info-title">Resolvidos</div>
-                            <div class="info-line"><strong>@Model.AlertAnalytics.ResolvedAlertCount</strong> alerta(s).</div>
-                        </div>
-                        <div class="info-card">
-                            <div class="info-title">Reincidencias</div>
-                            <div class="info-line"><strong>@Model.AlertAnalytics.ReincidentRootCauseCount</strong> causa(s) repetidas.</div>
-                        </div>
-                        <div class="info-card">
-                            <div class="info-title">Tempo medio</div>
-                            <div class="info-line"><strong>@Model.AlertAnalytics.AverageTimeToResolveLabel</strong></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="ops-health-panel">
-                    <div class="panel-header">
-                        <h2>Causas raiz recentes</h2>
-                    </div>
-                    <div class="table-wrap">
-                        <table class="table responsive-table">
-                            <thead>
-                                <tr>
-                                    <th>Causa</th>
-                                    <th>Ocorrencias</th>
-                                    <th>Aberto</th>
-                                    <th>Media</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Model.AlertAnalytics.TopRootCauses.Count == 0)
-                                {
-                                    <tr>
-                                        <td colspan="4">Nenhuma causa raiz historica para este host.</td>
-                                    </tr>
-                                }
-                                else
-                                {
-                                    @foreach (var cause in Model.AlertAnalytics.TopRootCauses)
-                                    {
-                                        <tr>
-                                            <td>
-                                                <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
-                                                @cause.Title
-                                            </td>
-                                            <td>@cause.OccurrenceCount</td>
-                                            <td>@cause.OpenCount</td>
-                                            <td>@cause.AverageTimeToResolveLabel</td>
-                                        </tr>
-                                    }
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="ops-health-panel">
-                    <div class="panel-header">
-                        <h2>Timeline de alertas</h2>
-                    </div>
-                    <div class="ops-timeline">
-                        @if (Model.AlertAnalytics.Timeline.Count == 0)
-                        {
-                            <div class="muted-text">Nenhum alerta historico registrado para este host.</div>
-                        }
-                        else
-                        {
-                            @foreach (var item in Model.AlertAnalytics.Timeline)
-                            {
-                                <article class="ops-timeline-item">
-                                    <div class="ops-signal-header">
-                                        <strong>@item.Title</strong>
-                                        <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
-                                    </div>
-                                    <div class="ops-signal-detail">@item.Message</div>
-                                    <div class="ops-meta-line">
-                                        <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
-                                        <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
-                                    {
-                                        <a href="@item.LinkUrl">@item.LinkText</a>
-                                    }
-                                </article>
-                            }
-                        }
-                    </div>
-                </div>
-            }
-        }
     }
 
     <form method="post" action="@postUrl" class="form-grid">
@@ -267,3 +108,202 @@
         </div>
     }
 </section>
+
+@if (Model.IsEditMode)
+{
+    if (Model.BootstrapPolicyDraft is null)
+    {
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Backup do host</h2>
+            </div>
+            <div class="error-banner">O Agent ainda nao reportou dados para este host. Instale e rode o Agent neste host para liberar a configuracao de backup aqui.</div>
+        </section>
+    }
+    else
+    {
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Backup do host</h2>
+            </div>
+            <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId!)/bootstrap-policy" class="form-grid compact-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@postUrl" />
+                <input type="hidden" name="SuggestedPolicyId" value="@Model.BootstrapPolicyDraft.SuggestedPolicyId" />
+                <input type="hidden" name="CustomerId" value="@Model.BootstrapPolicyDraft.CustomerId" />
+                <input type="hidden" name="HostId" value="@Model.BootstrapPolicyDraft.HostId" />
+                <input type="hidden" name="ScopeType" value="@Model.BootstrapPolicyDraft.ScopeType" />
+
+                <div class="form-field full-width">
+                    <label for="IncludePathsCsv">Pastas para backup</label>
+                    <textarea id="IncludePathsCsv" name="IncludePathsCsv" rows="3">@Model.BootstrapPolicyDraft.IncludePathsCsv</textarea>
+                </div>
+                <div class="form-field full-width">
+                    <label for="ExcludePathsCsv">Pastas/arquivos a ignorar</label>
+                    <textarea id="ExcludePathsCsv" name="ExcludePathsCsv" rows="2">@Model.BootstrapPolicyDraft.ExcludePathsCsv</textarea>
+                </div>
+                <div class="form-field">
+                    <label for="AwsRegion">Regiao AWS</label>
+                    <input id="AwsRegion" name="AwsRegion" value="@Model.BootstrapPolicyDraft.AwsRegion" placeholder="us-east-1" />
+                </div>
+                <div class="form-field">
+                    <label for="S3BucketName">Bucket S3</label>
+                    <select id="S3BucketName"
+                            name="S3BucketName"
+                            data-aws-bucket-select
+                            data-expected-account-id="@Model.AwsIntegration?.ExpectedAccountId"
+                            data-prefix-endpoint="/admin/aws/prefix-options"
+                            data-region-target="#AwsRegion"
+                            data-prefix-target="#S3KeyPrefix">
+                        @if (string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3BucketName))
+                        {
+                            <option value="">Selecione um bucket</option>
+                        }
+                        @foreach (var bucket in Model.AwsIntegration?.Buckets ?? Array.Empty<string>())
+                        {
+                            <option value="@bucket" selected="@(string.Equals(bucket, Model.BootstrapPolicyDraft.S3BucketName, StringComparison.OrdinalIgnoreCase))">@bucket</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field full-width">
+                    <label for="S3KeyPrefix">Pasta/prefixo no bucket</label>
+                    <select id="S3KeyPrefix" name="S3KeyPrefix" data-aws-prefix-select data-current-prefix="@Model.BootstrapPolicyDraft.S3KeyPrefix">
+                        @if (string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3KeyPrefix))
+                        {
+                            <option value="">Selecione um prefixo</option>
+                        }
+                        @foreach (var prefix in Model.AwsIntegration?.Prefixes ?? Array.Empty<string>())
+                        {
+                            <option value="@prefix" selected="@(string.Equals(prefix, Model.BootstrapPolicyDraft.S3KeyPrefix, StringComparison.OrdinalIgnoreCase))">@prefix</option>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3KeyPrefix) &&
+                             !(Model.AwsIntegration?.Prefixes ?? Array.Empty<string>()).Contains(Model.BootstrapPolicyDraft.S3KeyPrefix, StringComparer.OrdinalIgnoreCase))
+                        {
+                            <option value="@Model.BootstrapPolicyDraft.S3KeyPrefix" selected="selected">@Model.BootstrapPolicyDraft.S3KeyPrefix</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-field full-width">
+                    <label>Dias</label>
+                    <div class="checkbox-grid">
+                        @foreach (var day in dayOptions)
+                        {
+                            <label class="checkbox-chip">
+                                <input type="checkbox" name="ScheduleDays" value="@day.Value" checked="@selectedDays.Contains(day.Value)" />
+                                <span>@day.Label</span>
+                            </label>
+                        }
+                    </div>
+                    <input type="hidden" name="ScheduleDaysCsv" value="@Model.BootstrapPolicyDraft.ScheduleDaysCsv" />
+                </div>
+                <div class="form-field">
+                    <label for="StartTimeLocal">Horario</label>
+                    <input id="StartTimeLocal" name="StartTimeLocal" type="time" value="@Model.BootstrapPolicyDraft.StartTimeLocal" />
+                </div>
+                <div class="form-field">
+                    <label for="MaxRuntimeMinutes">Max runtime (min)</label>
+                    <input id="MaxRuntimeMinutes" name="MaxRuntimeMinutes" type="number" min="1" value="@Model.BootstrapPolicyDraft.MaxRuntimeMinutes" />
+                </div>
+                <div class="form-field">
+                    <label class="toggle-row" for="Enabled">
+                        <span>Backup do host</span>
+                        <span class="switch">
+                            <input id="Enabled" name="Enabled" type="checkbox" value="true" checked="@Model.BootstrapPolicyDraft.Enabled" />
+                            <span class="switch-slider"></span>
+                        </span>
+                    </label>
+                    <input type="hidden" name="Enabled" value="false" />
+                </div>
+                <input type="hidden" name="CpuLimitPercent" value="@Model.BootstrapPolicyDraft.CpuLimitPercent" />
+                <input type="hidden" name="NetworkLimitMbit" value="@Model.BootstrapPolicyDraft.NetworkLimitMbit" />
+                <div class="form-actions">
+                    <button class="button primary" type="submit">Salvar backup do host</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel" data-auto-refresh-seconds="15" data-auto-refresh-active="@(Model.RecentJobs.Any(j => j.IsActive) ? "true" : "false")">
+            <div class="panel-header">
+                <h2>Ultima execucao</h2>
+                @if (Model.RecentJobs.Any(j => j.IsActive))
+                {
+                    <span class="badge warning">Atualizacao automatica a cada 15s</span>
+                }
+            </div>
+            @if (Model.LatestRunRequest is null)
+            {
+                <p>Nenhuma execucao registrada para este host.</p>
+            }
+            else
+            {
+                <div class="definition-grid">
+                    <div><span>Status</span><strong>@Model.LatestRunRequest.State</strong></div>
+                    <div><span>Trigger</span><strong>@Model.LatestRunRequest.TriggerType</strong></div>
+                    <div><span>Concluido em</span><strong>@(Model.LatestRunRequest.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+                    <div class="wide"><span>Falha</span><strong>@(Model.LatestRunRequest.FailureMessage ?? "-")</strong></div>
+                </div>
+            }
+            <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId!)/run-now" style="margin-top:12px;">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="returnUrl" value="@postUrl" />
+                <button class="button primary" type="submit">Executar backup agora</button>
+            </form>
+
+            <div class="table-wrap" style="margin-top:16px;">
+                <table class="table responsive-table rt-config-jobs">
+                    <thead>
+                        <tr>
+                            <th>Inicio</th>
+                            <th>Status</th>
+                            <th>Enviado</th>
+                            <th>Progresso</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.RecentJobs.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="4">Nenhum job encontrado.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var job in Model.RecentJobs)
+                            {
+                                <tr>
+                                    <td>@job.StartedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td><span class="badge @job.State.ToLowerInvariant()">@job.State</span></td>
+                                    <td>@($"{job.UploadedItems:N0} / {FormatBytes(job.UploadedBytes)}")</td>
+                                    <td>
+                                        <div class="progress-cell">
+                                            <div class="progress-track compact" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@job.ProgressPercent" aria-label="Progresso do job">
+                                                <div class="progress-fill @(job.IsActive ? "active" : string.Empty)" style="width:@($"{job.ProgressPercent}%")"></div>
+                                            </div>
+                                            <div class="progress-caption">@($"{job.ProgressPercent}% | {job.UploadedItems:N0}/{job.PlannedItems:N0} itens")</div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+}
+
+@functions {
+    private static string FormatBytes(long value)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = value;
+        var index = 0;
+        while (size >= 1024 && index < suffixes.Length - 1)
+        {
+            size /= 1024;
+            index++;
+        }
+
+        return $"{size:N1} {suffixes[index]}";
+    }
+}

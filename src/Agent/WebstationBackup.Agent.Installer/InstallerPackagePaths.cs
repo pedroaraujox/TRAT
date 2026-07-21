@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.IO.Compression;
+using System.Reflection;
 
 namespace WebstationBackup.Agent.Installer;
 
@@ -25,6 +27,8 @@ internal static class InstallerPackagePaths
 
     public static string DefaultSettingsOutputPath(string packageRoot) => Path.Combine(packageRoot, "agent.settings.json");
 
+    private const string EmbeddedPayloadResourceName = "AgentPackagePayload.zip";
+
     public static string ResolveInitialPackageRoot()
     {
         var baseDirectory = AppContext.BaseDirectory;
@@ -34,7 +38,60 @@ internal static class InstallerPackagePaths
             return candidate;
         }
 
+        var extracted = TryExtractEmbeddedPayload();
+        if (extracted is not null)
+        {
+            return extracted;
+        }
+
         return baseDirectory;
+    }
+
+    private static string? TryExtractEmbeddedPayload()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            using var resourceStream = assembly.GetManifestResourceStream(EmbeddedPayloadResourceName);
+            if (resourceStream is null)
+            {
+                return null;
+            }
+
+            var targetDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TRAT",
+                "AgentSetupPayload");
+
+            var markerPath = Path.Combine(targetDir, ".payload-size");
+            var expectedMarker = resourceStream.Length.ToString();
+            if (Directory.Exists(targetDir) &&
+                File.Exists(markerPath) &&
+                File.ReadAllText(markerPath).Trim() == expectedMarker &&
+                LooksLikePackageRoot(targetDir))
+            {
+                return targetDir;
+            }
+
+            if (Directory.Exists(targetDir))
+            {
+                Directory.Delete(targetDir, recursive: true);
+            }
+            Directory.CreateDirectory(targetDir);
+
+            using (var archive = new ZipArchive(resourceStream, ZipArchiveMode.Read))
+            {
+                archive.ExtractToDirectory(targetDir, overwriteFiles: true);
+            }
+
+            File.WriteAllText(markerPath, expectedMarker);
+
+            return LooksLikePackageRoot(targetDir) ? targetDir : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static PackageLayout Resolve(string packageRoot)

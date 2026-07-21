@@ -10,4 +10,7 @@
     <RootNamespace>WebstationBackup.Agent.Installer</RootNamespace>
     <ApplicationIcon>..\..\..\assets\branding\trat-logo.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Payload\AgentPackagePayload.zip" LogicalName="AgentPackagePayload.zip" Condition="Exists('Payload\AgentPackagePayload.zip')" />
+  </ItemGroup>
 </Project>

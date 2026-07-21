@@ -7,6 +7,7 @@ Este documento define as regras operacionais do TRAT para desenvolvimento, valid
 - Qualquer alteracao no projeto exige rebuild ou republish dos artefatos afetados antes de validar, testar ou liberar.
 - Nenhuma mudanca e considerada pronta apenas porque compilou no codigo-fonte; a validacao deve acontecer no artefato real usado por operador, host ou cliente.
 - Para o fluxo padrao do dia a dia, prefira executar `.\Liberar-TRAT.ps1`.
+- **Preservar estado/dados de teste sempre que possivel**: ao validar uma mudanca, priorize atualizar o Agent/ControlPlane ja instalados (update in-place) em vez de reinstalar do zero ou recriar cliente/host no painel. So reinstalar ou recriar cadastro quando isso for tecnicamente a unica forma de validar a mudanca (ex.: mudanca no proprio fluxo de instalacao/onboarding).
 
 ## Regras gerais
 

@@ -34,6 +34,36 @@ internal sealed class S3Uploader
         _s3 = new AmazonS3Client(credentials, RegionEndpoint.GetBySystemName(region));
     }
 
+    public async Task<bool> FileAlreadyExistsWithSameSha256Async(string relativePath, string? sha256Base64, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(sha256Base64))
+        {
+            return false;
+        }
+
+        var key = _keyPrefix + relativePath.TrimStart('/').Replace('\\', '/');
+
+        try
+        {
+            var head = await _s3.GetObjectMetadataAsync(new GetObjectMetadataRequest
+            {
+                BucketName = _bucket,
+                Key = key
+            }, ct);
+
+            var remoteSha = head.Metadata["x-amz-meta-sha256b64"];
+            return !string.IsNullOrWhiteSpace(remoteSha) && string.Equals(remoteSha, sha256Base64, StringComparison.Ordinal);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.Forbidden || ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new InvalidOperationException("Acesso negado no S3. Verifique IAM/policies do usuário de backup.", ex);
+        }
+    }
+
     public async Task UploadFileAndVerifyAsync(string absolutePath, string relativePath, string? sha256Base64, CancellationToken ct)
     {
         var key = _keyPrefix + relativePath.TrimStart('/').Replace('\\', '/');

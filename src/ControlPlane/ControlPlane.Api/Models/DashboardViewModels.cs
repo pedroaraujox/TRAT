@@ -66,6 +66,8 @@ public sealed class HostRowViewModel
     public required string RecoveryStatusLabel { get; init; }
     public required string RecoveryStatusCssClass { get; init; }
     public required string RecoveryStatusMessage { get; init; }
+    public string? LastJobState { get; init; }
+    public DateTimeOffset? LastJobAtUtc { get; init; }
 }
 
 public sealed class JobRowViewModel
@@ -254,6 +256,10 @@ public sealed record HostFormViewModel
     public string? BootstrapExcludePathsCsv { get; init; }
     public HostOperationalHealthViewModel? OperationalHealth { get; init; }
     public AlertAnalyticsSummaryViewModel? AlertAnalytics { get; init; }
+    public AwsIntegrationViewModel? AwsIntegration { get; init; }
+    public BootstrapPolicyDraftViewModel? BootstrapPolicyDraft { get; init; }
+    public HostRunRequestViewModel? LatestRunRequest { get; init; }
+    public IReadOnlyList<JobRowViewModel> RecentJobs { get; init; } = Array.Empty<JobRowViewModel>();
     public string? ErrorMessage { get; init; }
 }
 

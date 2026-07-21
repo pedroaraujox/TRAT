@@ -77,7 +77,7 @@ public sealed class HomeController(
                 ["role"] = result.Session.Role
             },
             ct);
-        return Redirect("/admin");
+        return Redirect("/admin/customers");
     }
 
     [HttpPost("/logout")]
@@ -110,7 +110,13 @@ public sealed class HomeController(
     }
 
     [HttpGet("/admin")]
-    public async Task<IActionResult> Dashboard(CancellationToken ct)
+    public IActionResult Dashboard()
+    {
+        return Redirect("/admin/customers");
+    }
+
+    [HttpGet("/admin/dashboard-legacy")]
+    public async Task<IActionResult> DashboardLegacy(CancellationToken ct)
     {
         var nowUtc = DateTimeOffset.UtcNow;
         var customers = await db.Customers.AsNoTracking().OrderBy(c => c.Name).ToListAsync(ct);
@@ -648,10 +654,14 @@ public sealed class HomeController(
             .GroupBy(c => c.HostId)
             .Select(g => g.OrderByDescending(x => x.LastConfigSyncAtUtc ?? x.CreatedAtUtc).FirstOrDefault()!)
             .ToDictionary(c => c.HostId, c => c, StringComparer.OrdinalIgnoreCase);
+        var latestJobByHostId = (await db.Jobs.AsNoTracking().ToListAsync(ct))
+            .GroupBy(j => j.HostId)
+            .Select(g => g.OrderByDescending(j => j.StartedAtUtc).FirstOrDefault()!)
+            .ToDictionary(j => j.HostId, j => j, StringComparer.OrdinalIgnoreCase);
         var hosts = (await db.Hosts.AsNoTracking().ToListAsync(ct))
             .OrderByDescending(h => h.LastHeartbeatAtUtc)
             .ToList();
-        var rows = hosts.Select(h => MapHost(h, customers, configsByHostId, policies)).ToArray();
+        var rows = hosts.Select(h => MapHost(h, customers, configsByHostId, policies, latestJobByHostId)).ToArray();
 
         if (!string.IsNullOrWhiteSpace(customerId))
         {
@@ -678,12 +688,12 @@ public sealed class HomeController(
     }
 
     [HttpGet("/admin/hosts/new")]
-    public IActionResult NewHost()
+    public IActionResult NewHost([FromQuery] string? customerId)
     {
         return View("HostForm", new HostFormViewModel
         {
             Id = string.Empty,
-            CustomerId = string.Empty,
+            CustomerId = customerId ?? string.Empty,
             Hostname = string.Empty,
             OsVersion = "Windows Server 2016",
             IsEditMode = false
@@ -1600,6 +1610,10 @@ public sealed class HomeController(
         {
             return "ID do cliente e obrigatorio.";
         }
+        if (!isEditMode && !IsAgentCompatibleIdentifier(form.Id))
+        {
+            return "ID do cliente invalido. Use apenas letras sem acento, numeros, ponto, hifen ou underscore (sem espacos), comecando por letra ou numero.";
+        }
         if (string.IsNullOrWhiteSpace(form.Name))
         {
             return "Nome do cliente e obrigatorio.";
@@ -1624,9 +1638,9 @@ public sealed class HomeController(
         {
             return "ID do host e obrigatorio.";
         }
-        if (!isEditMode && !IsSafeIdentifier(form.Id))
+        if (!isEditMode && !IsAgentCompatibleIdentifier(form.Id))
         {
-            return "ID do host deve conter apenas letras, numeros, ponto, hifen ou underscore.";
+            return "ID do host invalido. Use apenas letras sem acento, numeros, ponto, hifen ou underscore (sem espacos), comecando por letra ou numero.";
         }
         if (string.IsNullOrWhiteSpace(form.CustomerId))
         {
@@ -1739,7 +1753,8 @@ public sealed class HomeController(
         ControlPlane.Api.Domain.Host host,
         IReadOnlyDictionary<string, Customer> customers,
         IReadOnlyDictionary<string, AgentConfiguration> configsByHostId,
-        IReadOnlyDictionary<string, BackupPolicy> policiesById)
+        IReadOnlyDictionary<string, BackupPolicy> policiesById,
+        IReadOnlyDictionary<string, Job>? latestJobByHostId = null)
     {
         customers.TryGetValue(host.CustomerId, out var customer);
         configsByHostId.TryGetValue(host.Id, out var config);
@@ -1748,6 +1763,9 @@ public sealed class HomeController(
         {
             policiesById.TryGetValue(config.PolicyId, out policy);
         }
+
+        Job? latestJob = null;
+        latestJobByHostId?.TryGetValue(host.Id, out latestJob);
 
         var operational = hostOperationalStatusService.Evaluate(host, config);
         var bootstrap = DescribeBootstrapState(host.CustomerId, host.Id, host.BootstrapIncludePathsCsv, config?.PolicyId, policiesById);
@@ -1778,7 +1796,9 @@ public sealed class HomeController(
             BootstrapStatusMessage = bootstrap.Message,
             RecoveryStatusLabel = health.RiskLevelLabel,
             RecoveryStatusCssClass = health.RiskLevelCssClass,
-            RecoveryStatusMessage = health.Summary
+            RecoveryStatusMessage = health.Summary,
+            LastJobState = latestJob?.State,
+            LastJobAtUtc = latestJob?.StartedAtUtc
         };
     }
 
@@ -2314,11 +2334,13 @@ public sealed class HomeController(
         }
 
         var operational = hostOperationalStatusService.Evaluate(host, latestConfiguration);
-        var latestJob = (await db.Jobs.AsNoTracking()
+        var jobs = (await db.Jobs.AsNoTracking()
             .Where(j => j.HostId == id)
             .ToListAsync(ct))
             .OrderByDescending(j => j.StartedAtUtc)
-            .FirstOrDefault();
+            .Take(20)
+            .ToArray();
+        var latestJob = jobs.FirstOrDefault();
         var latestRunRequest = (await db.AgentRunRequests.AsNoTracking()
             .Where(r => r.CustomerId == host.CustomerId && r.HostId == host.Id)
             .ToListAsync(ct))
@@ -2336,6 +2358,22 @@ public sealed class HomeController(
         var customerMap = await db.Customers.AsNoTracking()
             .Where(c => c.Id == host.CustomerId)
             .ToDictionaryAsync(c => c.Id, c => c, ct);
+
+        AwsIntegrationViewModel? awsIntegration = null;
+        BootstrapPolicyDraftViewModel? bootstrapPolicyDraft = null;
+        if (latestConfiguration is not null)
+        {
+            var policyMap = policy is null
+                ? new Dictionary<string, BackupPolicy>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, BackupPolicy>(StringComparer.OrdinalIgnoreCase) { [policy.Id] = policy };
+            var mappedConfiguration = MapAgentConfiguration(latestConfiguration, customerMap, hostMap, policyMap);
+            awsIntegration = await BuildAwsIntegrationViewModelAsync(
+                customerMap.TryGetValue(host.CustomerId, out var customerForAws) ? customerForAws.AwsAccountId : null,
+                policy?.S3BucketName,
+                ct);
+            awsIntegration.CurrentPrefix = policy?.S3KeyPrefix;
+            bootstrapPolicyDraft = BuildBootstrapPolicyDraft(latestConfiguration, host, mappedConfiguration, policy, awsIntegration);
+        }
 
         return new HostFormViewModel
         {
@@ -2358,6 +2396,10 @@ public sealed class HomeController(
             BootstrapExcludePathsCsv = host.BootstrapExcludePathsCsv,
             OperationalHealth = BuildOperationalHealthViewModel(host, latestConfiguration, latestJob, latestRunRequest, operational),
             AlertAnalytics = BuildAlertAnalyticsSummary(alertHistory, customerMap, hostMap),
+            AwsIntegration = awsIntegration,
+            BootstrapPolicyDraft = bootstrapPolicyDraft,
+            LatestRunRequest = BuildLatestRunViewModel(latestRunRequest, latestJob),
+            RecentJobs = jobs.Select(j => MapJob(j, customerMap, hostMap)).ToArray(),
             ErrorMessage = errorMessage
         };
     }
@@ -2403,7 +2445,7 @@ public sealed class HomeController(
                 latestRunRequest,
                 host is null ? null : hostOperationalStatusService.Evaluate(host, configEntity)),
             AwsIntegration = awsIntegration,
-            LatestRunRequest = MapRunRequest(latestRunRequest),
+            LatestRunRequest = BuildLatestRunViewModel(latestRunRequest, latestJob),
             RecentJobs = jobs.Select(j => MapJob(j, customers, hosts)).ToArray(),
             PolicyOptions = await BuildPolicyOptionsAsync(configEntity.CustomerId, configEntity.HostId, ct),
             BootstrapPolicyDraft = BuildBootstrapPolicyDraft(configEntity, host, mappedConfiguration, boundPolicy, awsIntegration)
@@ -2795,6 +2837,31 @@ public sealed class HomeController(
         };
     }
 
+    private static HostRunRequestViewModel? BuildLatestRunViewModel(AgentRunRequest? latestRunRequest, Job? latestJob)
+    {
+        if (latestJob is null || string.Equals(latestJob.Id, latestRunRequest?.JobId, StringComparison.Ordinal))
+        {
+            return MapRunRequest(latestRunRequest);
+        }
+
+        if (latestRunRequest is not null && latestRunRequest.RequestedAtUtc >= latestJob.StartedAtUtc)
+        {
+            return MapRunRequest(latestRunRequest);
+        }
+
+        return new HostRunRequestViewModel
+        {
+            Id = latestJob.Id,
+            State = latestJob.State,
+            TriggerType = "scheduled",
+            RequestedAtUtc = latestJob.StartedAtUtc,
+            ClaimedAtUtc = latestJob.StartedAtUtc,
+            CompletedAtUtc = latestJob.FinishedAtUtc,
+            JobId = latestJob.Id,
+            FailureMessage = latestJob.FailureMessage
+        };
+    }
+
     private static HostRunRequestViewModel? MapRunRequest(AgentRunRequest? request)
     {
         if (request is null)
@@ -3069,14 +3136,12 @@ public sealed class HomeController(
         return Redirect(defaultPath);
     }
 
-    private static bool IsSafeIdentifier(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
+    private static readonly System.Text.RegularExpressions.Regex AgentIdentifierRegex =
+        new("^[a-zA-Z0-9][a-zA-Z0-9._-]{1,127}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-        return value.Trim().All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.');
+    private static bool IsAgentCompatibleIdentifier(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && AgentIdentifierRegex.IsMatch(value.Trim());
     }
 
     private static void AddSignal(

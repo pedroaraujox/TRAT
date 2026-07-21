@@ -18,24 +18,15 @@ internal sealed class InstallerForm : Form
     private readonly TextBox _stateDirectoryTextBox;
     private readonly TextBox _controlPlaneUrlTextBox;
     private readonly TextBox _agentTokenTextBox;
-    private readonly CheckBox _protectTokenCheckBox;
     private readonly Button _testControlPlaneButton;
     private readonly Button _testAwsButton;
     private readonly TextBox _customerIdTextBox;
     private readonly TextBox _hostIdTextBox;
-    private readonly TextBox _awsRegionTextBox;
-    private readonly TextBox _bucketTextBox;
-    private readonly TextBox _prefixTextBox;
-    private readonly TextBox _credentialTargetTextBox;
     private readonly TextBox _awsAccessKeyIdTextBox;
     private readonly TextBox _awsSecretAccessKeyTextBox;
     private readonly TextBox _includePathsTextBox;
     private readonly TextBox _excludePathsTextBox;
-    private readonly CheckBox _protectAwsCredentialCheckBox;
     private readonly CheckBox _showAdvancedCheckBox;
-    private readonly CheckBox _startServiceCheckBox;
-    private readonly CheckBox _enableTrayAutostartCheckBox;
-    private readonly CheckBox _launchTrayAfterInstallCheckBox;
     private readonly Button _openPackageButton;
     private readonly Button _openInstallDirButton;
     private readonly Button _clearIncludePathsButton;
@@ -49,8 +40,8 @@ internal sealed class InstallerForm : Form
     {
         Text = InstallerDisplayName;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(860, 680);
-        Size = new Size(980, 760);
+        MinimumSize = new Size(760, 560);
+        Size = new Size(820, 640);
         try
         {
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -71,13 +62,13 @@ internal sealed class InstallerForm : Form
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
 
         var header = new Label
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Text = "Preencha a URL do ControlPlane, o token do cliente e os caminhos de backup. O Agent sera instalado como aplicativo do Windows, com servico persistente, bandeja e fluxo de atualizacao sem precisar abrir exe manualmente.",
+            Text = "Informe o token do cliente e as chaves AWS, selecione o que deseja fazer backup e clique em Instalar.",
             Font = new Font(SystemFonts.MessageBoxFont ?? Control.DefaultFont, FontStyle.Bold)
         };
 
@@ -99,79 +90,32 @@ internal sealed class InstallerForm : Form
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
 
-        _packageRootTextBox = AddTextRow(configurationPanel, 0, "Pasta do pacote", packageRoot, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_packageRootTextBox!, UpdateDerivedPaths)));
-        _settingsOutputTextBox = AddTextRow(configurationPanel, 1, "Saida settings", InstallerPackagePaths.DefaultSettingsOutputPath(packageRoot), AddBrowseSaveButton(configurationPanel));
-        _installDirectoryTextBox = AddTextRow(configurationPanel, 2, "Pasta de instalacao", InstallerPackagePaths.DefaultInstallDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_installDirectoryTextBox!, null)));
-        _stateDirectoryTextBox = AddTextRow(configurationPanel, 3, "Pasta de estado", InstallerPackagePaths.DefaultStateDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_stateDirectoryTextBox!, null)));
-        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 4, "ControlPlane URL", "http://localhost:5080", CreateSpacerButton(configurationPanel));
-        _agentTokenTextBox = AddTextRow(configurationPanel, 5, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
-        _customerIdTextBox = AddTextRow(configurationPanel, 6, "CustomerId", string.Empty, CreateSpacerButton(configurationPanel));
-        _hostIdTextBox = AddTextRow(configurationPanel, 7, "HostId", Environment.MachineName, CreateSpacerButton(configurationPanel));
-        _awsRegionTextBox = AddTextRow(configurationPanel, 8, "AWS region", string.Empty, CreateSpacerButton(configurationPanel));
-        _bucketTextBox = AddTextRow(configurationPanel, 9, "Bucket", string.Empty, CreateSpacerButton(configurationPanel));
-        _prefixTextBox = AddTextRow(configurationPanel, 10, "Prefixo", string.Empty, CreateSpacerButton(configurationPanel));
-        _credentialTargetTextBox = AddTextRow(configurationPanel, 11, "Credential target", string.Empty, CreateSpacerButton(configurationPanel));
-        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 12, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
-        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 13, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
-        _includePathsTextBox = AddMultilineRow(configurationPanel, 14, "Caminhos de backup", string.Empty);
-        _excludePathsTextBox = AddMultilineRow(configurationPanel, 15, "Exclusoes", string.Empty);
+        _agentTokenTextBox = AddTextRow(configurationPanel, 0, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 1, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
+        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 2, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+
+        // Campos avancados (ocultos por padrao): destino do pacote, diretorios locais e
+        // identificacao. O bucket/regiao S3 sao definidos no painel (politica do host), nao aqui.
+        _packageRootTextBox = AddTextRow(configurationPanel, 3, "Pasta do pacote", packageRoot, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_packageRootTextBox!, UpdateDerivedPaths)));
+        _settingsOutputTextBox = AddTextRow(configurationPanel, 4, "Saida settings", InstallerPackagePaths.DefaultSettingsOutputPath(packageRoot), AddBrowseSaveButton(configurationPanel));
+        _installDirectoryTextBox = AddTextRow(configurationPanel, 5, "Pasta de instalacao", InstallerPackagePaths.DefaultInstallDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_installDirectoryTextBox!, null)));
+        _stateDirectoryTextBox = AddTextRow(configurationPanel, 6, "Pasta de estado", InstallerPackagePaths.DefaultStateDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_stateDirectoryTextBox!, null)));
+        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 7, "ControlPlane URL", "http://localhost:5080", CreateSpacerButton(configurationPanel));
+        _customerIdTextBox = AddTextRow(configurationPanel, 8, "CustomerId", string.Empty, CreateSpacerButton(configurationPanel));
+        _hostIdTextBox = AddTextRow(configurationPanel, 9, "HostId", Environment.MachineName, CreateSpacerButton(configurationPanel));
+        _excludePathsTextBox = AddMultilineRow(configurationPanel, 10, "Exclusoes", string.Empty);
 
         _customerIdTextBox.ReadOnly = true;
 
-        _protectTokenCheckBox = new CheckBox
-        {
-            Text = "Salvar token protegido (DPAPI - LocalMachine) no settings (recomendado)",
-            AutoSize = true,
-            Checked = true,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 12, 0, 0)
-        };
-
-        _protectAwsCredentialCheckBox = new CheckBox
-        {
-            Text = "Salvar credencial AWS protegida por maquina (DPAPI - LocalMachine, recomendado para servico Windows)",
-            AutoSize = true,
-            Checked = true,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 6, 0, 0)
-        };
-
         _showAdvancedCheckBox = new CheckBox
         {
-            Text = "Mostrar opcoes avancadas",
+            Text = "Opcoes avancadas",
             AutoSize = true,
             Checked = false,
             Dock = DockStyle.Top,
             Padding = new Padding(0, 10, 0, 0)
         };
         _showAdvancedCheckBox.CheckedChanged += (_, _) => SetAdvancedVisibility(_showAdvancedCheckBox.Checked);
-
-        _startServiceCheckBox = new CheckBox
-        {
-            Text = "Iniciar servico ao final da instalacao",
-            AutoSize = true,
-            Checked = true,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 12, 0, 0)
-        };
-
-        _enableTrayAutostartCheckBox = new CheckBox
-        {
-            Text = "Iniciar Tray App com o Windows (usuario atual)",
-            AutoSize = true,
-            Checked = true,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 6, 0, 0)
-        };
-
-        _launchTrayAfterInstallCheckBox = new CheckBox
-        {
-            Text = "Abrir Tray App ao finalizar a instalacao",
-            AutoSize = true,
-            Checked = true,
-            Dock = DockStyle.Top,
-            Padding = new Padding(0, 6, 0, 0)
-        };
 
         var actionPanel = new FlowLayoutPanel
         {
@@ -183,7 +127,7 @@ internal sealed class InstallerForm : Form
 
         _validateButton = new Button { Text = "Validar", AutoSize = true };
         _saveSettingsButton = new Button { Text = "Salvar settings", AutoSize = true };
-        _installButton = new Button { Text = "Instalar / atualizar aplicativo", AutoSize = true };
+        _installButton = new Button { Text = "Instalar", AutoSize = true };
         _testControlPlaneButton = new Button { Text = "Testar acesso", AutoSize = true };
         _testAwsButton = new Button { Text = "Testar AWS (CLI)", AutoSize = true };
         _openPackageButton = new Button { Text = "Abrir pacote", AutoSize = true };
@@ -198,8 +142,8 @@ internal sealed class InstallerForm : Form
         _openInstallDirButton.Click += (_, _) => OpenShell(_installDirectoryTextBox.Text);
 
         actionPanel.Controls.Add(_installButton);
-        actionPanel.Controls.Add(_testControlPlaneButton);
         actionPanel.Controls.Add(_showAdvancedCheckBox);
+        actionPanel.Controls.Add(_testControlPlaneButton);
         actionPanel.Controls.Add(_validateButton);
         actionPanel.Controls.Add(_saveSettingsButton);
         actionPanel.Controls.Add(_testAwsButton);
@@ -220,7 +164,6 @@ internal sealed class InstallerForm : Form
         _clearIncludePathsButton = new Button { Text = "Limpar lista", AutoSize = true };
         addFolderButton.Click += (_, _) => AddIncludeFolder();
         addFileButton.Click += (_, _) => AddIncludeFile();
-        _clearIncludePathsButton.Click += (_, _) => _includePathsTextBox.Clear();
         includeActions.Controls.Add(addFolderButton);
         includeActions.Controls.Add(addFileButton);
         includeActions.Controls.Add(_clearIncludePathsButton);
@@ -230,16 +173,11 @@ internal sealed class InstallerForm : Form
             Dock = DockStyle.Top,
             AutoSize = true,
             Padding = new Padding(0, 6, 0, 0),
-            Text = "Adicione quantos volumes, pastas ou arquivos precisar. O Agent instalara o host e depois executara em segundo plano."
+            Text = "O que fazer backup:"
         };
 
-        content.Controls.Add(includeActions);
-        content.Controls.Add(includeHintLabel);
-        content.Controls.Add(_protectTokenCheckBox);
-        content.Controls.Add(_protectAwsCredentialCheckBox);
-        content.Controls.Add(_enableTrayAutostartCheckBox);
-        content.Controls.Add(_launchTrayAfterInstallCheckBox);
-        content.Controls.Add(_startServiceCheckBox);
+        _includePathsTextBox = AddStandaloneMultiline(content, includeHintLabel, includeActions, string.Empty);
+        _clearIncludePathsButton.Click += (_, _) => _includePathsTextBox.Clear();
 
         content.Controls.Add(actionPanel);
 
@@ -271,22 +209,13 @@ internal sealed class InstallerForm : Form
         SetRowVisible(_settingsOutputTextBox, show);
         SetRowVisible(_installDirectoryTextBox, show);
         SetRowVisible(_stateDirectoryTextBox, show);
+        SetRowVisible(_controlPlaneUrlTextBox, show);
         SetRowVisible(_customerIdTextBox, show);
         SetRowVisible(_hostIdTextBox, show);
-        SetRowVisible(_awsRegionTextBox, show);
-        SetRowVisible(_bucketTextBox, show);
-        SetRowVisible(_prefixTextBox, show);
-        SetRowVisible(_credentialTargetTextBox, show);
-        SetRowVisible(_awsAccessKeyIdTextBox, show);
-        SetRowVisible(_awsSecretAccessKeyTextBox, show);
         SetRowVisible(_excludePathsTextBox, show);
-        _protectTokenCheckBox.Visible = show;
-        _protectAwsCredentialCheckBox.Visible = show;
-        _enableTrayAutostartCheckBox.Visible = show;
-        _launchTrayAfterInstallCheckBox.Visible = show;
-        _startServiceCheckBox.Visible = show;
         _validateButton.Visible = show;
         _saveSettingsButton.Visible = show;
+        _testControlPlaneButton.Visible = show;
         _testAwsButton.Visible = show;
         _openPackageButton.Visible = show;
         _openInstallDirButton.Visible = show;
@@ -387,7 +316,7 @@ internal sealed class InstallerForm : Form
                     settingsPath,
                     _installDirectoryTextBox.Text.Trim(),
                     _stateDirectoryTextBox.Text.Trim(),
-                    _startServiceCheckBox.Checked));
+                    startService: true));
 
             AppendOutput($"Install log: {result.LogFilePath}");
             AppendOutput(result.LogContents);
@@ -428,32 +357,21 @@ internal sealed class InstallerForm : Form
     private void ApplyTrayPreferencesAfterInstall()
     {
         var trayExe = Path.Combine(_installDirectoryTextBox.Text.Trim(), "tray", "WebstationBackup.Agent.Tray.exe");
-        if (_enableTrayAutostartCheckBox.Checked)
-        {
-            TrayAutostartRegistration.SetEnabled(trayExe, enabled: true);
-            AppendOutput("Tray App configurado para iniciar com o Windows (usuario atual).");
-        }
-        else
-        {
-            TrayAutostartRegistration.SetEnabled(trayExe, enabled: false);
-            AppendOutput("Tray App removido da inicializacao automatica do usuario.");
-        }
+        TrayAutostartRegistration.SetEnabled(trayExe, enabled: true);
+        AppendOutput("Tray App configurado para iniciar com o Windows.");
 
-        if (_launchTrayAfterInstallCheckBox.Checked)
+        try
         {
-            try
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = trayExe,
-                    UseShellExecute = true
-                });
-                AppendOutput("Tray App iniciado.");
-            }
-            catch (Exception ex)
-            {
-                AppendOutput("Falha ao iniciar Tray App: " + ex.Message);
-            }
+                FileName = trayExe,
+                UseShellExecute = true
+            });
+            AppendOutput("Tray App iniciado.");
+        }
+        catch (Exception ex)
+        {
+            AppendOutput("Falha ao iniciar Tray App: " + ex.Message);
         }
     }
 
@@ -594,15 +512,15 @@ internal sealed class InstallerForm : Form
             HostId = _hostIdTextBox.Text,
             ControlPlaneBaseUrl = _controlPlaneUrlTextBox.Text,
             AgentToken = _agentTokenTextBox.Text,
-            AwsRegion = _awsRegionTextBox.Text,
-            S3BucketName = _bucketTextBox.Text,
-            S3KeyPrefix = _prefixTextBox.Text,
-            AwsCredentialTargetName = _credentialTargetTextBox.Text,
+            AwsRegion = string.Empty,
+            S3BucketName = string.Empty,
+            S3KeyPrefix = string.Empty,
+            AwsCredentialTargetName = string.Empty,
             IncludePaths = InstallerValidation.ParsePathList(_includePathsTextBox.Text),
             ExcludePaths = InstallerValidation.ParsePathList(_excludePathsTextBox.Text)
         };
 
-        if (applyTokenProtection && _protectTokenCheckBox.Checked)
+        if (applyTokenProtection)
         {
             if (!string.IsNullOrWhiteSpace(model.AgentToken) && model.AgentToken.Trim().Length >= 8)
             {
@@ -610,10 +528,7 @@ internal sealed class InstallerForm : Form
                 model.AgentToken = string.Empty;
                 model.AgentTokenCredentialTargetName = null;
             }
-        }
 
-        if (applyTokenProtection && _protectAwsCredentialCheckBox.Checked)
-        {
             var accessKeyId = _awsAccessKeyIdTextBox.Text.Trim();
             var secretAccessKey = _awsSecretAccessKeyTextBox.Text.Trim();
             if (!string.IsNullOrWhiteSpace(accessKeyId) && !string.IsNullOrWhiteSpace(secretAccessKey))
@@ -634,11 +549,6 @@ internal sealed class InstallerForm : Form
         if (hasAccessKeyId != hasSecretAccessKey)
         {
             return "Informe AWS Access Key e AWS Secret Key juntos, ou deixe ambos vazios.";
-        }
-
-        if ((hasAccessKeyId || hasSecretAccessKey) && !_protectAwsCredentialCheckBox.Checked)
-        {
-            return "Para este MVP, a credencial AWS local informada no instalador deve ser protegida por maquina (DPAPI).";
         }
 
         return null;
@@ -811,6 +721,25 @@ internal sealed class InstallerForm : Form
         return textBox;
     }
 
+    private static TextBox AddStandaloneMultiline(TableLayoutPanel content, Label hintLabel, FlowLayoutPanel actions, string initialValue)
+    {
+        content.Controls.Add(hintLabel);
+        content.Controls.Add(actions);
+
+        var textBox = new TextBox
+        {
+            Text = initialValue,
+            Dock = DockStyle.Top,
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Height = 90,
+            Margin = new Padding(0, 6, 0, 0)
+        };
+
+        content.Controls.Add(textBox);
+        return textBox;
+    }
+
     private void AppendOutput(string message)
     {
         _outputTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
@@ -866,7 +795,7 @@ internal sealed class InstallerForm : Form
             {
                 AppendOutput($"Bucket region: {result.BucketRegion}");
             }
-            if ((!result.Success || _showAdvancedCheckBox.Checked) && !string.IsNullOrWhiteSpace(result.RawOutput))
+            if (!string.IsNullOrWhiteSpace(result.RawOutput))
             {
                 AppendOutput(result.RawOutput);
             }

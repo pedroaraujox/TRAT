@@ -52,195 +52,8 @@
 
 <section class="panel">
     <div class="panel-header">
-        <h2>AWS no ControlPlane</h2>
-    </div>
-    <div style="padding: 12px 14px;">
-        <p>@Model.AwsIntegration.Message</p>
-        <div class="definition-grid">
-            <div><span>Conta esperada</span><strong>@(Model.AwsIntegration.ExpectedAccountId ?? "-")</strong></div>
-            <div><span>Conta do servidor/painel</span><strong>@(Model.AwsIntegration.ResolvedAccountId ?? "-")</strong></div>
-            <div><span>Status</span><strong>@(Model.AwsIntegration.IsConnected ? "Conectada" : "Nao conectada")</strong></div>
-            <div><span>Bucket selecionado</span><strong>@(Model.AwsIntegration.SelectedBucket ?? "-")</strong></div>
-        </div>
-        <div style="margin-top: 12px;">
-            <strong>Buckets visiveis</strong>
-            @if (Model.AwsIntegration.Buckets.Count == 0)
-            {
-                <p>Nenhum bucket visivel no contexto atual do ControlPlane.</p>
-            }
-            else
-            {
-                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                    @foreach (var bucket in Model.AwsIntegration.Buckets)
-                    {
-                        <span class="badge ready">@bucket</span>
-                    }
-                </div>
-            }
-        </div>
-        <div style="margin-top: 12px;">
-            <strong>Pastas/prefixos encontrados</strong>
-            @if (Model.AwsIntegration.Prefixes.Count == 0)
-            {
-                <p>Nenhuma pasta/prefixo encontrado para o bucket atual.</p>
-            }
-            else
-            {
-                <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                    @foreach (var prefix in Model.AwsIntegration.Prefixes)
-                    {
-                        <span class="badge warning">@prefix</span>
-                    }
-                </div>
-            }
-        </div>
-    </div>
-</section>
-
-<section class="stats-grid">
-    <div class="stat-card">
-        <span>Hosts</span>
-        <strong>@Model.Hosts.Count</strong>
-    </div>
-    <div class="stat-card">
-        <span>Jobs</span>
-        <strong>@Model.Jobs.Count</strong>
-    </div>
-    <div class="stat-card">
-        <span>Alertas</span>
-        <strong>@Model.Alerts.Count</strong>
-    </div>
-    <div class="stat-card">
-        <span>Token novo</span>
-        <strong>@(string.IsNullOrWhiteSpace(Model.EnrollmentTokenOneTime) ? "Nao" : "Sim")</strong>
-    </div>
-</section>
-
-<section class="panel">
-    <div class="panel-header">
-        <h2>Relatorio de alertas do cliente</h2>
-        <a class="button ghost" href="/admin/alerts?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir alertas do cliente</a>
-    </div>
-    <div class="card-grid">
-        <div class="info-card">
-            <div class="info-title">Em aberto</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.OpenAlertCount</strong> alerta(s) ativos.</div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">Resolvidos</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.ResolvedAlertCount</strong> alerta(s) resolvidos.</div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">Causas distintas</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.DistinctRootCauseCount</strong> causa(s) raiz.</div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">Reincidencias</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.ReincidentRootCauseCount</strong> causa(s) com repeticao.</div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">Tempo medio de resolucao</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.AverageTimeToResolveLabel</strong></div>
-        </div>
-        <div class="info-card">
-            <div class="info-title">Maior janela em aberto</div>
-            <div class="info-line"><strong>@Model.AlertAnalytics.LongestOpenDurationLabel</strong></div>
-        </div>
-    </div>
-</section>
-
-<section class="split-grid">
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Principais causas raiz</h2>
-        </div>
-        <div class="table-wrap">
-            <table class="table responsive-table">
-                <thead>
-                    <tr>
-                        <th>Causa</th>
-                        <th>Ocorrencias</th>
-                        <th>Aberto</th>
-                        <th>Media</th>
-                        <th>Ultimo host</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (Model.AlertAnalytics.TopRootCauses.Count == 0)
-                    {
-                        <tr>
-                            <td colspan="5">Nenhuma causa raiz disponivel ainda para este cliente.</td>
-                        </tr>
-                    }
-                    else
-                    {
-                        @foreach (var cause in Model.AlertAnalytics.TopRootCauses)
-                        {
-                            <tr>
-                                <td>
-                                    <span class="badge @cause.Severity.ToLowerInvariant()">@cause.Severity</span>
-                                    @cause.Title
-                                </td>
-                                <td>@cause.OccurrenceCount</td>
-                                <td>@cause.OpenCount</td>
-                                <td>@cause.AverageTimeToResolveLabel</td>
-                                <td>
-                                    @if (!string.IsNullOrWhiteSpace(cause.LinkUrl) && !string.IsNullOrWhiteSpace(cause.LatestHostname))
-                                    {
-                                        <a href="@cause.LinkUrl">@cause.LatestHostname</a>
-                                    }
-                                    else
-                                    {
-                                        <span>@(cause.LatestHostname ?? cause.LatestHostId ?? "-")</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Timeline recente</h2>
-        </div>
-        <div class="ops-timeline">
-            @if (Model.AlertAnalytics.Timeline.Count == 0)
-            {
-                <div class="muted-text">Nenhum evento de alerta historico ainda para este cliente.</div>
-            }
-            else
-            {
-                @foreach (var item in Model.AlertAnalytics.Timeline)
-                {
-                    <article class="ops-timeline-item">
-                        <div class="ops-signal-header">
-                            <strong>@item.Title</strong>
-                            <span class="badge @item.StatusCssClass">@item.StatusLabel</span>
-                        </div>
-                        <div class="ops-signal-detail">@item.Message</div>
-                        <div class="ops-meta-line">
-                            <span class="badge @item.Severity.ToLowerInvariant()">@item.Severity</span>
-                            <span>@item.ObservedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
-                            <span>@(item.Hostname ?? item.HostId ?? "-")</span>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(item.LinkUrl) && !string.IsNullOrWhiteSpace(item.LinkText))
-                        {
-                            <a href="@item.LinkUrl">@item.LinkText</a>
-                        }
-                    </article>
-                }
-            }
-        </div>
-    </div>
-</section>
-
-<section class="panel">
-    <div class="panel-header">
         <h2>Hosts do cliente</h2>
-        <a class="button ghost" href="/admin/hosts?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Abrir tela de hosts</a>
+        <a class="button ghost" href="/admin/hosts/new?customerId=@Uri.EscapeDataString(Model.Customer.Id)">Novo host</a>
     </div>
     <div class="table-wrap">
     <table class="table responsive-table rt-customer-hosts">
@@ -250,7 +63,6 @@
                 <th>SO</th>
                 <th>Heartbeat</th>
                 <th>Status</th>
-                <th>Servico</th>
                 <th>Acao</th>
             </tr>
         </thead>
@@ -258,7 +70,7 @@
             @if (Model.Hosts.Count == 0)
             {
                 <tr>
-                    <td colspan="6">Nenhum host encontrado para este cliente.</td>
+                    <td colspan="5">Nenhum host encontrado para este cliente.</td>
                 </tr>
             }
             else
@@ -270,30 +82,13 @@
                         <td>@host.OsVersion</td>
                         <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
                         <td><span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span></td>
-                        <td>@(host.ServiceStatus ?? "-")</td>
                         <td>
-                            @if (!string.IsNullOrWhiteSpace(host.ConfigurationId))
-                            {
-                                <a class="button ghost" href="/admin/configurations/@Uri.EscapeDataString(host.ConfigurationId!)">Configurar host</a>
-                            }
-                            else
-                            {
-                                <span>-</span>
-                            }
+                            <a class="button ghost" href="/admin/hosts/@Uri.EscapeDataString(host.Id)/edit">Gerenciar</a>
                         </td>
                     </tr>
                 }
             }
         </tbody>
     </table>
-    </div>
-</section>
-
-<section class="panel">
-    <div class="panel-header">
-        <h2>Observacao</h2>
-    </div>
-    <div style="padding: 12px 14px;">
-        <p>Neste MVP, o Agent continua sendo o motor de execucao. O caminho do backup nasce no host, mas bucket, pasta, agenda e execucao manual passam a ser configurados pelo ControlPlane na tela de configuracao do host.</p>
     </div>
 </section>

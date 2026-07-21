@@ -1065,6 +1065,20 @@ internal static class AgentWorker
                     ct.ThrowIfCancellationRequested();
                     try
                     {
+                        var alreadyExists = await uploader.FileAlreadyExistsWithSameSha256Async(item.RelativePath, item.Sha256Base64, ct);
+                        if (alreadyExists)
+                        {
+                            logger.Info("Arquivo já existe no S3 com mesmo hash; pulando upload.", new Dictionary<string, object?>
+                            {
+                                ["jobId"] = jobId,
+                                ["relativePath"] = item.RelativePath,
+                                ["sha256b64"] = item.Sha256Base64
+                            });
+                            uploadedBytes += item.SizeBytes;
+                            uploadedItems += 1;
+                            continue;
+                        }
+
                         await uploader.UploadFileAndVerifyAsync(item.AbsolutePath, item.RelativePath, item.Sha256Base64, ct);
                         uploadedBytes += item.SizeBytes;
                         uploadedItems += 1;

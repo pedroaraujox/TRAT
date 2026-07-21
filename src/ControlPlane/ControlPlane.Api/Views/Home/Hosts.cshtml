@@ -48,10 +48,8 @@
                     <th>Host</th>
                     <th>Cliente</th>
                     <th>Ultimo Heartbeat</th>
-                    <th>Versao</th>
                     <th>Status</th>
-                    <th>Recuperacao</th>
-                    <th>Servico</th>
+                    <th>Ultimo backup</th>
                     <th></th>
                 </tr>
             </thead>
@@ -59,7 +57,7 @@
                 @if (Model.Hosts.Count == 0)
                 {
                     <tr>
-                        <td colspan="8">Nenhum host encontrado.</td>
+                        <td colspan="6">Nenhum host encontrado.</td>
                     </tr>
                 }
                 else
@@ -70,7 +68,6 @@
                             <td>@host.Hostname</td>
                             <td><a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">@(host.CustomerName ?? host.CustomerId)</a></td>
                             <td>@(host.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</td>
-                            <td>@(host.AgentVersion ?? "-")</td>
                             <td>
                                 <div class="status-stack">
                                     <span class="badge @host.OperationalStatusCssClass">@host.OperationalStatusLabel</span>
@@ -78,15 +75,20 @@
                                 </div>
                             </td>
                             <td>
-                                <div class="status-stack">
-                                    <span class="badge @host.RecoveryStatusCssClass">@host.RecoveryStatusLabel</span>
-                                    <div class="status-detail">@host.RecoveryStatusMessage</div>
-                                </div>
+                                @if (string.IsNullOrWhiteSpace(host.LastJobState))
+                                {
+                                    <span>-</span>
+                                }
+                                else
+                                {
+                                    <div class="status-stack">
+                                        <span class="badge @host.LastJobState.ToLowerInvariant()">@host.LastJobState</span>
+                                        <div class="status-detail">@(host.LastJobAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                                    </div>
+                                }
                             </td>
-                            <td>@(host.ServiceStatus ?? "-")</td>
                             <td class="actions-cell">
-                                <a href="/admin/customers/@Uri.EscapeDataString(host.CustomerId)">Abrir cliente</a>
-                                <a href="/admin/hosts/@Uri.EscapeDataString(host.Id)/edit">Suporte</a>
+                                <a href="/admin/hosts/@Uri.EscapeDataString(host.Id)/edit">Gerenciar</a>
                             </td>
                         </tr>
                     }
