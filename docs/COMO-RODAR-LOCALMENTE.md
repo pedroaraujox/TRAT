@@ -6,28 +6,48 @@ Guia completo para configurar, rodar e testar o TRAT (Agent + ControlPlane) em u
 
 ## 1. Visão Geral
 
-O TRAT é composto por duas partes que rodam na mesma máquina (ou em máquinas diferentes na mesma rede) durante os testes:
+O TRAT é composto por duas partes:
 
 - **ControlPlane**: painel web (ASP.NET Core) que você acessa pelo navegador em `http://localhost:5080`.
 - **Agent**: serviço Windows que roda no host que será feito backup, instalado via `TRAT.Agent.Setup.exe` baixado do próprio painel.
 
-Você pode testar tudo em uma única máquina (o painel e o "host cliente" sendo a mesma máquina) ou usar uma segunda máquina Windows na mesma rede pra simular um cliente real.
+### Duas máquinas com papéis diferentes
+
+Existem dois papéis distintos que **não exigem as mesmas ferramentas**:
+
+1. **Máquina de build** (a sua, onde você desenvolve): é aqui que o código é compilado — precisa de .NET SDK, .NET Framework Developer Pack, etc. (seção 2).
+2. **Servidores de teste** (as máquinas dos clientes/VMs onde você vai validar o sistema): **não precisam de nenhuma ferramenta de desenvolvimento instalada**. Os pacotes publicados (`ControlPlane.Api.exe`, `TRAT.Agent.Setup.exe`) são *self-contained* — já embutem o runtime .NET necessário. Basta copiar a pasta pronta e rodar. Veja a seção 3.6.
+
+### Modelo de teste: cada servidor com sua cópia completa
+
+Como você vai levar a **pasta inteira do projeto** pra cada servidor de teste, o modelo é: **cada servidor roda sua própria cópia independente e completa do TRAT** (painel + agent na mesma máquina, tudo via `localhost`). Isso é diferente de "um painel central recebendo vários agents remotos" — por padrão o painel só escuta em `localhost:5080`, então não é acessível de outra máquina na rede a não ser que você mude isso manualmente (veja nota na seção 3.6 se precisar desse outro modelo).
 
 ---
 
 ## 2. Pré-requisitos (o que precisa estar instalado)
 
-### Obrigatório
+### Na máquina de build (onde você desenvolve/compila)
 
 | Ferramenta | Versão | Como verificar | Para quê |
 |---|---|---|---|
 | **.NET 8 SDK** | 8.0.x | `dotnet --version` | Compilar/rodar o ControlPlane, Tray e Installer |
 | **.NET Framework 4.8 Developer Pack** | 4.8 | Painel de Controle → Programas (ou `dotnet build` do Service acusa erro se faltar) | Compilar o Agent Service (Windows Service legado) |
 | **PowerShell 5.1+** | 5.1 (já vem no Windows) | `$PSVersionTable.PSVersion` | Rodar todos os scripts de build/publish (`Liberar-TRAT.ps1`, etc.) |
-| **Windows 10/11 ou Windows Server** | — | — | O Agent só roda como Windows Service; o ControlPlane em modo produção também |
+| **Windows 10/11 ou Windows Server** | — | — | Todo o stack (Agent e ControlPlane) é Windows-only |
 | **Git** | qualquer recente | `git --version` | Clonar/versionar o repositório |
 
-### Opcional (mas recomendado)
+### Nos servidores de teste (onde você só vai *rodar*, não compilar)
+
+| Ferramenta | Necessário? |
+|---|---|
+| .NET SDK ou Runtime | **Não.** Os pacotes publicados são self-contained (embutem o runtime .NET). |
+| Git | **Não.** Você copia a pasta já pronta, não precisa clonar nada lá. |
+| Windows 10/11 ou Windows Server (x64) | **Sim** — é o único requisito de verdade. |
+| PowerShell 5.1+ | Já vem por padrão no Windows, usado só pelos scripts `Iniciar-Painel-Local.cmd`/`Parar-Painel-Local.ps1` que já vão dentro da pasta copiada. |
+
+> Ou seja: os servidores de teste (as máquinas dos clientes/VMs) não precisam de **nenhuma instalação prévia** além do próprio Windows. Isso é intencional — veja seção 3.6.
+
+### Opcional (mas recomendado, só na máquina de build)
 
 | Ferramenta | Para quê |
 |---|---|
@@ -112,6 +132,36 @@ Preencha:
 ```
 
 Isso abre automaticamente `http://localhost:5080` no navegador. Faça login com o email/senha configurados acima (ou o padrão, se pulou o passo 3.4).
+
+### 3.6 Levar o TRAT pronto para outros servidores de teste
+
+Esse é o fluxo pra validar em máquinas de cliente, sem precisar instalar SDK nem clonar repositório nelas.
+
+**Na máquina de build (uma vez, antes de sair copiando):**
+
+```powershell
+.\Liberar-TRAT.ps1
+```
+
+Isso garante que `artifacts\agent-package\` e `artifacts\trat-local\TRAT.ControlPlane.Local\` estão gerados e atualizados — são essas duas pastas que precisam ir junto.
+
+**Copiando pra um servidor de teste:**
+
+1. Zipe a pasta inteira do projeto (`TRAT\`) — pode incluir tudo, inclusive o código-fonte, não tem problema.
+   ```powershell
+   Compress-Archive -Path "C:\caminho\para\TRAT" -DestinationPath "TRAT-teste.zip"
+   ```
+2. Copie o ZIP pro servidor de teste (pendrive, rede, RDP, o que for mais fácil) e extraia.
+3. No servidor de teste, abra PowerShell **como Administrador** na pasta extraída e rode:
+   ```powershell
+   .\Iniciar-TRAT.ps1
+   ```
+
+O script detecta que o pacote já existe (`artifacts\trat-local\TRAT.ControlPlane.Local\`) e **não tenta recompilar nem exige SDK** — ele só inicia o `ControlPlane.Api.exe` que já está pronto (tenta instalar como Windows Service se rodar como Admin; senão inicia em modo processo). O navegador abre em `http://localhost:5080` nesse próprio servidor.
+
+4. Cada servidor de teste tem seu **próprio banco de dados** (`data\controlplane.db`), independente dos outros — ou seja, clientes/hosts cadastrados num servidor não aparecem nos outros. Isso é esperado nesse modelo (cada servidor = uma instalação completa e isolada).
+
+> **Se, em vez disso, você quiser um painel central acessível de outras máquinas na rede** (um servidor roda só o painel, e o Agent de outra máquina se conecta remotamente): edite `PANEL_URL` em `deploy\controlplane\Iniciar-Painel-Local.cmd` (ou no `.cmd` já copiado dentro do pacote) de `http://localhost:5080` para `http://0.0.0.0:5080`, libere a porta 5080 no Firewall do Windows (`New-NetFirewallRule -DisplayName "TRAT Painel" -Direction Inbound -LocalPort 5080 -Protocol TCP -Action Allow`), e no instalador do Agent aponte o campo **ControlPlane URL** pro IP real do servidor do painel em vez de `localhost`. Esse não é o modelo padrão deste guia, mas funciona se precisar.
 
 ---
 
@@ -255,6 +305,12 @@ Não deveria acontecer — `Publish-ControlPlane.ps1` preserva `data/`, `logs/` 
 
 **Erro de login (senha não funciona)**
 Se você já tinha um admin criado e mudou a senha em `appsettings.Local.json`, isso **não** atualiza a senha de uma conta já existente (o bootstrap só cria a conta na primeira vez). Use `Resetar-TRAT.ps1` se precisar recomeçar, ou troque a senha pela própria tela do painel (se existir essa opção) ou diretamente no banco.
+
+**Windows SmartScreen bloqueia o `TRAT.Agent.Setup.exe` ou o `ControlPlane.Api.exe` no servidor de teste**
+Esperado — os executáveis não são assinados digitalmente. Clique em "Mais informações" → "Executar assim mesmo". Isso é só um aviso, não indica problema real.
+
+**`Iniciar-TRAT.ps1` no servidor de teste não sobe como serviço, só como processo**
+Precisa rodar o PowerShell **como Administrador** pra instalar como Windows Service automaticamente. Sem privilégio de admin, ele ainda funciona, só fica rodando como processo comum (fecha se você fechar a janela/sessão).
 
 ---
 

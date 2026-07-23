@@ -41,3 +41,6 @@ appsettings.*.local.json
 # NuGet local state
 *.nupkg
 packages/
+
+# Generated Agent payload embedded by Publish-Agent.ps1 (regenerated every build)
+src/Agent/WebstationBackup.Agent.Installer/Payload/
