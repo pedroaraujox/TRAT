@@ -137,29 +137,33 @@ Isso abre automaticamente `http://localhost:5080` no navegador. Faça login com 
 
 Esse é o fluxo pra validar em máquinas de cliente, sem precisar instalar SDK nem clonar repositório nelas.
 
+**Importante: não copie a pasta `TRAT\` inteira.** Ela inclui código-fonte, `.git` e artefatos intermediários — só a pasta do pacote já publicado (`artifacts\trat-local\TRAT.ControlPlane.Local\`) é necessária pra rodar, e ela já vem com o Agent embutido dentro de si. Isso reduz o que você precisa copiar de ~5 GB pra ~1,6 GB.
+
 **Na máquina de build (uma vez, antes de sair copiando):**
 
 ```powershell
 .\Liberar-TRAT.ps1
 ```
 
-Isso garante que `artifacts\agent-package\` e `artifacts\trat-local\TRAT.ControlPlane.Local\` estão gerados e atualizados — são essas duas pastas que precisam ir junto.
+Isso garante que `artifacts\trat-local\TRAT.ControlPlane.Local\` está gerado e atualizado, com o pacote do Agent já embutido dentro dela (em `artifacts\trat-local\TRAT.ControlPlane.Local\artifacts\agent-package\`).
 
 **Copiando pra um servidor de teste:**
 
-1. Zipe a pasta inteira do projeto (`TRAT\`) — pode incluir tudo, inclusive o código-fonte, não tem problema.
+1. Zipe **só a pasta do pacote pronto**, não o repositório inteiro:
    ```powershell
-   Compress-Archive -Path "C:\caminho\para\TRAT" -DestinationPath "TRAT-teste.zip"
+   Compress-Archive -Path "artifacts\trat-local\TRAT.ControlPlane.Local" -DestinationPath "TRAT-teste.zip"
    ```
-2. Copie o ZIP pro servidor de teste (pendrive, rede, RDP, o que for mais fácil) e extraia.
-3. No servidor de teste, abra PowerShell **como Administrador** na pasta extraída e rode:
+2. Copie o ZIP pro servidor de teste (pendrive, rede, RDP, o que for mais fácil) e extraia em qualquer pasta (ex.: `C:\TRAT-Painel\`).
+3. No servidor de teste, abra PowerShell **como Administrador** dentro da pasta extraída e rode:
    ```powershell
-   .\Iniciar-TRAT.ps1
+   .\Instalar-Painel-Como-Servico.ps1 -PackageRoot . -Url "http://localhost:5080"
    ```
+   Isso instala e inicia o painel como Windows Service (sobrevive a reboot). Se preferir só testar rápido sem instalar como serviço, rode `.\Iniciar-Painel-Local.cmd` em vez disso — inicia como processo comum, mais simples mas fecha se a sessão encerrar.
+4. Acesse `http://localhost:5080` no navegador desse próprio servidor.
 
-O script detecta que o pacote já existe (`artifacts\trat-local\TRAT.ControlPlane.Local\`) e **não tenta recompilar nem exige SDK** — ele só inicia o `ControlPlane.Api.exe` que já está pronto (tenta instalar como Windows Service se rodar como Admin; senão inicia em modo processo). O navegador abre em `http://localhost:5080` nesse próprio servidor.
+Cada servidor de teste tem seu **próprio banco de dados** (`data\controlplane.db`), independente dos outros — ou seja, clientes/hosts cadastrados num servidor não aparecem nos outros. Isso é esperado nesse modelo (cada servidor = uma instalação completa e isolada).
 
-4. Cada servidor de teste tem seu **próprio banco de dados** (`data\controlplane.db`), independente dos outros — ou seja, clientes/hosts cadastrados num servidor não aparecem nos outros. Isso é esperado nesse modelo (cada servidor = uma instalação completa e isolada).
+> Se preferir manter o modelo "clonar o repositório inteiro em todo lugar" (mais simples de lembrar, mas ocupa ~3x mais espaço e leva o código-fonte pra máquinas de cliente), o fluxo com `Iniciar-TRAT.ps1` a partir da raiz do repositório também funciona — é só menos eficiente pra esse caso de uso específico.
 
 > **Se, em vez disso, você quiser um painel central acessível de outras máquinas na rede** (um servidor roda só o painel, e o Agent de outra máquina se conecta remotamente): edite `PANEL_URL` em `deploy\controlplane\Iniciar-Painel-Local.cmd` (ou no `.cmd` já copiado dentro do pacote) de `http://localhost:5080` para `http://0.0.0.0:5080`, libere a porta 5080 no Firewall do Windows (`New-NetFirewallRule -DisplayName "TRAT Painel" -Direction Inbound -LocalPort 5080 -Protocol TCP -Action Allow`), e no instalador do Agent aponte o campo **ControlPlane URL** pro IP real do servidor do painel em vez de `localhost`. Esse não é o modelo padrão deste guia, mas funciona se precisar.
 
