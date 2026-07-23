@@ -43,11 +43,15 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromHours(8);
 });
 
-var usePostgres = builder.Configuration.GetValue<bool>("ControlPlane:Database:UsePostgres");
-var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
+var configuredSqlitePath = builder.Configuration["ControlPlane:Database:SqlitePath"] ?? "data/controlplane.db";
+var sqlitePath = Path.IsPathRooted(configuredSqlitePath)
+    ? configuredSqlitePath
+    : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, configuredSqlitePath));
+Directory.CreateDirectory(Path.GetDirectoryName(sqlitePath) ?? Path.Combine(builder.Environment.ContentRootPath, "data"));
+
+var dataDir = Path.GetDirectoryName(sqlitePath) ?? Path.Combine(builder.Environment.ContentRootPath, "data");
 var keysDir = Path.Combine(dataDir, "keys");
 Directory.CreateDirectory(keysDir);
-
 var dataProtection = builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
     .SetApplicationName("TRAT.ControlPlane");
@@ -56,31 +60,13 @@ if (OperatingSystem.IsWindows())
     dataProtection.ProtectKeysWithDpapi();
 }
 
-if (usePostgres)
+var csb = new SqliteConnectionStringBuilder
 {
-    var postgresConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    if (string.IsNullOrWhiteSpace(postgresConnectionString))
-    {
-        throw new InvalidOperationException("PostgreSQL configured but ConnectionStrings:DefaultConnection not found");
-    }
-    builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(postgresConnectionString));
-}
-else
-{
-    var configuredSqlitePath = builder.Configuration["ControlPlane:Database:SqlitePath"] ?? "data/controlplane.db";
-    var sqlitePath = Path.IsPathRooted(configuredSqlitePath)
-        ? configuredSqlitePath
-        : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, configuredSqlitePath));
-    Directory.CreateDirectory(Path.GetDirectoryName(sqlitePath) ?? dataDir);
+    DataSource = sqlitePath,
+    ForeignKeys = true
+};
 
-    var csb = new SqliteConnectionStringBuilder
-    {
-        DataSource = sqlitePath,
-        ForeignKeys = true
-    };
-
-    builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(csb.ToString()));
-}
+builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(csb.ToString()));
 
 var app = builder.Build();
 

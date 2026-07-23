@@ -1,5 +1,18 @@
 # TRAT
 
+**Status atual: desenvolvimento 100% local.** Não há publicação em VPS/nuvem neste momento — todo o ciclo de build, teste e uso acontece na própria máquina Windows de desenvolvimento.
+
+## Como rodar
+
+Guia completo (dependências, passo a passo, troubleshooting): [docs/COMO-RODAR-LOCALMENTE.md](docs/COMO-RODAR-LOCALMENTE.md)
+
+Resumo rápido:
+```powershell
+.\Liberar-TRAT.ps1   # builda Agent + ControlPlane, roda smoke test, gera release report
+.\Iniciar-TRAT.ps1   # sobe o painel em http://localhost:5080
+.\Parar-TRAT.ps1     # para o painel
+```
+
 ## Regra operacional geral
 
 - Qualquer alteracao no projeto exige rebuild ou republish dos artefatos afetados antes de validar.
@@ -7,23 +20,6 @@
 - Checklist operacional completo: `docs\CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md`.
 - Fluxo unico recomendado: `.\Liberar-TRAT.ps1`.
 - Evidencia obrigatoria: `.\Liberar-TRAT.ps1` gera `release report` em `artifacts\release-reports`.
-
-## Execucao local simples
-
-Para testar em outro servidor sem publicar na internet:
-
-1. Na maquina de origem, gere os artifacts locais do painel e do agent.
-2. Zipe a pasta inteira `TRAT`.
-3. Copie e extraia a pasta no servidor de teste.
-4. Execute `Iniciar-TRAT.ps1` na raiz do projeto extraido.
-
-O script raiz:
-
-- reutiliza o pacote local do painel em `artifacts\trat-local\TRAT.ControlPlane.Local`;
-- se esse pacote ainda nao existir e houver `dotnet SDK`, tenta gera-lo automaticamente;
-- sobe o painel local e abre o navegador em `http://localhost:5080`.
-
-Para encerrar o painel local, execute `Parar-TRAT.ps1`.
 
 Se quiser reiniciar o teste local do zero sem reaproveitar banco, tokens e configuracao anteriores:
 
