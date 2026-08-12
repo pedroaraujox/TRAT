@@ -20,9 +20,9 @@ TestResults/
 *.tmp
 *.cache
 *.pid
-artifacts/
-!artifacts/
+artifacts/*
 !artifacts/agent-package/
+artifacts/agent-package/*
 !artifacts/agent-package/.gitkeep
 
 # Local databases / state
