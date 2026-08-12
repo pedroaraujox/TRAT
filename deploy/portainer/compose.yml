@@ -1,0 +1,69 @@
+services:
+  preparar-volumes:
+    image: ${TRAT_IMAGE:?Informe TRAT_IMAGE}
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 1654:1654 /app/data /app/backups"]
+    volumes:
+      - data:/app/data
+      - backups:/app/backups
+    network_mode: none
+    restart: "no"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+
+  controlplane:
+    image: ${TRAT_IMAGE:?Informe TRAT_IMAGE}
+    container_name: ${TRAT_CONTAINER_NAME:?Informe TRAT_CONTAINER_NAME}
+    restart: unless-stopped
+    depends_on:
+      preparar-volumes:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      AllowedHosts: ${TRAT_HOSTNAME:?Informe TRAT_HOSTNAME}
+      ControlPlane__Database__SqlitePath: /app/data/controlplane.db
+      ControlPlane__AgentDownloads__ArtifactsRoot: /app/artifacts/agent-package
+      ControlPlane__Security__RequireHttps: "true"
+      ControlPlane__Security__UseForwardedHeaders: "true"
+      ControlPlane__Security__TrustedNetworks__0: ${TRAT_PROXY_NETWORK_CIDR:?Informe TRAT_PROXY_NETWORK_CIDR}
+      ControlPlane__Security__EnableAdminApi: "false"
+      ControlPlane__BootstrapAdmin__Email: ${TRAT_ADMIN_EMAIL:?Informe TRAT_ADMIN_EMAIL}
+      ControlPlane__BootstrapAdmin__DisplayName: ${TRAT_ADMIN_NAME:-Administrador TRAT}
+      ControlPlane__BootstrapAdmin__Password: ${TRAT_ADMIN_PASSWORD:?Informe TRAT_ADMIN_PASSWORD}
+      ControlPlane__Seed__EnableDemoData: "false"
+      ControlPlane__Backup__Enabled: "true"
+      ControlPlane__Backup__Directory: /app/backups
+      ControlPlane__Backup__IntervalHours: "24"
+      ControlPlane__Backup__InitialDelaySeconds: "300"
+      ControlPlane__Backup__RetentionDays: "30"
+    volumes:
+      - data:/app/data
+      - backups:/app/backups
+    networks:
+      - proxy
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  data:
+  backups:
+
+networks:
+  proxy:
+    external: true
+    name: ${TRAT_PROXY_NETWORK:-nginx-proxy_default}

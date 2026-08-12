@@ -1,6 +1,6 @@
-# Painel Local
+# ControlPlane central
 
-Pacote local do `ControlPlane` para uso interno, sem publicar na internet.
+Pacote autocontido alternativo para hospedar o ControlPlane em Windows. O destino principal usa Contabo/Portainer conforme `deploy\portainer\README.md`. Neste modo alternativo, use `Instalar-Homologacao-Central.ps1` e mantenha a origem em `127.0.0.1:5080` atras do Cloudflare Tunnel.
 
 ## Como usar
 
@@ -11,6 +11,8 @@ Pacote local do `ControlPlane` para uso interno, sem publicar na internet.
    - nome do administrador;
    - senha inicial.
 4. Acesse `http://localhost:5080`.
+
+O fluxo acima e somente local. Para a arquitetura central, consulte `docs\ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md` no repositorio.
 
 ## O que o pacote faz
 
@@ -27,6 +29,8 @@ Pacote local do `ControlPlane` para uso interno, sem publicar na internet.
 - `Restaurar-Painel-Dados.ps1`: restaura o banco SQLite a partir de um backup.
 - `Coletar-Logs.ps1`: coleta evidencias do painel e do agent (se instalado na mesma maquina) e gera um ZIP.
 - `Primeira-Configuracao.ps1`: gera a configuracao local inicial.
+- `Instalar-Homologacao-Central.ps1`: instala ControlPlane, backup diario e Cloudflare Tunnel.
+- `Validar-Homologacao-Central.ps1`: valida HTTPS, login, headers e API administrativa desativada.
 - `appsettings.Local.json`: sobrescritas locais do ambiente.
  - `Instalar-Painel-Como-Servico.ps1`: instala o painel como servico Windows com auto-start e restart em falha.
  - `Remover-Painel-Servico.ps1`: remove o servico Windows do painel.

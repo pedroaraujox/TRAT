@@ -55,7 +55,7 @@
                             <td class="actions-cell">
                                 <a href="/admin/customers/@Uri.EscapeDataString(customer.Id)">Abrir</a>
                                 <a href="/admin/customers/@Uri.EscapeDataString(customer.Id)/edit">Editar</a>
-                                <form method="post" action="/admin/customers/@Uri.EscapeDataString(customer.Id)/delete" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este cliente e todos os dados relacionados?');">
+                                <form method="post" action="/admin/customers/@Uri.EscapeDataString(customer.Id)/delete" style="display:inline;" data-confirm="Tem certeza que deseja excluir este cliente e todos os dados relacionados?">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="returnUrl" value="/admin/customers" />
                                     <button type="submit" class="button danger">Excluir</button>

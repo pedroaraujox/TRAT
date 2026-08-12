@@ -57,9 +57,10 @@ if (Test-Path $packageDir) {
     }
 }
 
-if (Test-Path $outputRoot) {
-    Remove-Item -Path $outputRoot -Recurse -Force
-}
+try {
+    if (Test-Path $outputRoot) {
+        Remove-Item -Path $outputRoot -Recurse -Force
+    }
 
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
@@ -70,6 +71,9 @@ dotnet publish $projectPath `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -o $packageDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Publish do ControlPlane falhou com codigo $LASTEXITCODE."
+}
 
 $requiredFiles = @(
     "ControlPlane.Api.exe",
@@ -116,6 +120,8 @@ Copy-Item -Path (Join-Path $deployRoot "Iniciar-Painel-Local.cmd") -Destination 
 Copy-Item -Path (Join-Path $deployRoot "Parar-Painel-Local.ps1") -Destination (Join-Path $packageDir "Parar-Painel-Local.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "Primeira-Configuracao.ps1") -Destination (Join-Path $packageDir "Primeira-Configuracao.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "appsettings.Local.template.json") -Destination (Join-Path $packageDir "appsettings.Local.template.json") -Force
+Copy-Item -Path (Join-Path $deployRoot "Instalar-Homologacao-Central.ps1") -Destination (Join-Path $packageDir "Instalar-Homologacao-Central.ps1") -Force
+Copy-Item -Path (Join-Path $deployRoot "Validar-Homologacao-Central.ps1") -Destination (Join-Path $packageDir "Validar-Homologacao-Central.ps1") -Force
 
 if (-not $SkipAgentArtifacts -and (Test-Path $sourceAgentArtifactsDir)) {
     $targetAgentArtifactsDir = Join-Path $packageDir "artifacts\agent-package"
@@ -138,4 +144,26 @@ if (-not $SkipAgentArtifacts) {
 }
 if (-not $SkipZip) {
     Write-Host ("Arquivo ZIP gerado em: {0}" -f $zipPath)
+}
+}
+finally {
+    # Se build/publish/validacao falhar depois que o pacote anterior for removido,
+    # devolve o estado persistente ao packageDir. Assim uma falha de ferramenta nao
+    # transforma um republish em perda de banco/configuracao.
+    if (Test-Path $preserveStagingDir) {
+        New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+        foreach ($dirName in @("data", "logs")) {
+            $preservedDir = Join-Path $preserveStagingDir $dirName
+            if (Test-Path $preservedDir) {
+                New-Item -ItemType Directory -Force -Path (Join-Path $packageDir $dirName) | Out-Null
+                Copy-Item -Path (Join-Path $preservedDir "*") -Destination (Join-Path $packageDir $dirName) -Recurse -Force
+            }
+        }
+
+        $preservedSettings = Join-Path $preserveStagingDir "appsettings.Local.json"
+        if (Test-Path $preservedSettings) {
+            Copy-Item -LiteralPath $preservedSettings -Destination (Join-Path $packageDir "appsettings.Local.json") -Force
+        }
+        Write-Host "Estado local restaurado apos interrupcao/falha do publish." -ForegroundColor Yellow
+    }
 }

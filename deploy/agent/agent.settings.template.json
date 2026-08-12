@@ -1,7 +1,7 @@
 {
   "CustomerId": "CHANGE_ME_CUSTOMER_ID",
   "HostId": "CHANGE_ME_HOST_ID",
-  "ControlPlaneBaseUrl": "http://CHANGE_ME_CONTROLPLANE_HOST:5080",
+  "ControlPlaneBaseUrl": "https://trat-hml.outboxtech.com.br",
   "AgentToken": "",
   "AgentTokenDpapiProtected": "CHANGE_ME_TOKEN_DPAPI_BASE64",
   "AgentTokenCredentialTargetName": "",

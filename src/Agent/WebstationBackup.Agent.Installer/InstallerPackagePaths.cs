@@ -27,6 +27,31 @@ internal static class InstallerPackagePaths
 
     public static string DefaultSettingsOutputPath(string packageRoot) => Path.Combine(packageRoot, "agent.settings.json");
 
+    public static string ReadDefaultControlPlaneUrl(string packageRoot)
+    {
+        try
+        {
+            var path = Path.Combine(packageRoot, "controlplane.url");
+            if (File.Exists(path))
+            {
+                var configured = File.ReadAllText(path).Trim().TrimEnd('/');
+                if (Uri.TryCreate(configured, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttps || IsLoopbackHttp(uri)))
+                {
+                    return configured;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return "https://trat-hml.outboxtech.com.br";
+    }
+
+    private static bool IsLoopbackHttp(Uri uri)
+        => uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback;
+
     private const string EmbeddedPayloadResourceName = "AgentPackagePayload.zip";
 
     public static string ResolveInitialPackageRoot()

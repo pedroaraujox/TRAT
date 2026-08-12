@@ -1,0 +1,17 @@
+/* Fallbacks para navegadores sem CSS Custom Properties/Grid, como IE 11. */
+html, body { min-height: 100%; }
+body { font-family: "Segoe UI", Arial, sans-serif; background: #0b1220; color: #e5e7eb; }
+.shell { display: -ms-flexbox; display: flex; min-height: 100vh; }
+.sidebar { width: 280px; min-width: 280px; border-color: #263244; }
+.content { -ms-flex: 1 1 auto; flex: 1 1 auto; }
+.panel, .card, .metric-card { background: #111827; border-color: #263244; }
+.table { color: #e5e7eb; }
+.table th { background: #0f172a; color: #94a3b8; }
+input, select, textarea { background: #0f172a; color: #e5e7eb; border-color: #475569; }
+.button.primary { background: #3b82f6; color: #fff; }
+.button.danger { background: #ef4444; color: #fff; }
+
+@media (max-width: 1024px) {
+    .shell { display: block; }
+    .content { width: 100%; }
+}

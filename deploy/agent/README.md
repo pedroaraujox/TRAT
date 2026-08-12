@@ -1,5 +1,9 @@
 # Pacote do TRAT Agent
 
+O Agent se conecta ao ControlPlane central por HTTPS. O pacote oficial de homologacao vem configurado para `https://trat-hml.outboxtech.com.br`; HTTP remoto nao e aceito.
+
+Consulte `docs\COMPATIBILIDADE-WINDOWS.md` para a matriz de suporte. Windows Server 2012/2012 R2 exigem .NET Framework 4.8, TLS 1.2 e atualizacoes do sistema.
+
 ## Conteudo
 - `agent.settings.template.json`: modelo de configuracao local do host.
 - `project.rules.json`: regras operacionais do agent.

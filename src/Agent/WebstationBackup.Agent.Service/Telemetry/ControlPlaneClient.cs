@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -24,6 +25,7 @@ internal sealed class ControlPlaneClient
 
     public ControlPlaneClient(string baseUrl, string agentToken, ILogger logger)
     {
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         _logger = logger;
         _http = new HttpClient
         {

@@ -8,6 +8,8 @@ Este documento define as regras operacionais do TRAT para desenvolvimento, valid
 - Nenhuma mudanca e considerada pronta apenas porque compilou no codigo-fonte; a validacao deve acontecer no artefato real usado por operador, host ou cliente.
 - Para o fluxo padrao do dia a dia, prefira executar `.\Liberar-TRAT.ps1`.
 - **Preservar estado/dados de teste sempre que possivel**: ao validar uma mudanca, priorize atualizar o Agent/ControlPlane ja instalados (update in-place) em vez de reinstalar do zero ou recriar cliente/host no painel. So reinstalar ou recriar cadastro quando isso for tecnicamente a unica forma de validar a mudanca (ex.: mudanca no proprio fluxo de instalacao/onboarding).
+- O ControlPlane e central. Servidores de clientes recebem apenas o Agent.
+- Nenhum ControlPlane internet-facing pode escutar em interface publica; a origem deve permanecer em loopback atras do Tunnel HTTPS.
 
 ## Regras gerais
 
@@ -67,6 +69,17 @@ Este documento define as regras operacionais do TRAT para desenvolvimento, valid
   - heartbeat;
   - execucao manual ou agendada;
   - status final no painel.
+  - interrupcao e retomada de internet quando a mudanca afetar telemetria;
+  - TLS 1.2 em Windows Server 2012/2012 R2 quando a mudanca afetar rede ou instalacao.
+
+### Homologacao central
+
+- Gerar `scripts\controlplane\Publish-Homologacao-Central.ps1`.
+- Validar `Validar-Homologacao-Central.ps1` contra o hostname HTTPS.
+- Confirmar que `/api/v1/admin` retorna 404 quando nao foi explicitamente habilitada.
+- Confirmar cookies Secure/HttpOnly, CSP, HSTS, host filtering e rate limiting.
+- Executar backup consistente com o servico parado e ensaiar restauracao.
+- Validar retorno automatico dos servicos `TRATControlPlane` e `cloudflared` apos reboot.
 
 ## Gates de saida
 

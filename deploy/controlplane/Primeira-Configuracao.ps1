@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$PackageRoot = $PSScriptRoot
+    [string]$PackageRoot = $PSScriptRoot,
+    [string]$PublicHostname = "trat-hml.outboxtech.com.br",
+    [switch]$InternetFacing
 )
 
 $ErrorActionPreference = "Stop"
@@ -96,9 +98,19 @@ finally {
 $adminToken = ([Convert]::ToBase64String($tokenBytes)).TrimEnd('=').Replace('+', 'A').Replace('/', 'B')
 
 $configuration = [ordered]@{
+    AllowedHosts = if ($InternetFacing) { "$PublicHostname;localhost;127.0.0.1" } else { "*" }
     ControlPlane = [ordered]@{
         Security = [ordered]@{
             AdminToken = $adminToken
+            EnableAdminApi = $false
+            RequireHttps = [bool]$InternetFacing
+            UseForwardedHeaders = [bool]$InternetFacing
+            TrustedProxies = if ($InternetFacing) { @("127.0.0.1", "::1") } else { @() }
+            PanelLockout = [ordered]@{
+                WindowMinutes = 15
+                MaxFailedAttempts = 5
+                LockoutMinutes = 15
+            }
         }
         BootstrapAdmin = [ordered]@{
             Email = $adminEmail
@@ -129,6 +141,6 @@ Write-Host ""
 Write-Host "Configuracao local criada com sucesso:" -ForegroundColor Green
 Write-Host ("- Arquivo: {0}" -f $targetPath)
 Write-Host ("- Banco SQLite: {0}" -f (Join-Path $packageRootPath "data\controlplane.db"))
-Write-Host ("- Token administrativo para API: {0}" -f $adminToken)
+Write-Host ("- Modo: {0}" -f $(if ($InternetFacing) { "homologacao central HTTPS" } else { "local" }))
 Write-Host ""
-Write-Host "Guarde o token administrativo em local seguro. Ele protege apenas as rotas /api/v1/admin." -ForegroundColor Yellow
+Write-Host "A API administrativa permanece desativada por padrao." -ForegroundColor Yellow

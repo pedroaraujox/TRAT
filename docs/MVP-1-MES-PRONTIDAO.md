@@ -1,62 +1,45 @@
-# MVP 1 Mes - Prontidao
+# MVP de homologacao central - prontidao para piloto
 
-Este documento define quando o MVP esta pronto para um piloto controlado de 1 mes.
+## Objetivo
 
-## Ja entregue
+Validar por um mes um ControlPlane central operado pela Outbox Tech e Agents instalados em servidores de clientes.
 
-- backup real do `Agent` para AWS S3 validado;
-- configuracao central pelo `ControlPlane`;
-- login por usuario e senha no painel;
-- administracao de usuarios;
-- download do `Agent` pelo painel;
-- auditoria administrativa persistida;
-- observabilidade operacional por host;
-- alertas operacionais persistidos com deduplicacao por causa raiz;
-- timeline e relatorios de alertas;
-- pacote local do painel para execucao fora do repositorio.
+## Entregue no codigo
 
-## Fora de escopo por decisao de produto
+- backup real do Agent para AWS S3;
+- configuracao e monitoramento pelo ControlPlane;
+- painel com login, usuarios, auditoria e bloqueio de tentativas;
+- pacote central autocontido;
+- Setup do Agent apontando para a URL HTTPS de homologacao;
+- tokens de Agent separados por cliente;
+- alertas e observabilidade por host;
+- hardening HTTP e API administrativa desativada por padrao;
+- scripts de Tunnel, backup e validacao publica.
 
-- restore pela aplicacao;
-- publicacao do painel na internet nesta fase.
+## Fora de escopo
 
-## Gate minimo para iniciar o piloto
+- restore de arquivos pela aplicacao;
+- alta disponibilidade do ControlPlane;
+- painel executado em cada servidor cliente;
+- suporte padrao ao Windows Server 2008 sem R2.
 
-Todos os itens abaixo devem estar `OK`:
+## Gate para iniciar o piloto
 
-1. `OK` pacote local do painel gerado e iniciado em maquina limpa.
-2. `OK` login administrativo validado no pacote local.
-3. `OK` pagina de download do `Agent` funcionando no pacote local.
-4. `OK` fluxo completo `ControlPlane -> Agent -> S3` validado novamente usando o painel local.
-5. `OK` backup manual do banco `data\controlplane.db` testado.
-6. `OK` restart do servidor:
-   - ControlPlane volta automaticamente (via servico Windows ou rotina equivalente);
-   - sessao do painel nao quebra por falta de chaves de criptografia (DataProtection persistido).
-6. `OK` pelo menos 1 host cliente com:
-   - heartbeat regular;
-   - sync de configuracao;
-   - prechecks saudaveis;
-   - 1 job agendado concluido com sucesso.
-7. `OK` rotina operacional definida para:
-   - reconhecer alertas;
-   - atualizar Agent;
-   - trocar credencial AWS local;
-   - recuperar painel local a partir do backup do SQLite.
+Todos os itens devem estar `OK`:
 
-## O que ainda precisa acontecer antes de eu cravar "pronto para 1 mes"
+1. servidor central Windows Server 2022 x64 atualizado;
+2. `trat-hml.outboxtech.com.br` publicado pelo Nginx Proxy Manager da Contabo, sem porta 8080 exposta no host;
+3. HTTPS, health, login e cabecalhos validados pelo script de homologacao;
+4. backup diario executado e restauracao ensaiada;
+5. reinicio do servidor com retorno automatico de ControlPlane e Tunnel;
+6. download real do Setup pelo painel;
+7. Agent instalado em pelo menos um Windows Server 2012 R2 e um Windows Server moderno;
+8. enroll, heartbeat, sync, job manual e job agendado concluidos;
+9. arquivos confirmados no S3 e segunda execucao deduplicada;
+10. perda temporaria de internet com retomada e envio do status final pendente;
+11. atualizacao in-place sem recriar cliente, host ou credenciais;
+12. logs sem segredos e rotina de resposta a alertas definida.
 
-- validar o novo pacote local do painel em execucao real por copia de arquivos;
-- testar a pagina de downloads do `Agent` a partir desse pacote local;
-- executar um ciclo final de smoke test com pelo menos 1 host real apontando para essa instancia local;
-- validar o backup do banco local e a reabertura do painel com a mesma base.
-- validar execucao do painel como servico Windows em servidor de teste e reboot controlado.
+## Estado
 
-## Criterio de decisao
-
-Quando os quatro itens acima forem validados sem regressao, minha recomendacao muda para:
-
-- `Pronto para piloto controlado de 1 mes`
-
-Antes disso, minha recomendacao permanece:
-
-- `Muito proximo, mas ainda precisa da validacao final do pacote local`
+O codigo e o pacote podem ser considerados prontos somente depois da validacao no servidor externo. Sem servidor, rota DNS e token de Tunnel, a publicacao permanece preparada, mas nao comprovada.

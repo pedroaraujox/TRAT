@@ -11,7 +11,7 @@
     <div class="page-actions">
         <a class="button secondary" href="/admin/customers">Voltar</a>
         <a class="button primary" href="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/edit">Editar cliente</a>
-        <form method="post" action="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/delete" style="display:inline;" onsubmit="return confirm('Tem certeza que deseja excluir este cliente e todos os dados relacionados?');">
+        <form method="post" action="/admin/customers/@Uri.EscapeDataString(Model.Customer.Id)/delete" style="display:inline;" data-confirm="Tem certeza que deseja excluir este cliente e todos os dados relacionados?">
             @Html.AntiForgeryToken()
             <input type="hidden" name="returnUrl" value="/admin/customers" />
             <button type="submit" class="button danger">Excluir cliente</button>

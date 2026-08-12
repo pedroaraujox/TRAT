@@ -75,8 +75,10 @@ if (Test-Path $PackageRoot) {
 
         $bootstrapAdmin = $controlPlaneSettings.BootstrapAdmin
         if ($null -ne $bootstrapAdmin) {
-            $email = $bootstrapAdmin.PSObject.Properties["Email"]?.Value
-            $password = $bootstrapAdmin.PSObject.Properties["Password"]?.Value
+            $emailProperty = $bootstrapAdmin.PSObject.Properties["Email"]
+            $passwordProperty = $bootstrapAdmin.PSObject.Properties["Password"]
+            if ($null -ne $emailProperty) { $email = $emailProperty.Value }
+            if ($null -ne $passwordProperty) { $password = $passwordProperty.Value }
         }
     }
 }

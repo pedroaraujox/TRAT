@@ -13,6 +13,7 @@ Desktop.ini
 **/bin/
 **/obj/
 TestResults/
+.playwright-cli/
 
 # Logs and runtime artifacts
 *.log
@@ -37,6 +38,9 @@ artifacts/
 appsettings.Development.json
 appsettings.Local.json
 appsettings.*.local.json
+.env
+*.env
+!*.env.example
 
 # NuGet local state
 *.nupkg

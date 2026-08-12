@@ -100,7 +100,7 @@ internal sealed class InstallerForm : Form
         _settingsOutputTextBox = AddTextRow(configurationPanel, 4, "Saida settings", InstallerPackagePaths.DefaultSettingsOutputPath(packageRoot), AddBrowseSaveButton(configurationPanel));
         _installDirectoryTextBox = AddTextRow(configurationPanel, 5, "Pasta de instalacao", InstallerPackagePaths.DefaultInstallDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_installDirectoryTextBox!, null)));
         _stateDirectoryTextBox = AddTextRow(configurationPanel, 6, "Pasta de estado", InstallerPackagePaths.DefaultStateDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_stateDirectoryTextBox!, null)));
-        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 7, "ControlPlane URL", "http://localhost:5080", CreateSpacerButton(configurationPanel));
+        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 7, "ControlPlane URL", InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot), CreateSpacerButton(configurationPanel));
         _customerIdTextBox = AddTextRow(configurationPanel, 8, "CustomerId", string.Empty, CreateSpacerButton(configurationPanel));
         _hostIdTextBox = AddTextRow(configurationPanel, 9, "HostId", Environment.MachineName, CreateSpacerButton(configurationPanel));
         _excludePathsTextBox = AddMultilineRow(configurationPanel, 10, "Exclusoes", string.Empty);

@@ -69,6 +69,10 @@ internal static class InstallerValidation
         {
             errors.Add("ControlPlaneBaseUrl invalido. Informe uma URL absoluta HTTP ou HTTPS.");
         }
+        else if (controlPlaneUri.Scheme != Uri.UriSchemeHttps && !controlPlaneUri.IsLoopback)
+        {
+            errors.Add("ControlPlane remoto exige HTTPS. HTTP e permitido somente para localhost durante desenvolvimento.");
+        }
 
         var anyAwsDestinationValue =
             !string.IsNullOrWhiteSpace(model.AwsRegion) ||

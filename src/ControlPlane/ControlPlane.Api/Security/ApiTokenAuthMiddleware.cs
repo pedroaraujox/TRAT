@@ -46,6 +46,12 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
 
         if (path.StartsWith("/api/v1/admin", StringComparison.OrdinalIgnoreCase))
         {
+            if (!config.GetValue("ControlPlane:Security:EnableAdminApi", false))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
             var expected = config["ControlPlane:Security:AdminToken"] ?? string.Empty;
             var provided = ctx.Request.Headers["X-Admin-Token"].ToString();
             if (string.IsNullOrWhiteSpace(expected) || !ConstantTimeEquals(expected, provided))

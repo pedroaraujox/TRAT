@@ -1,6 +1,6 @@
 # Como Rodar o TRAT Localmente
 
-Guia completo para configurar, rodar e testar o TRAT (Agent + ControlPlane) em uma máquina Windows de desenvolvimento. Este é o modo de operação atual do projeto — **não há publicação em VPS/nuvem no momento**, todo o ciclo de desenvolvimento e teste acontece localmente.
+Guia para configurar, rodar e testar o TRAT em uma máquina Windows de desenvolvimento. Este modo existe para desenvolvimento; a arquitetura do produto usa um ControlPlane central acessível por HTTPS. Consulte `ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md` para a homologação.
 
 ---
 
@@ -18,9 +18,9 @@ Existem dois papéis distintos que **não exigem as mesmas ferramentas**:
 1. **Máquina de build** (a sua, onde você desenvolve): é aqui que o código é compilado — precisa de .NET SDK, .NET Framework Developer Pack, etc. (seção 2).
 2. **Servidores de teste** (as máquinas dos clientes/VMs onde você vai validar o sistema): **não precisam de nenhuma ferramenta de desenvolvimento instalada**. Os pacotes publicados (`ControlPlane.Api.exe`, `TRAT.Agent.Setup.exe`) são *self-contained* — já embutem o runtime .NET necessário. Basta copiar a pasta pronta e rodar. Veja a seção 3.6.
 
-### Modelo de teste: cada servidor com sua cópia completa
+### Modelo local temporário
 
-Como você vai levar a **pasta inteira do projeto** pra cada servidor de teste, o modelo é: **cada servidor roda sua própria cópia independente e completa do TRAT** (painel + agent na mesma máquina, tudo via `localhost`). Isso é diferente de "um painel central recebendo vários agents remotos" — por padrão o painel só escuta em `localhost:5080`, então não é acessível de outra máquina na rede a não ser que você mude isso manualmente (veja nota na seção 3.6 se precisar desse outro modelo).
+ControlPlane e Agent podem rodar juntos por `localhost` apenas para desenvolvimento e diagnóstico. Não replique o ControlPlane em cada cliente. No piloto central, somente o Agent é instalado nos servidores dos clientes.
 
 ---
 
@@ -161,11 +161,11 @@ Isso garante que `artifacts\trat-local\TRAT.ControlPlane.Local\` está gerado e 
    Isso instala e inicia o painel como Windows Service (sobrevive a reboot). Se preferir só testar rápido sem instalar como serviço, rode `.\Iniciar-Painel-Local.cmd` em vez disso — inicia como processo comum, mais simples mas fecha se a sessão encerrar.
 4. Acesse `http://localhost:5080` no navegador desse próprio servidor.
 
-Cada servidor de teste tem seu **próprio banco de dados** (`data\controlplane.db`), independente dos outros — ou seja, clientes/hosts cadastrados num servidor não aparecem nos outros. Isso é esperado nesse modelo (cada servidor = uma instalação completa e isolada).
+Cada cópia local possui banco independente e não deve ser confundida com a homologação central.
 
 > Se preferir manter o modelo "clonar o repositório inteiro em todo lugar" (mais simples de lembrar, mas ocupa ~3x mais espaço e leva o código-fonte pra máquinas de cliente), o fluxo com `Iniciar-TRAT.ps1` a partir da raiz do repositório também funciona — é só menos eficiente pra esse caso de uso específico.
 
-> **Se, em vez disso, você quiser um painel central acessível de outras máquinas na rede** (um servidor roda só o painel, e o Agent de outra máquina se conecta remotamente): edite `PANEL_URL` em `deploy\controlplane\Iniciar-Painel-Local.cmd` (ou no `.cmd` já copiado dentro do pacote) de `http://localhost:5080` para `http://0.0.0.0:5080`, libere a porta 5080 no Firewall do Windows (`New-NetFirewallRule -DisplayName "TRAT Painel" -Direction Inbound -LocalPort 5080 -Protocol TCP -Action Allow`), e no instalador do Agent aponte o campo **ControlPlane URL** pro IP real do servidor do painel em vez de `localhost`. Esse não é o modelo padrão deste guia, mas funciona se precisar.
+> Não exponha a porta 5080 diretamente. Este fluxo Windows/Cloudflare e uma alternativa. A hospedagem central principal usa a stack Portainer sem publicar a porta 8080 e recebe trafego apenas do Nginx Proxy Manager.
 
 ---
 
@@ -320,8 +320,6 @@ Precisa rodar o PowerShell **como Administrador** pra instalar como Windows Serv
 
 ## 10. Próximos Passos
 
-Depois de validar tudo localmente, os próximos marcos de desenvolvimento (fora do escopo deste guia) são:
-- Continuar a evolução do MVP com testes locais
-- Quando decidirmos publicar (VPS/nuvem), revisitaremos a documentação de deployment nessa ocasião
+Depois da validação local, gere o pacote central, instale-o no servidor de homologação e conecte um Agent real seguindo `ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md`.
 
 Para regras de desenvolvimento/liberação (o que precisa ser validado antes de considerar algo "pronto"), veja [CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md](CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md).

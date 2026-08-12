@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -12,6 +13,10 @@ internal sealed record ControlPlaneEnrollResult(bool Success, string Message, in
 
 internal static class ControlPlanePingTester
 {
+    static ControlPlanePingTester()
+    {
+        ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+    }
     public static async Task<ControlPlanePingResult> PingAsync(string baseUrl, string agentToken, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(baseUrl) || !Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri))
