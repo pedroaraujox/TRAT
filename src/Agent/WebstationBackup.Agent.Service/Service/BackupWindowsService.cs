@@ -147,6 +147,7 @@ internal static class AgentWorker
     public static async Task RunLoopAsync(AgentWorkerOptions options, CancellationToken ct)
     {
         var runtime = BootstrapOrThrow(options);
+        var configurationReportedThisRun = false;
 
         while (!ct.IsCancellationRequested)
         {
@@ -156,7 +157,18 @@ internal static class AgentWorker
                 await FlushPendingFinalReportsAsync(runtime, ct);
                 var effectivePolicy = await ResolveEffectivePolicyAsync(runtime, ct);
                 await SendHeartbeatAsync(runtime.Settings, runtime.ControlPlane, ct);
-                await ReportConfigurationIfDueAsync(runtime, options.DryRun, effectivePolicy, ct);
+                if (!configurationReportedThisRun)
+                {
+                    await ReportConfigurationAsync(runtime, options.DryRun, effectivePolicy, ct);
+                    var configReportState = runtime.StateStore.Load();
+                    configReportState.LastConfigReportAtUtc = DateTimeOffset.UtcNow;
+                    runtime.StateStore.Save(configReportState);
+                    configurationReportedThisRun = true;
+                }
+                else
+                {
+                    await ReportConfigurationIfDueAsync(runtime, options.DryRun, effectivePolicy, ct);
+                }
 
                 var manualRun = await TryGetManualRunAsync(runtime, ct);
                 if (manualRun is not null)
