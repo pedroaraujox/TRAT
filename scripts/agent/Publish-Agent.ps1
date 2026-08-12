@@ -1,9 +1,12 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = "Release",
-    [string]$PackageOutputDir = "artifacts\agent-package",
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("local", "hml", "production")]
+    [string]$EnvironmentProfile,
+    [string]$PackageOutputDir = "",
     [string]$WindowsRuntimeIdentifier = "win-x64",
-    [string]$ControlPlaneBaseUrl = "https://trat-hml.outboxtech.com.br",
+    [string]$ControlPlaneBaseUrl = "",
     [switch]$SkipZip
 )
 
@@ -11,6 +14,25 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+
+$profileDefaults = @{
+    local = @{ Url = "http://localhost:5080"; Output = "artifacts\agent-package-local" }
+    hml = @{ Url = "https://trat-hml.outboxtech.com.br"; Output = "artifacts\agent-package-hml" }
+    production = @{ Url = "https://trat.outboxtech.com.br"; Output = "artifacts\agent-package-production" }
+}
+$profile = $profileDefaults[$EnvironmentProfile]
+if ([string]::IsNullOrWhiteSpace($ControlPlaneBaseUrl)) { $ControlPlaneBaseUrl = $profile.Url }
+if ([string]::IsNullOrWhiteSpace($PackageOutputDir)) { $PackageOutputDir = $profile.Output }
+$normalizedControlPlaneUrl = $ControlPlaneBaseUrl.Trim().TrimEnd('/')
+if ($EnvironmentProfile -eq "local" -and $normalizedControlPlaneUrl -ne "http://localhost:5080") {
+    throw "O perfil local deve apontar exatamente para http://localhost:5080."
+}
+if ($EnvironmentProfile -eq "hml" -and $normalizedControlPlaneUrl -ne "https://trat-hml.outboxtech.com.br") {
+    throw "O perfil hml deve apontar exatamente para https://trat-hml.outboxtech.com.br."
+}
+if ($EnvironmentProfile -eq "production" -and $normalizedControlPlaneUrl -ne "https://trat.outboxtech.com.br") {
+    throw "O perfil production deve apontar exatamente para https://trat.outboxtech.com.br."
+}
 $projectPath = Join-Path $repoRoot "src\Agent\WebstationBackup.Agent.Service\WebstationBackup.Agent.Service.csproj"
 $trayProjectPath = Join-Path $repoRoot "src\Agent\WebstationBackup.Agent.Tray\WebstationBackup.Agent.Tray.csproj"
 $installerProjectPath = Join-Path $repoRoot "src\Agent\WebstationBackup.Agent.Installer\WebstationBackup.Agent.Installer.csproj"
@@ -60,7 +82,14 @@ Copy-Item -Path (Join-Path $buildOutputDir "*") -Destination $binDir -Recurse -F
 Copy-Item -Path (Join-Path $trayOutputDir "*") -Destination $trayDir -Recurse -Force
 Copy-Item -Path $rulesPath -Destination (Join-Path $stagingDir "project.rules.json") -Force
 Copy-Item -Path $settingsTemplatePath -Destination (Join-Path $stagingDir "agent.settings.template.json") -Force
-Set-Content -Path (Join-Path $stagingDir "controlplane.url") -Value $ControlPlaneBaseUrl.Trim().TrimEnd('/') -Encoding ASCII
+Set-Content -Path (Join-Path $stagingDir "controlplane.url") -Value $normalizedControlPlaneUrl -Encoding ASCII
+$packageManifest = [ordered]@{
+    schemaVersion = 1
+    environment = $EnvironmentProfile
+    controlPlaneBaseUrl = $normalizedControlPlaneUrl
+    generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+}
+$packageManifest | ConvertTo-Json | Set-Content -Path (Join-Path $stagingDir "agent-package.manifest.json") -Encoding UTF8
 Copy-Item -Path $packageReadmePath -Destination (Join-Path $stagingDir "README.md") -Force
 Copy-Item -Path $trayLauncherPath -Destination (Join-Path $stagingDir "Launch-Agent-Tray.cmd") -Force
 Copy-Item -Path $installerLauncherPath -Destination (Join-Path $stagingDir "Launch-Agent-Installer.cmd") -Force
@@ -96,12 +125,14 @@ Copy-Item -Path (Join-Path $installerDir "WebstationBackup.Agent.Installer.exe")
 $standaloneDir = Join-Path $outputRoot "TRAT.Agent.Standalone"
 New-Item -ItemType Directory -Force -Path $standaloneDir | Out-Null
 Copy-Item -Path (Join-Path $stagingDir "TRAT.Agent.Setup.exe") -Destination (Join-Path $standaloneDir "TRAT.Agent.Setup.exe") -Force
+Copy-Item -Path (Join-Path $stagingDir "agent-package.manifest.json") -Destination (Join-Path $standaloneDir "agent-package.manifest.json") -Force
 
 if (-not $SkipZip) {
     Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
 }
 
 Write-Host ("Pacote do Agent gerado em: {0}" -f $stagingDir)
+Write-Host ("Ambiente do Agent: {0} ({1})" -f $EnvironmentProfile, $normalizedControlPlaneUrl)
 Write-Host ("Executavel autonomo (recomendado para download) gerado em: {0}" -f (Join-Path $standaloneDir "TRAT.Agent.Setup.exe"))
 if (-not $SkipZip) {
     Write-Host ("Arquivo ZIP (avancado/opcional) gerado em: {0}" -f $zipPath)

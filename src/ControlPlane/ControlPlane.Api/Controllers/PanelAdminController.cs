@@ -473,7 +473,9 @@ public sealed class PanelAdminController(
             Version = package.Version,
             PublishedAtUtc = package.PublishedAtUtc,
             HasSetupExe = !string.IsNullOrWhiteSpace(package.SetupExePath),
-            HasZip = !string.IsNullOrWhiteSpace(package.ZipPath)
+            HasZip = !string.IsNullOrWhiteSpace(package.ZipPath),
+            EnvironmentName = package.EnvironmentName,
+            ControlPlaneBaseUrl = package.ControlPlaneBaseUrl
         };
     }
 

@@ -4,7 +4,9 @@ param(
     [string]$PackageOutputDir = "artifacts\trat-local",
     [string]$WindowsRuntimeIdentifier = "win-x64",
     [switch]$SkipZip,
-    [switch]$SkipAgentArtifacts
+    [switch]$SkipAgentArtifacts,
+    [ValidateSet("local", "hml")]
+    [string]$EnvironmentProfile = "local"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +15,7 @@ Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $projectPath = Join-Path $repoRoot "src\ControlPlane\ControlPlane.Api\ControlPlane.Api.csproj"
 $deployRoot = Join-Path $repoRoot "deploy\controlplane"
-$sourceAgentArtifactsDir = Join-Path $repoRoot "artifacts\agent-package"
+$sourceAgentArtifactsDir = Join-Path $repoRoot ("artifacts\agent-package-{0}" -f $EnvironmentProfile)
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
 $packageDir = Join-Path $outputRoot "TRAT.ControlPlane.Local"
 $zipPath = Join-Path $outputRoot "TRAT.ControlPlane.Local.zip"
@@ -139,7 +141,7 @@ if (-not $SkipAgentArtifacts) {
         Write-Host ("Artifacts do Agent copiados de: {0}" -f $sourceAgentArtifactsDir)
     }
     else {
-        Write-Host "Artifacts do Agent nao foram copiados porque artifacts\agent-package nao existe." -ForegroundColor Yellow
+        Write-Host ("Artifacts do Agent nao foram copiados porque {0} nao existe." -f $sourceAgentArtifactsDir) -ForegroundColor Yellow
     }
 }
 if (-not $SkipZip) {

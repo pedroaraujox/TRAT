@@ -27,8 +27,8 @@ $packageRoot = Join-Path $repoRoot "artifacts\trat-local\TRAT.ControlPlane.Local
 $pidFile = Join-Path $packageRoot "controlplane.pid"
 $serviceName = "TRATControlPlane"
 $releaseReportsRoot = Join-Path $repoRoot "artifacts\release-reports"
-$agentPackageDir = Join-Path $repoRoot "artifacts\agent-package\TRAT.Agent.Package"
-$agentPackageZip = Join-Path $repoRoot "artifacts\agent-package\TRAT.Agent.Package.zip"
+$agentPackageDir = Join-Path $repoRoot "artifacts\agent-package-local\TRAT.Agent.Package"
+$agentPackageZip = Join-Path $repoRoot "artifacts\agent-package-local\TRAT.Agent.Package.zip"
 $controlPlanePackageZip = Join-Path $repoRoot "artifacts\trat-local\TRAT.ControlPlane.Local.zip"
 $releaseStartedAtUtc = [DateTimeOffset]::UtcNow
 $releaseReportId = $releaseStartedAtUtc.ToString("yyyyMMdd-HHmmss")
@@ -351,6 +351,7 @@ try {
             -Description "Gerando artifacts do Agent..." `
             -ScriptPath $publishAgentScript `
             -Arguments @(
+                "-EnvironmentProfile", "local",
                 "-Configuration", $Configuration,
                 "-WindowsRuntimeIdentifier", $WindowsRuntimeIdentifier
             )
@@ -367,6 +368,7 @@ try {
             -Description "Gerando pacote local do ControlPlane..." `
             -ScriptPath $publishControlPlaneScript `
             -Arguments @(
+                "-EnvironmentProfile", "local",
                 "-Configuration", $Configuration,
                 "-WindowsRuntimeIdentifier", $WindowsRuntimeIdentifier
             )

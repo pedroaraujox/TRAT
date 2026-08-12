@@ -613,4 +613,6 @@ public sealed record AgentDownloadViewModel
     public DateTimeOffset? PublishedAtUtc { get; init; }
     public bool HasSetupExe { get; init; }
     public bool HasZip { get; init; }
+    public string? EnvironmentName { get; init; }
+    public string? ControlPlaneBaseUrl { get; init; }
 }

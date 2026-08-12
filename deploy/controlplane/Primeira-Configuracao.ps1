@@ -100,6 +100,10 @@ $adminToken = ([Convert]::ToBase64String($tokenBytes)).TrimEnd('=').Replace('+',
 $configuration = [ordered]@{
     AllowedHosts = if ($InternetFacing) { "$PublicHostname;localhost;127.0.0.1" } else { "*" }
     ControlPlane = [ordered]@{
+        Environment = [ordered]@{
+            Name = if ($InternetFacing) { "hml" } else { "local" }
+            PublicUrl = if ($InternetFacing) { "https://$PublicHostname" } else { "http://localhost:5080" }
+        }
         Security = [ordered]@{
             AdminToken = $adminToken
             EnableAdminApi = $false

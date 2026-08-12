@@ -11,7 +11,8 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
     public async Task InvokeAsync(HttpContext ctx)
     {
         var path = ctx.Request.Path.Value ?? string.Empty;
-        if (path.StartsWith("/api/v1/health", StringComparison.OrdinalIgnoreCase))
+        if (path.StartsWith("/api/v1/health", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/v1/environment", StringComparison.OrdinalIgnoreCase))
         {
             await next(ctx);
             return;

@@ -28,6 +28,8 @@ services:
       AllowedHosts: ${TRAT_HOSTNAME:?Informe TRAT_HOSTNAME}
       ControlPlane__Database__SqlitePath: /app/data/controlplane.db
       ControlPlane__AgentDownloads__ArtifactsRoot: /app/artifacts/agent-package
+      ControlPlane__Environment__Name: ${TRAT_ENVIRONMENT_NAME:?Informe TRAT_ENVIRONMENT_NAME}
+      ControlPlane__Environment__PublicUrl: https://${TRAT_HOSTNAME:?Informe TRAT_HOSTNAME}
       ControlPlane__Security__RequireHttps: "true"
       ControlPlane__Security__UseForwardedHeaders: "true"
       ControlPlane__Security__TrustedNetworks__0: ${TRAT_PROXY_NETWORK_CIDR:?Informe TRAT_PROXY_NETWORK_CIDR}

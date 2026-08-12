@@ -90,17 +90,17 @@ internal sealed class InstallerForm : Form
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
 
-        _agentTokenTextBox = AddTextRow(configurationPanel, 0, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
-        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 1, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
-        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 2, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 0, "Destino do painel", InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot), CreateSpacerButton(configurationPanel));
+        _agentTokenTextBox = AddTextRow(configurationPanel, 1, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 2, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
+        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 3, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
 
         // Campos avancados (ocultos por padrao): destino do pacote, diretorios locais e
         // identificacao. O bucket/regiao S3 sao definidos no painel (politica do host), nao aqui.
-        _packageRootTextBox = AddTextRow(configurationPanel, 3, "Pasta do pacote", packageRoot, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_packageRootTextBox!, UpdateDerivedPaths)));
-        _settingsOutputTextBox = AddTextRow(configurationPanel, 4, "Saida settings", InstallerPackagePaths.DefaultSettingsOutputPath(packageRoot), AddBrowseSaveButton(configurationPanel));
-        _installDirectoryTextBox = AddTextRow(configurationPanel, 5, "Pasta de instalacao", InstallerPackagePaths.DefaultInstallDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_installDirectoryTextBox!, null)));
-        _stateDirectoryTextBox = AddTextRow(configurationPanel, 6, "Pasta de estado", InstallerPackagePaths.DefaultStateDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_stateDirectoryTextBox!, null)));
-        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 7, "ControlPlane URL", InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot), CreateSpacerButton(configurationPanel));
+        _packageRootTextBox = AddTextRow(configurationPanel, 4, "Pasta do pacote", packageRoot, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_packageRootTextBox!, UpdateDerivedPaths)));
+        _settingsOutputTextBox = AddTextRow(configurationPanel, 5, "Saida settings", InstallerPackagePaths.DefaultSettingsOutputPath(packageRoot), AddBrowseSaveButton(configurationPanel));
+        _installDirectoryTextBox = AddTextRow(configurationPanel, 6, "Pasta de instalacao", InstallerPackagePaths.DefaultInstallDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_installDirectoryTextBox!, null)));
+        _stateDirectoryTextBox = AddTextRow(configurationPanel, 7, "Pasta de estado", InstallerPackagePaths.DefaultStateDirectory, AddBrowseFolderButton(configurationPanel, "Selecionar", () => BrowseFolder(_stateDirectoryTextBox!, null)));
         _customerIdTextBox = AddTextRow(configurationPanel, 8, "CustomerId", string.Empty, CreateSpacerButton(configurationPanel));
         _hostIdTextBox = AddTextRow(configurationPanel, 9, "HostId", Environment.MachineName, CreateSpacerButton(configurationPanel));
         _excludePathsTextBox = AddMultilineRow(configurationPanel, 10, "Exclusoes", string.Empty);
@@ -197,6 +197,7 @@ internal sealed class InstallerForm : Form
 
         AppendOutput("Instalador GUI inicializado.");
         AppendOutput($"Pasta inicial do pacote: {packageLayout.PackageRoot}");
+        AppendOutput($"Destino do painel: {_controlPlaneUrlTextBox.Text}");
         _controlPlaneUrlTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _agentTokenTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _hostIdTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
@@ -209,7 +210,6 @@ internal sealed class InstallerForm : Form
         SetRowVisible(_settingsOutputTextBox, show);
         SetRowVisible(_installDirectoryTextBox, show);
         SetRowVisible(_stateDirectoryTextBox, show);
-        SetRowVisible(_controlPlaneUrlTextBox, show);
         SetRowVisible(_customerIdTextBox, show);
         SetRowVisible(_hostIdTextBox, show);
         SetRowVisible(_excludePathsTextBox, show);
@@ -567,7 +567,11 @@ internal sealed class InstallerForm : Form
         AppendOutput($"Ping ControlPlane: {(ping.Success ? "OK" : "FALHOU")} - {ping.Message}");
         if (!ping.Success)
         {
-            throw new InvalidOperationException("Falha ao conectar no ControlPlane com o token informado.");
+            var destination = _controlPlaneUrlTextBox.Text.Trim().TrimEnd('/');
+            var detail = ping.StatusCode == 401
+                ? $"O token nao pertence ao painel {destination}. Gere o token nesse mesmo ambiente ou corrija o campo Destino do painel."
+                : $"Falha ao conectar no painel {destination}: {ping.Message}";
+            throw new InvalidOperationException(detail);
         }
 
         var hostId = string.IsNullOrWhiteSpace(_hostIdTextBox.Text)

@@ -10,8 +10,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
+ARG AGENT_PACKAGE_PATH=artifacts/agent-package-hml/
 COPY --from=build /out/ ./
-COPY artifacts/agent-package/ ./artifacts/agent-package/
+COPY ${AGENT_PACKAGE_PATH} ./artifacts/agent-package/
 RUN mkdir -p /app/data/keys /app/backups /app/logs \
     && chown -R app:app /app
 

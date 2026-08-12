@@ -15,7 +15,7 @@ $sourcePackage = Join-Path $repoRoot "artifacts\trat-local\TRAT.ControlPlane.Loc
 $targetPackage = Join-Path $outputRoot "TRAT.ControlPlane.Homologacao"
 $zipPath = Join-Path $outputRoot "TRAT.ControlPlane.Homologacao.zip"
 
-& powershell.exe -ExecutionPolicy Bypass -File $agentPublish -ControlPlaneBaseUrl $PublicUrl
+& powershell.exe -ExecutionPolicy Bypass -File $agentPublish -EnvironmentProfile hml
 if ($LASTEXITCODE -ne 0) { throw "Publish do Agent falhou." }
 
 & powershell.exe -ExecutionPolicy Bypass -File $controlPlanePublish -SkipZip

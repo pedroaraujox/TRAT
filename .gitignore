@@ -21,9 +21,12 @@ TestResults/
 *.cache
 *.pid
 artifacts/*
-!artifacts/agent-package/
-artifacts/agent-package/*
-!artifacts/agent-package/.gitkeep
+!artifacts/agent-package-local/
+!artifacts/agent-package-hml/
+artifacts/agent-package-local/*
+artifacts/agent-package-hml/*
+!artifacts/agent-package-local/.gitkeep
+!artifacts/agent-package-hml/.gitkeep
 
 # Local databases / state
 *.db

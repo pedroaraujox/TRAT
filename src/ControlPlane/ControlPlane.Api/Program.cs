@@ -11,7 +11,13 @@ using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Threading.RateLimiting;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 var requireHttps = builder.Configuration.GetValue("ControlPlane:Security:RequireHttps", false);
 var useForwardedHeaders = builder.Configuration.GetValue("ControlPlane:Security:UseForwardedHeaders", false);
@@ -26,8 +32,7 @@ builder.WebHost.ConfigureKestrel(options =>
 
 if (!builder.Environment.IsDevelopment())
 {
-    builder.Host.UseContentRoot(AppContext.BaseDirectory);
-    if (OperatingSystem.IsWindows())
+    if (OperatingSystem.IsWindows() && !Environment.UserInteractive)
     {
         builder.Host.UseWindowsService(options => options.ServiceName = "TRAT ControlPlane");
     }
@@ -140,7 +145,7 @@ Directory.CreateDirectory(keysDir);
 var dataProtection = builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
     .SetApplicationName("TRAT.ControlPlane");
-if (OperatingSystem.IsWindows())
+if (OperatingSystem.IsWindows() && builder.Configuration.GetValue("ControlPlane:Security:ProtectDataProtectionKeysWithDpapi", true))
 {
     dataProtection.ProtectKeysWithDpapi();
 }

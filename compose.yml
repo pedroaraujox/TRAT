@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        AGENT_PACKAGE_PATH: artifacts/agent-package-local/
     image: trat-controlplane:local
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
@@ -33,6 +35,8 @@ services:
       AllowedHosts: localhost;127.0.0.1
       ControlPlane__Database__SqlitePath: /app/data/controlplane.db
       ControlPlane__AgentDownloads__ArtifactsRoot: /app/artifacts/agent-package
+      ControlPlane__Environment__Name: local
+      ControlPlane__Environment__PublicUrl: http://localhost:5080
       ControlPlane__Security__RequireHttps: "false"
       ControlPlane__Security__UseForwardedHeaders: "false"
       ControlPlane__Security__EnableAdminApi: "false"

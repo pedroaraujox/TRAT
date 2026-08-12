@@ -22,6 +22,8 @@
             <div><span>Status</span><strong>@(Model.IsAvailable ? "Disponivel" : "Indisponivel")</strong></div>
             <div><span>Versao</span><strong>@(Model.Version ?? "-")</strong></div>
             <div><span>Publicado em</span><strong>@(Model.PublishedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</strong></div>
+            <div><span>Ambiente</span><strong>@(Model.EnvironmentName ?? "-")</strong></div>
+            <div><span>Destino do Agent</span><strong>@(Model.ControlPlaneBaseUrl ?? "-")</strong></div>
             <div class="wide"><span>Origem</span><strong>@Model.SearchRoot</strong></div>
             <div class="wide"><span>Mensagem</span><strong>@Model.Message</strong></div>
         </div>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace ControlPlane.Api.Services;
 
@@ -46,6 +47,21 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
 
         var referenceFile = latestSetup ?? latestZip!;
         var version = TryReadProductVersion(latestSetup?.FullName) ?? "indefinida";
+        var manifest = latestSetup is null ? null : TryReadManifest(latestSetup.DirectoryName);
+        var expectedEnvironment = Normalize(config["ControlPlane:Environment:Name"]);
+        var expectedUrl = NormalizeUrl(config["ControlPlane:Environment:PublicUrl"]);
+        if (manifest is null)
+        {
+            return AgentPackageCatalogResult.NotAvailable(root, "Pacote bloqueado: manifesto de ambiente do Agent nao encontrado.");
+        }
+
+        if (!string.Equals(Normalize(manifest.Environment), expectedEnvironment, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(NormalizeUrl(manifest.ControlPlaneBaseUrl), expectedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return AgentPackageCatalogResult.NotAvailable(
+                root,
+                $"Pacote bloqueado: Agent={manifest.Environment}/{manifest.ControlPlaneBaseUrl}; painel={expectedEnvironment}/{expectedUrl}.");
+        }
 
         return new AgentPackageCatalogResult(
             IsAvailable: true,
@@ -54,7 +70,9 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
             Version: version,
             PublishedAtUtc: referenceFile.LastWriteTimeUtc,
             SetupExePath: latestSetup?.FullName,
-            ZipPath: latestZip?.FullName);
+            ZipPath: latestZip?.FullName,
+            EnvironmentName: manifest.Environment,
+            ControlPlaneBaseUrl: manifest.ControlPlaneBaseUrl);
     }
 
     private string ResolveArtifactsRoot()
@@ -87,6 +105,29 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
             return null;
         }
     }
+
+    private static AgentPackageManifest? TryReadManifest(string? directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) return null;
+        var path = Path.Combine(directory, "agent-package.manifest.json");
+        if (!File.Exists(path)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<AgentPackageManifest>(File.ReadAllText(path), new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? NormalizeUrl(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().TrimEnd('/');
+
+    private sealed record AgentPackageManifest(string Environment, string ControlPlaneBaseUrl);
 }
 
 public sealed record AgentPackageCatalogResult(
@@ -96,8 +137,10 @@ public sealed record AgentPackageCatalogResult(
     string? Version,
     DateTimeOffset? PublishedAtUtc,
     string? SetupExePath,
-    string? ZipPath)
+    string? ZipPath,
+    string? EnvironmentName,
+    string? ControlPlaneBaseUrl)
 {
     public static AgentPackageCatalogResult NotAvailable(string searchRoot, string message)
-        => new(false, searchRoot, message, null, null, null, null);
+        => new(false, searchRoot, message, null, null, null, null, null, null);
 }
