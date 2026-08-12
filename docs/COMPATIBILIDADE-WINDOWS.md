@@ -1,36 +1,39 @@
-# Compatibilidade com Windows Server
+# Compatibilidade de plataformas
 
-ControlPlane e Agent possuem matrizes diferentes. Compatibilidade com Windows antigo deve ser resolvida no Agent, nao levando o ControlPlane para cada servidor.
+## ControlPlane
 
-## ControlPlane central
+O ControlPlane remoto oficial do MVP roda em container Linux na Contabo. Não depende do sistema operacional dos clientes.
 
-| Sistema | Nivel | Observacao |
-|---|---|---|
-| Windows Server 2022 x64 | recomendado | plataforma da homologacao |
-| Windows Server 2025 x64 | suportado | validar antes de promover |
-| Windows Server 2019 x64 | suportado | alternativa aceitavel |
-| Windows Server 2016 x64 | compativel | nao recomendado para nova hospedagem |
-| 2012/2012 R2 e anteriores | nao usar como ControlPlane central | manter o servidor central em SO moderno |
+| Plataforma | Estado |
+| --- | --- |
+| Docker Linux x64 | suporte principal do MVP |
+| Docker Desktop + WSL 2 | desenvolvimento local |
+| Windows Server 2019/2022/2025 | execução nativa alternativa |
+| Windows Server 2016 | compatível, não recomendado para nova hospedagem |
+| Windows Server 2012/R2 | não usar como ControlPlane central |
 
-## Agent
+## Agent Windows
 
-| Sistema | Nivel planejado | Requisitos e limites |
-|---|---|---|
-| Windows Server 2025/2022/2019/2016 x64 | suporte principal | Setup, Service e Tray |
-| Windows Server 2012 R2 x64 | suporte de piloto | .NET Framework 4.8, TLS 1.2, atualizacoes do Windows e teste real obrigatorios |
-| Windows Server 2012 x64 | suporte de piloto | mesmos requisitos; validar por maquina |
-| Windows Server 2008 R2 SP1 x64 | melhor esforco | o Service net48 pode ser viavel, mas Setup/Tray modernos nao sao prometidos; pode exigir instalacao manual |
-| Windows Server 2008 sem R2 | fora do suporte padrao | limitacoes de runtime, TLS e ciclo de vida; tratar como projeto excepcional |
+| Sistema | Nível | Condições |
+| --- | --- | --- |
+| Windows Server 2016/2019/2022/2025 x64 | suporte principal | teste real de instalação, reboot e job |
+| Windows Server 2012/R2 x64 | piloto condicionado | .NET Framework 4.8, TLS 1.2 e patches atuais |
+| Windows Server 2008 R2 SP1 | melhor esforço | pode exigir instalação manual |
+| Windows Server 2008 sem R2 | fora do suporte | limitações de runtime e TLS |
 
-## Regras
+## Matriz mínima de validação do Agent
 
-- comunicacao remota com o ControlPlane exige HTTPS e TLS 1.2;
-- HTTP e aceito somente para localhost em desenvolvimento;
-- o instalador e publicado com a URL central de homologacao;
-- cada versao de Windows do piloto deve passar por: instalacao, reboot, heartbeat, sync, job real, retomada de rede e update in-place;
-- nao declarar suporte baseado apenas em compilacao;
-- o Agent nunca recebe permissao de exclusao no S3.
+Cada versão declarada como suportada deve comprovar:
 
-## Navegador
+- instalação;
+- inicialização automática após reboot;
+- TLS 1.2 até o ControlPlane;
+- enroll e heartbeat;
+- sincronização de política;
+- job real e integridade no S3;
+- retomada após perda de rede;
+- atualização in-place.
 
-O painel central deve ser operado em navegador moderno e atualizado. Internet Explorer nao faz parte do suporte do painel. Os servidores clientes nao precisam abrir o painel para o Agent funcionar; o download do instalador pode ser feito em uma estacao administrativa e transferido ao servidor.
+## Navegadores
+
+O painel suporta versões atuais de Chrome, Edge e Firefox. Internet Explorer não é suportado.

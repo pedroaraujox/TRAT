@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**TRAT** is a Windows-only backup orchestration system: a Windows Service (**Agent**) runs on client machines, scans configured paths, uploads to AWS S3 with SHA256-based deduplication, and reports status to a central web panel (**ControlPlane**). Backups are immutable — the Agent can never delete from S3.
+**TRAT** is a backup orchestration system with two platforms: a Windows Service (**Agent**) runs on client machines, while the central ASP.NET Core **ControlPlane** runs primarily in a Linux container. The Agent scans configured paths, uploads to AWS S3 with SHA256-based deduplication, and reports status to the ControlPlane. Backups are immutable — the Agent can never delete from S3.
 
-**Current phase: central homologation preparation.** The target architecture is one internet-accessible ControlPlane operated by Outbox Tech plus Agents on customer servers. Local mode remains for development only. The homologation hostname is `https://trat-hml.outboxtech.com.br`; see `docs/ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md`. SQLite remains the only supported database for the pilot.
+**Current phase: MVP running in the development stack.** The active remote environment is `development` -> image `:development` -> Portainer stack `trat-dev` -> `https://trat-hml.outboxtech.com.br`. Production is intentionally not deployed during this phase. The architecture is one internet-accessible ControlPlane operated by Outbox Tech plus Agents on customer servers. SQLite remains the only supported database for the pilot.
 
 The project's own docs, scripts, and commit messages are in Portuguese; code and identifiers are in English.
 
@@ -80,9 +80,9 @@ Job lifecycle states (`project.rules.json`): `QUEUED -> PRECHECK -> SCANNING -> 
 
 `Customer`, `Host`, `Job`, `Artifact`, `Alert`, `AuditEvent`, `BackupPolicy`, `AgentRunRequest`, `PolicyChangeEvent`, `AgentConfiguration`, `PanelUser`. `PolicyResolutionService` resolves the effective policy for a host (host-level override vs. customer-level default).
 
-### Copying the central homologation package to its server
+### Active central deployment
 
-The primary central deployment uses separate `trat-hml` and `trat-prod` stacks on the Contabo Portainer, connected only to the existing Nginx Proxy Manager network. Do not install a ControlPlane per customer, publish port 8080 on the host, share volumes between environments, or run more than one SQLite replica. The Windows/Cloudflare package remains an alternative deployment path.
+The MVP runs only in the `trat-dev` Portainer stack on Contabo, connected to the existing Nginx Proxy Manager network. Do not create `trat-prod` until the pilot gates are approved. Do not install a ControlPlane per customer, publish port 8080 on the host, remove persistent volumes during redeploy, or run more than one SQLite replica. The Windows package is an alternative local/diagnostic path, not the Contabo architecture.
 
 ---
 
@@ -101,7 +101,12 @@ From `project.rules.json` and `docs/CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md`:
 ## Key docs
 
 - `docs/COMO-RODAR-LOCALMENTE.md` — local development and troubleshooting only.
-- `docs/ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md` — central topology, deployment and public validation.
+- `docs/README.md` — documentation index and source-of-truth statement.
+- `docs/ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md` — central topology and active environment.
+- `docs/OPERACAO-MVP.md` — daily operation and safe redeploy.
+- `docs/BACKUP-E-RESTAURACAO.md` — persistence, external copies, and recovery.
+- `docs/RESPOSTA-A-INCIDENTES.md` — incident classification and response.
+- `docs/SEGURANCA-E-SEGREDOS.md` — secret handling and exposure response.
 - `docs/COMPATIBILIDADE-WINDOWS.md` — separate ControlPlane and Agent support matrices.
 - `docs/CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md` — the validation rules summarized above, in full.
 - `docs/MVP-1-MES-PRONTIDAO.md` — MVP readiness gate for a 1-month pilot; what's explicitly out of scope.

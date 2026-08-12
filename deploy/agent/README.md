@@ -1,56 +1,64 @@
-# Pacote do TRAT Agent
+# TRAT Agent — implantação Windows
 
-O Agent se conecta ao ControlPlane central por HTTPS. O pacote oficial de homologacao vem configurado para `https://trat-hml.outboxtech.com.br`; HTTP remoto nao e aceito.
+O Agent é instalado nos servidores dos clientes e se comunica por HTTPS com `https://trat-hml.outboxtech.com.br` durante o MVP.
 
-Consulte `docs\COMPATIBILIDADE-WINDOWS.md` para a matriz de suporte. Windows Server 2012/2012 R2 exigem .NET Framework 4.8, TLS 1.2 e atualizacoes do sistema.
+## Pacote oficial
 
-## Conteudo
-- `agent.settings.template.json`: modelo de configuracao local do host.
-- `project.rules.json`: regras operacionais do agent.
-- `Install-Agent.ps1`: instala ou atualiza o agent como servico Windows.
-- `Uninstall-Agent.ps1`: remove o servico Windows do agent.
-- `Update-Agent.ps1`: aplica atualizacao do agent a partir de um pacote ja baixado, preservando a configuracao local.
-- `bin\`: binarios do servico do TRAT Agent.
-- `tray\`: aplicativo de bandeja do Windows para status local do agent.
-- `installer\`: instalador GUI para configurar o agent e disparar a instalacao com elevacao.
-- `Launch-Agent-Tray.cmd`: abre o `Tray App` diretamente do pacote.
-- `Launch-Agent-Installer.cmd`: abre o instalador GUI diretamente do pacote.
+O GitHub Actions da branch `development` gera `TRAT.Agent.Setup.exe` com a URL do MVP e o incorpora na imagem do ControlPlane. O operador deve baixá-lo pela página `/admin/downloads` para garantir que está usando a versão publicada.
 
-## Diretórios recomendados
-- Binarios: `C:\Program Files\TRAT\Agent` ou pasta operacional equivalente
-- Estado e configuracao: `C:\ProgramData\TRAT\Agent` ou pasta operacional equivalente
+## Conteúdo do pacote expandido
 
-## Fluxo seguro
-1. Execute `Launch-Agent-Installer.cmd`.
-2. Preencha os campos do host, valide e salve `agent.settings.json`.
-3. Instale o agent pela GUI; a elevacao administrativa sera solicitada apenas nessa etapa.
-4. O instalador cria atalhos no menu Iniciar, registra desinstalacao no Windows e pode iniciar o servico ao final.
-5. Rode primeiro em modo console/dry-run antes de iniciar o servico real.
-6. So habilite execucao real com upload apos validacao conjunta.
-7. O `Tray App` passa a funcionar como aplicativo instalado do TRAT; atualizacoes devem substituir a versao anterior sem exigir fechamento manual do icone oculto.
+- `agent.settings.template.json`: modelo sem segredos;
+- `Install-Agent.ps1`: instalação/atualização do serviço;
+- `Update-Agent.ps1`: atualização in-place;
+- `Uninstall-Agent.ps1`: remoção do serviço;
+- `bin/`: serviço;
+- `tray/`: status local;
+- `installer/`: instalador GUI.
 
-## Regra operacional
-- Antes de validar qualquer alteracao, siga tambem o checklist global em `docs\CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md`.
-- Apos qualquer mudanca de codigo, configuracao ou empacotamento, reexecute o `ControlPlane` antes de validar o ambiente.
-- Apos qualquer mudanca em `src\Agent`, `scripts\agent`, `deploy\agent` ou no fluxo de download do Agent, regenere o pacote com `scripts\agent\Publish-Agent.ps1` antes de testar instalacao, update ou download pelo painel.
-- Se o painel estiver distribuindo o Agent pela pagina de downloads, regenere tambem o pacote local do painel com `scripts\controlplane\Publish-ControlPlane.ps1` para embutir os artifacts atualizados.
-- Nao considere a alteracao pronta enquanto a pagina `/admin/downloads` nao servir novamente o ZIP e o Setup atualizados do Agent.
-- No host afetado, rode novamente o `Agent` em `dry-run` antes de iniciar ou liberar o servico real.
-- Nao considere a mudanca validada sem rechecagem de painel, onboarding, heartbeat e logs locais.
+## Diretórios padrão
+
+```text
+Binários: C:\Program Files\TRAT\Agent
+Estado: C:\ProgramData\TRAT\Agent
+```
+
+## Instalação segura
+
+1. cadastre cliente e host no ControlPlane;
+2. gere o token do cliente e mantenha-o em canal seguro;
+3. baixe o Setup do ambiente correto;
+4. execute como administrador;
+5. confirme URL, cliente, host e caminhos;
+6. valide prechecks e dry-run;
+7. inicie o serviço;
+8. confirme heartbeat no painel;
+9. execute job pequeno antes do conjunto real;
+10. valide objetos e status final no S3.
 
 ## Segredos
-- O instalador salva o `AgentToken` como `AgentTokenDpapiProtected` (DPAPI LocalMachine) por padrao, evitando token em texto puro no arquivo.
-- O servico consegue descriptografar esse token no proprio host, mesmo rodando como `LocalSystem` ou outro usuario local.
-- O instalador tambem pode salvar a credencial AWS local como `AwsCredentialDpapiProtected` (DPAPI LocalMachine), permitindo que o servico valide e execute upload mesmo quando roda como `LocalSystem`.
 
-## Arquitetura recomendada
-- O `Windows Service` executa backup, heartbeat, prechecks e upload em segundo plano.
-- O `Tray App` mostra status local, abre o painel e facilita suporte sem depender de janela aberta.
-- Fechar a janela do `Tray App` apenas oculta a interface; o icone continua na bandeja.
-- A instalacao registra atalhos do menu Iniciar e entrada de desinstalacao para o host se comportar como aplicativo instalado de verdade.
+- o token do Agent é salvo via DPAPI LocalMachine;
+- credenciais AWS podem ser protegidas por DPAPI;
+- não grave tokens ou chaves em logs, documentos ou tickets;
+- rotacione credenciais após suspeita de exposição;
+- prefira credencial AWS exclusiva por cliente/prefixo.
 
-## Observacao sobre credenciais AWS
-- `aws configure` normalmente grava credenciais no perfil do seu usuario (nao no LocalSystem).
-- Se o servico rodar como LocalSystem, o precheck AWS pode falhar mesmo que o `aws configure` do seu usuario esteja OK.
-- Para o MVP atual, prefira informar `AWS Access Key` e `AWS Secret Key` diretamente no instalador GUI; elas serao gravadas protegidas por maquina via DPAPI e o servico conseguira usa-las sem depender do perfil do usuario.
-- O uso de `Windows Credential Manager` ou de uma conta de servico dedicada continua compativel, mas deixa de ser obrigatorio para o teste real do MVP.
+## Atualização
+
+Atualize in-place e preserve `C:\ProgramData\TRAT\Agent`. Depois confirme:
+
+- serviço iniciado;
+- versão reportada;
+- heartbeat;
+- política efetiva;
+- dry-run;
+- job real pequeno.
+
+## Desinstalação
+
+A remoção do serviço não autoriza apagar dados locais, manifests ou credenciais sem decisão explícita. Registre o motivo e preserve evidências quando houver incidente.
+
+## Compatibilidade
+
+Consulte [COMPATIBILIDADE-WINDOWS.md](../../docs/COMPATIBILIDADE-WINDOWS.md) e [AWS-IAM-MINIMO.md](../../docs/AWS-IAM-MINIMO.md).

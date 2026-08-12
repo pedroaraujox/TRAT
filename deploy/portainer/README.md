@@ -1,36 +1,50 @@
-# Publicacao na Contabo via Portainer
+# Contabo e Portainer — stack do MVP
 
-O mesmo `compose.yml` e usado por duas stacks independentes. Cada stack le uma branch diferente do repositorio privado e usa uma imagem Docker com a mesma identificacao da branch:
+## Estado atual
 
-| Ambiente | Stack | Branch/Reference | Imagem |
-| --- | --- | --- | --- |
-| Desenvolvimento | `trat-dev` | `refs/heads/development` | `ghcr.io/pedroaraujox/trat-controlplane:development` |
-| Producao | `trat-prod` | `refs/heads/production` | `ghcr.io/pedroaraujox/trat-controlplane:production` |
+Somente a stack de desenvolvimento está autorizada:
 
-O Portainer prefixa os volumes com o nome da stack. Assim, banco SQLite, chaves de sessao e backups ficam isolados mesmo usando o mesmo Compose.
+```text
+Stack: trat-dev
+Branch: refs/heads/development
+Compose: deploy/portainer/compose.yml
+Imagem: ghcr.io/pedroaraujox/trat-controlplane:development
+URL: https://trat-hml.outboxtech.com.br
+```
 
-## Pre-requisitos uma unica vez
+O repositório e a imagem GHCR são públicos. Não configure token Git ou registry privado enquanto essa visibilidade permanecer.
 
-1. Em **Registries**, cadastre `ghcr.io` usando um PAT do GitHub com somente `read:packages`.
-2. Confirme em **Networks** o nome e o CIDR da rede do Nginx Proxy Manager.
-3. Garanta que o repositorio privado possa ser lido pelo Portainer, usando credencial Git somente de leitura.
-4. Nao publique a porta 8080 no host. O acesso externo deve passar apenas pelo Nginx Proxy Manager.
+## Pré-requisitos
 
-## Como criar cada stack pelo repositorio Git
+- Docker e Portainer operacionais na Contabo;
+- Nginx Proxy Manager na rede `nginx-proxy_default`;
+- DNS `trat-hml.outboxtech.com.br` apontando para a VM;
+- portas 80 e 443 direcionadas ao Nginx Proxy Manager.
 
-Em **Stacks > Add stack > Repository**, preencha:
+Rede validada em 12/08/2026:
 
-- Repository URL: `https://github.com/pedroaraujox/TRAT.git`;
-- Repository reference: a reference indicada na tabela acima;
-- Compose path: `deploy/portainer/compose.yml`;
-- Authentication: habilitada, com credencial Git somente de leitura;
-- Environment variables: copie o arquivo `.env.example` correspondente e troque todos os placeholders.
+```text
+Nome: nginx-proxy_default
+Subnet: 172.19.0.0/16
+Gateway: 172.19.0.1
+```
 
-Nao marque para recriar volumes. Uma atualizacao da stack deve trocar o container e preservar `data` e `backups`.
+Confira novamente após qualquer recriação da rede.
 
-## Desenvolvimento
+## Criar a stack
 
-Use os valores de `development.env.example`. O hostname publico continua com o sufixo `hml` para deixar claro que nao e producao.
+Em **Stacks > Add stack > Git Repository**:
+
+```text
+Name: trat-dev
+Repository URL: https://github.com/pedroaraujox/TRAT.git
+Repository reference: refs/heads/development
+Compose path: deploy/portainer/compose.yml
+Authentication: desativada
+Skip TLS verification: desativado
+```
+
+Variáveis:
 
 ```dotenv
 TRAT_IMAGE=ghcr.io/pedroaraujox/trat-controlplane:development
@@ -39,51 +53,71 @@ TRAT_HOSTNAME=trat-hml.outboxtech.com.br
 TRAT_PROXY_NETWORK=nginx-proxy_default
 TRAT_PROXY_NETWORK_CIDR=172.19.0.0/16
 TRAT_ADMIN_EMAIL=SEU_EMAIL
-TRAT_ADMIN_NAME=Administrador TRAT
+TRAT_ADMIN_NAME=Administrador TRAT - Desenvolvimento
 TRAT_ADMIN_PASSWORD=UMA_SENHA_INICIAL_FORTE
 ```
 
-O CIDR `172.19.0.0/16` foi conferido em **Networks > nginx-proxy_default** no Portainer em 11/08/2026. Confira novamente antes da publicacao caso a rede seja recriada; nao use um intervalo mais amplo.
+Não registre valores reais em arquivos, tickets ou capturas.
 
-No Nginx Proxy Manager, crie um Proxy Host:
+## Resultado esperado
 
-- Domain: `trat-hml.outboxtech.com.br`;
-- Scheme: `http`;
-- Forward Hostname: `trat-dev`;
-- Forward Port: `8080`;
-- SSL: certificado Let's Encrypt, Force SSL, HTTP/2 e HSTS.
+- `trat-dev-preparar-volumes-1`: encerra com código `0`;
+- `trat-dev`: permanece `running` e `healthy`;
+- nenhuma porta é publicada no host;
+- o container recebe endereço na rede `nginx-proxy_default`;
+- volumes `data` e `backups` permanecem após redeploy.
 
-Crie/ajuste o registro DNS `A` do subdominio para o IP publico da Contabo. Nao publique a porta 8080 no host.
+O primeiro container apenas ajusta permissões e deve encerrar.
 
-Depois do primeiro login bem-sucedido, remova `TRAT_ADMIN_PASSWORD` do ambiente e substitua temporariamente no compose por um valor aleatorio descartavel caso o Portainer exija a variavel. O bootstrap nao altera a senha de um administrador ja existente.
+## Nginx Proxy Manager
 
-## Producao
+Crie um Proxy Host:
 
-Somente apos o aceite do piloto, crie outra stack chamada `trat-prod`:
-
-```dotenv
-TRAT_IMAGE=ghcr.io/pedroaraujox/trat-controlplane:production
-TRAT_CONTAINER_NAME=trat-prod
-TRAT_HOSTNAME=trat.outboxtech.com.br
-TRAT_PROXY_NETWORK=nginx-proxy_default
-TRAT_PROXY_NETWORK_CIDR=172.19.0.0/16
-TRAT_ADMIN_EMAIL=SEU_EMAIL
-TRAT_ADMIN_NAME=Administrador TRAT
-TRAT_ADMIN_PASSWORD=OUTRA_SENHA_INICIAL_FORTE
+```text
+Domain: trat-hml.outboxtech.com.br
+Scheme: http
+Forward hostname: trat-dev
+Forward port: 8080
+Access list: Publicly Accessible
+Block Common Exploits: ativado
+Websocket Support: ativado
+Cache Assets: desativado
 ```
 
-No Nginx Proxy Manager, aponte `trat.outboxtech.com.br` para `trat-prod:8080`. Desenvolvimento e producao nunca devem compartilhar volumes, banco, senha inicial ou tokens de clientes.
+Solicite certificado Let's Encrypt, ative Force SSL e HTTP/2. Ative HSTS apenas depois de confirmar o HTTPS.
 
-## Publicacao e atualizacao
+## Atualizar
 
-A automacao do GitHub publica a imagem `development` a partir da branch `development` e a imagem `production` a partir da branch homonima. A stack de producao somente podera ser criada depois que os arquivos de deploy forem promovidos para `production`.
+1. aguarde o GitHub Actions concluir;
+2. abra a stack `trat-dev`;
+3. clique em **Pull and redeploy**;
+4. preserve volumes;
+5. aguarde `healthy`;
+6. teste health, login e funcionalidade alterada.
 
-Para atualizar, use **Pull latest image and redeploy** ou habilite o mecanismo de atualizacao Git do Portainer depois do primeiro deploy manual validado. Mantenha uma unica replica porque o ControlPlane usa SQLite. O backup interno fica no volume `backups`; copie-o periodicamente para armazenamento fora da VPS, pois um volume local nao protege contra perda da Contabo.
+```text
+https://trat-hml.outboxtech.com.br/api/v1/health
+```
 
-## Ordem segura de implantacao
+## Rollback
 
-1. Fazer commit e push destas configuracoes em `development`.
-2. Confirmar que o GitHub Actions publicou a imagem `:development`.
-3. Criar apenas a stack `trat-dev`, configurar o proxy e validar login, persistencia e backup.
-4. Promover `development` para `production` por pull request.
-5. Confirmar a imagem `:production` e somente entao criar `trat-prod`.
+Tags com SHA são imutáveis. Para retornar:
+
+1. identifique o último SHA aprovado no GitHub Actions;
+2. faça backup antes de rollback que envolva schema;
+3. troque temporariamente `TRAT_IMAGE` para `ghcr.io/pedroaraujox/trat-controlplane:<SHA>`;
+4. faça redeploy preservando volumes;
+5. valide health e dados;
+6. registre o incidente.
+
+Não faça downgrade de aplicação sobre banco migrado sem avaliar compatibilidade.
+
+## Produção
+
+Não criar `trat-prod` durante o MVP. O arquivo `production.env.example` é apenas uma referência futura e não constitui autorização de implantação.
+
+## Runbooks relacionados
+
+- [operação](../../docs/OPERACAO-MVP.md)
+- [backup e restauração](../../docs/BACKUP-E-RESTAURACAO.md)
+- [incidentes](../../docs/RESPOSTA-A-INCIDENTES.md)

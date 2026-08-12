@@ -1,325 +1,127 @@
-# Como Rodar o TRAT Localmente
+# Como rodar o TRAT localmente
 
-Guia para configurar, rodar e testar o TRAT em uma máquina Windows de desenvolvimento. Este modo existe para desenvolvimento; a arquitetura do produto usa um ControlPlane central acessível por HTTPS. Consulte `ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md` para a homologação.
+## Opção recomendada: Docker Compose
 
----
+### Pré-requisitos
 
-## 1. Visão Geral
+- Windows 10/11 com WSL 2;
+- Docker Desktop iniciado em containers Linux;
+- Git;
+- porta 5080 disponível.
 
-O TRAT é composto por duas partes:
-
-- **ControlPlane**: painel web (ASP.NET Core) que você acessa pelo navegador em `http://localhost:5080`.
-- **Agent**: serviço Windows que roda no host que será feito backup, instalado via `TRAT.Agent.Setup.exe` baixado do próprio painel.
-
-### Duas máquinas com papéis diferentes
-
-Existem dois papéis distintos que **não exigem as mesmas ferramentas**:
-
-1. **Máquina de build** (a sua, onde você desenvolve): é aqui que o código é compilado — precisa de .NET SDK, .NET Framework Developer Pack, etc. (seção 2).
-2. **Servidores de teste** (as máquinas dos clientes/VMs onde você vai validar o sistema): **não precisam de nenhuma ferramenta de desenvolvimento instalada**. Os pacotes publicados (`ControlPlane.Api.exe`, `TRAT.Agent.Setup.exe`) são *self-contained* — já embutem o runtime .NET necessário. Basta copiar a pasta pronta e rodar. Veja a seção 3.6.
-
-### Modelo local temporário
-
-ControlPlane e Agent podem rodar juntos por `localhost` apenas para desenvolvimento e diagnóstico. Não replique o ControlPlane em cada cliente. No piloto central, somente o Agent é instalado nos servidores dos clientes.
-
----
-
-## 2. Pré-requisitos (o que precisa estar instalado)
-
-### Na máquina de build (onde você desenvolve/compila)
-
-| Ferramenta | Versão | Como verificar | Para quê |
-|---|---|---|---|
-| **.NET 8 SDK** | 8.0.x | `dotnet --version` | Compilar/rodar o ControlPlane, Tray e Installer |
-| **.NET Framework 4.8 Developer Pack** | 4.8 | Painel de Controle → Programas (ou `dotnet build` do Service acusa erro se faltar) | Compilar o Agent Service (Windows Service legado) |
-| **PowerShell 5.1+** | 5.1 (já vem no Windows) | `$PSVersionTable.PSVersion` | Rodar todos os scripts de build/publish (`Liberar-TRAT.ps1`, etc.) |
-| **Windows 10/11 ou Windows Server** | — | — | Todo o stack (Agent e ControlPlane) é Windows-only |
-| **Git** | qualquer recente | `git --version` | Clonar/versionar o repositório |
-
-### Nos servidores de teste (onde você só vai *rodar*, não compilar)
-
-| Ferramenta | Necessário? |
-|---|---|
-| .NET SDK ou Runtime | **Não.** Os pacotes publicados são self-contained (embutem o runtime .NET). |
-| Git | **Não.** Você copia a pasta já pronta, não precisa clonar nada lá. |
-| Windows 10/11 ou Windows Server (x64) | **Sim** — é o único requisito de verdade. |
-| PowerShell 5.1+ | Já vem por padrão no Windows, usado só pelos scripts `Iniciar-Painel-Local.cmd`/`Parar-Painel-Local.ps1` que já vão dentro da pasta copiada. |
-
-> Ou seja: os servidores de teste (as máquinas dos clientes/VMs) não precisam de **nenhuma instalação prévia** além do próprio Windows. Isso é intencional — veja seção 3.6.
-
-### Opcional (mas recomendado, só na máquina de build)
-
-| Ferramenta | Para quê |
-|---|---|
-| **Visual Studio 2022** ou **VS Code** | Editar/debugar o código com mais conforto |
-| **Conta AWS + bucket S3** | Testar o upload real de backup (sem isso, dá pra testar tudo exceto o upload de fato). Veja [AWS-IAM-MINIMO.md](AWS-IAM-MINIMO.md) pra política mínima de permissões. |
-
-### Instalar o .NET 8 SDK e o Developer Pack do .NET Framework 4.8
-
-Baixe em: https://dotnet.microsoft.com/download/dotnet/8.0 (SDK, não só runtime)
-
-Para o .NET Framework 4.8 Developer Pack: https://dotnet.microsoft.com/download/dotnet-framework/net48 (necessário só se for compilar o Agent Service; a maioria das distros do Windows já vem com o runtime, mas o **Developer Pack** — que traz as ferramentas de build — pode não vir por padrão).
-
----
-
-## 3. Primeira Configuração (do zero)
-
-### 3.1 Clonar o repositório
+### Primeira execução
 
 ```powershell
-git clone <url-do-seu-repositorio> TRAT
+git clone https://github.com/pedroaraujox/TRAT.git
 cd TRAT
+git switch development
+Copy-Item .env.example .env
 ```
 
-### 3.2 Verificar as ferramentas
+Edite `.env` e defina uma senha local exclusiva. Depois execute:
 
 ```powershell
-dotnet --version        # deve mostrar 8.0.x
-$PSVersionTable.PSVersion   # deve mostrar 5.1 ou superior
+docker compose up --build -d
+docker compose ps
 ```
 
-### 3.3 Rodar o fluxo completo de build (recomendado para a primeira vez)
+Acesse:
+
+- painel: `http://localhost:5080/login`;
+- health: `http://localhost:5080/api/v1/health`.
+
+### Comandos diários
+
+```powershell
+docker compose up --build -d
+docker compose logs --tail 100 controlplane
+docker compose restart controlplane
+docker compose down
+```
+
+`docker compose down` preserva os volumes. `docker compose down --volumes` apaga banco, chaves e backups locais e não deve fazer parte do fluxo normal.
+
+### Dados locais
+
+| Dado | Volume |
+| --- | --- |
+| SQLite e chaves | `trat-local_trat_local_data` |
+| Backups | `trat-local_trat_local_backups` |
+
+Para listar:
+
+```powershell
+docker volume ls --filter name=trat-local
+```
+
+## Opção nativa no Windows
+
+Use esta opção para validar scripts, instalador e serviço Windows:
+
+### Pré-requisitos
+
+- .NET 8 SDK;
+- .NET Framework 4.8 Developer Pack;
+- PowerShell 5.1;
+- Windows x64.
+
+### Fluxo completo
 
 ```powershell
 .\Liberar-TRAT.ps1
-```
-
-Esse comando único:
-- Publica o Agent (Service + Tray + Installer) em `artifacts\agent-package`
-- Publica o ControlPlane em `artifacts\trat-local\TRAT.ControlPlane.Local`, embutindo os artifacts do Agent (pra Download funcionar)
-- Roda smoke tests (dry-run do Agent, login, checagens básicas de UI)
-- Gera um relatório em `artifacts\release-reports`
-
-Se demorar muito ou você quiser pular a parte de testes na primeira vez:
-
-```powershell
-.\Liberar-TRAT.ps1 -SkipSmokeTest -AllowIncompleteRelease
-```
-
-### 3.4 Configurar o admin inicial (opcional, mas recomendado)
-
-Por padrão, o `appsettings.json` cria um admin com email `admin@trat.local` e senha literal `CHANGE_ME_ADMIN_PASSWORD` na primeira inicialização — **funciona, mas é melhor trocar** antes do primeiro start.
-
-Copie o template e edite com seus dados:
-
-```powershell
-Copy-Item deploy\controlplane\appsettings.Local.template.json artifacts\trat-local\TRAT.ControlPlane.Local\appsettings.Local.json
-notepad artifacts\trat-local\TRAT.ControlPlane.Local\appsettings.Local.json
-```
-
-Preencha:
-```json
-{
-  "ControlPlane": {
-    "Security": {
-      "AdminToken": "qualquer-token-aleatorio-para-apis-internas"
-    },
-    "BootstrapAdmin": {
-      "Email": "seu-email@exemplo.com",
-      "DisplayName": "Seu Nome",
-      "Password": "sua-senha-local-temporaria"
-    }
-  }
-}
-```
-
-> A senha é usada **só na primeira inicialização** para criar sua conta — depois disso o próprio sistema apaga o campo `Password` do arquivo automaticamente (por segurança), então não precisa se preocupar em deixá-la lá depois.
-
-### 3.5 Iniciar o painel
-
-```powershell
 .\Iniciar-TRAT.ps1
-```
-
-Isso abre automaticamente `http://localhost:5080` no navegador. Faça login com o email/senha configurados acima (ou o padrão, se pulou o passo 3.4).
-
-### 3.6 Levar o TRAT pronto para outros servidores de teste
-
-Esse é o fluxo pra validar em máquinas de cliente, sem precisar instalar SDK nem clonar repositório nelas.
-
-**Importante: não copie a pasta `TRAT\` inteira.** Ela inclui código-fonte, `.git` e artefatos intermediários — só a pasta do pacote já publicado (`artifacts\trat-local\TRAT.ControlPlane.Local\`) é necessária pra rodar, e ela já vem com o Agent embutido dentro de si. Isso reduz o que você precisa copiar de ~5 GB pra ~1,6 GB.
-
-**Na máquina de build (uma vez, antes de sair copiando):**
-
-```powershell
-.\Liberar-TRAT.ps1
-```
-
-Isso garante que `artifacts\trat-local\TRAT.ControlPlane.Local\` está gerado e atualizado, com o pacote do Agent já embutido dentro dela (em `artifacts\trat-local\TRAT.ControlPlane.Local\artifacts\agent-package\`).
-
-**Copiando pra um servidor de teste:**
-
-1. Zipe **só a pasta do pacote pronto**, não o repositório inteiro:
-   ```powershell
-   Compress-Archive -Path "artifacts\trat-local\TRAT.ControlPlane.Local" -DestinationPath "TRAT-teste.zip"
-   ```
-2. Copie o ZIP pro servidor de teste (pendrive, rede, RDP, o que for mais fácil) e extraia em qualquer pasta (ex.: `C:\TRAT-Painel\`).
-3. No servidor de teste, abra PowerShell **como Administrador** dentro da pasta extraída e rode:
-   ```powershell
-   .\Instalar-Painel-Como-Servico.ps1 -PackageRoot . -Url "http://localhost:5080"
-   ```
-   Isso instala e inicia o painel como Windows Service (sobrevive a reboot). Se preferir só testar rápido sem instalar como serviço, rode `.\Iniciar-Painel-Local.cmd` em vez disso — inicia como processo comum, mais simples mas fecha se a sessão encerrar.
-4. Acesse `http://localhost:5080` no navegador desse próprio servidor.
-
-Cada cópia local possui banco independente e não deve ser confundida com a homologação central.
-
-> Se preferir manter o modelo "clonar o repositório inteiro em todo lugar" (mais simples de lembrar, mas ocupa ~3x mais espaço e leva o código-fonte pra máquinas de cliente), o fluxo com `Iniciar-TRAT.ps1` a partir da raiz do repositório também funciona — é só menos eficiente pra esse caso de uso específico.
-
-> Não exponha a porta 5080 diretamente. Este fluxo Windows/Cloudflare e uma alternativa. A hospedagem central principal usa a stack Portainer sem publicar a porta 8080 e recebe trafego apenas do Nginx Proxy Manager.
-
----
-
-## 4. Dia a Dia de Desenvolvimento
-
-### 4.1 Ciclo básico ao alterar código
-
-1. Edite o código em `src\Agent\*` ou `src\ControlPlane\*`
-2. Rebuilde e republique **apenas o que mudou**:
-   ```powershell
-   # Mudou o Agent:
-   scripts\agent\Publish-Agent.ps1
-
-   # Mudou o ControlPlane:
-   scripts\controlplane\Publish-ControlPlane.ps1
-
-   # Mudou os dois:
-   scripts\agent\Publish-Agent.ps1
-   scripts\controlplane\Publish-ControlPlane.ps1
-   ```
-3. Reinicie o painel se ele já estava rodando:
-   ```powershell
-   .\Parar-TRAT.ps1
-   .\Iniciar-TRAT.ps1
-   ```
-4. **Valide no artefato real** — nunca considere uma mudança pronta só porque compilou. Abra a tela de verdade, baixe o Setup.exe de verdade, rode o instalador de verdade. Veja o checklist completo em [CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md](CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md).
-
-> **Importante**: `Publish-ControlPlane.ps1` preserva automaticamente `data/`, `logs/` e `appsettings.Local.json` entre republishes — seus clientes/hosts de teste cadastrados não somem a cada rebuild.
-
-### 4.2 Compilar sem publicar (checagem rápida de sintaxe)
-
-Quando você só quer saber se o C# compila, sem gerar pacote:
-
-```powershell
-dotnet build src\ControlPlane\ControlPlane.Api\ControlPlane.Api.csproj -c Release
-dotnet build src\Agent\WebstationBackup.Agent.Service\WebstationBackup.Agent.Service.csproj -c Release
-```
-
-Isso **não substitui** o passo de publish acima — é só uma checagem intermediária mais rápida enquanto você escreve código.
-
-### 4.3 Parar o painel
-
-```powershell
+.\Validar-TRAT.ps1
 .\Parar-TRAT.ps1
 ```
 
----
+Artefatos ficam em `artifacts/` e não são versionados.
 
-## 5. Testar o Fluxo Completo (ponta a ponta)
-
-Depois que o painel estiver no ar (`http://localhost:5080`):
-
-1. **Login** com o admin configurado.
-2. **Criar um Cliente** (menu Clientes) — dê um ID sem espaço/acento (ex.: `cliente-teste`).
-3. **Gerar o token do cliente** na tela do próprio cliente.
-4. Ir em **Downloads** e baixar o `TRAT.Agent.Setup.exe`.
-5. Rodar o Setup.exe (na mesma máquina ou em outra máquina Windows da rede, apontando o `ControlPlane URL` pro IP/porta correto se for outra máquina).
-6. Preencher: **Token do cliente**, **AWS Access Key**, **AWS Secret Key**, e os **caminhos de backup**.
-7. Clicar em **Instalar**.
-8. No painel, ir em **Hosts** → **Gerenciar** o host recém-instalado → configurar **Bucket S3 / Região / Agenda**.
-9. Rodar um **backup manual** e acompanhar o status no painel.
-10. Conferir no S3 (console AWS) que os arquivos realmente subiram, e que rodar de novo **não reenvia** arquivos que já existem (deduplicação por SHA256).
-
----
-
-## 6. Scripts de Referência
-
-| Script | O que faz |
-|---|---|
-| `Liberar-TRAT.ps1` | Fluxo completo: publica Agent + ControlPlane, roda smoke test, gera relatório |
-| `Iniciar-TRAT.ps1` | Sobe o painel local em `http://localhost:5080` |
-| `Parar-TRAT.ps1` | Para o painel local |
-| `Resetar-TRAT.ps1` | Limpa banco/config local, com backup de segurança antes |
-| `Validar-TRAT.ps1` | Roda apenas os smoke tests (dry-run do Agent, login, heartbeat) |
-| `scripts\agent\Publish-Agent.ps1` | Builda e empacota só o Agent (Service + Tray + Installer + Setup.exe) |
-| `scripts\controlplane\Publish-ControlPlane.ps1` | Builda e empacota só o ControlPlane, embutindo os artifacts do Agent |
-
-### Flags úteis do `Liberar-TRAT.ps1`
+## Testes automatizados
 
 ```powershell
-.\Liberar-TRAT.ps1 -SkipAgentPublish                        # pula o Agent, atualiza só o ControlPlane
-.\Liberar-TRAT.ps1 -SkipControlPlanePublish                  # pula o ControlPlane, atualiza só o Agent
-.\Liberar-TRAT.ps1 -SkipSmokeTest -AllowIncompleteRelease    # publica sem validar (mais rápido, use com cautela)
-.\Liberar-TRAT.ps1 -ResetLocalState                          # força reset do estado local antes de validar
+dotnet test tests\ControlPlane.Api.Tests\ControlPlane.Api.Tests.csproj -c Release
 ```
 
-### Flags úteis do `Iniciar-TRAT.ps1`
+Compilação rápida do painel:
 
 ```powershell
-.\Iniciar-TRAT.ps1 -RebuildLocalPackage    # força republish do ControlPlane antes de iniciar
-.\Iniciar-TRAT.ps1 -ResetLocalState        # reseta banco/config antes de iniciar
-.\Iniciar-TRAT.ps1 -NoBrowser              # não abre o navegador automaticamente
+dotnet build src\ControlPlane\ControlPlane.Api\ControlPlane.Api.csproj -c Release
 ```
 
----
+## Troubleshooting
 
-## 7. Resetar Tudo (voltar ao estado limpo)
+### Docker não é reconhecido
 
-Se quiser recomeçar do zero sem clientes/hosts/dados antigos:
+Reabra o terminal depois de instalar o Docker Desktop. Em instalação por usuário, a CLI pode estar em:
+
+```text
+%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin\docker.exe
+```
+
+### Container `unhealthy`
 
 ```powershell
-.\Resetar-TRAT.ps1
+docker inspect trat-local --format "{{json .State.Health}}"
+docker compose logs --tail 100 controlplane
 ```
 
-Isso faz backup de segurança do `controlplane.db` e do `appsettings.Local.json` antes de limpar — os backups ficam na própria pasta do pacote, com timestamp no nome.
+### Porta 5080 ocupada
 
----
-
-## 8. Onde Ficam os Dados e Logs
-
-| O quê | Onde |
-|---|---|
-| Banco de dados (SQLite) | `artifacts\trat-local\TRAT.ControlPlane.Local\data\controlplane.db` |
-| Config local (git-ignored) | `artifacts\trat-local\TRAT.ControlPlane.Local\appsettings.Local.json` |
-| Logs do painel | `artifacts\trat-local\TRAT.ControlPlane.Local\logs\*.log` |
-| Pacote do Agent (Setup.exe/ZIP) | `artifacts\agent-package\` |
-| Log do Agent no host instalado | `C:\ProgramData\TRAT\Agent\logs\agent.log` (varia conforme configurado no instalador) |
-| Relatórios de release | `artifacts\release-reports\` |
-
----
-
-## 9. Troubleshooting Comum
-
-**Painel não abre / erro de porta em uso**
 ```powershell
-Get-Process -Id (Get-NetTCPConnection -LocalPort 5080).OwningProcess
-# Mate o processo se for uma instância antiga travada, ou rode .\Parar-TRAT.ps1
+Get-NetTCPConnection -LocalPort 5080
 ```
 
-**Erro ao compilar o Agent Service (net48 não encontrado)**
-Instale o .NET Framework 4.8 Developer Pack (não só o runtime) — veja seção 2.
+Altere `TRAT_LOCAL_PORT` no `.env` ou encerre conscientemente o processo conflitante.
 
-**Instalador do Agent reclama de "CustomerId inválido"**
-O ID do cliente/host só aceita letras (sem acento), números, ponto, hífen e underscore, sem espaço. Recrie o cliente no painel com um ID válido.
+### Downloads do Agent indisponíveis
 
-**Downloads mostra "nenhum pacote encontrado"**
-Rode `scripts\agent\Publish-Agent.ps1` e depois `scripts\controlplane\Publish-ControlPlane.ps1` (o ControlPlane precisa reembutir os artifacts do Agent após cada publish do Agent).
+O instalador precisa existir em `artifacts/agent-package` antes do build local:
 
-**Perdi meus clientes/hosts de teste depois de um rebuild**
-Não deveria acontecer — `Publish-ControlPlane.ps1` preserva `data/`, `logs/` e `appsettings.Local.json` automaticamente. Se aconteceu, verifique se rodou com `-ResetLocalState` sem querer.
+```powershell
+scripts\agent\Publish-Agent.ps1 -ControlPlaneBaseUrl "http://localhost:5080"
+docker compose up --build -d
+```
 
-**Erro de login (senha não funciona)**
-Se você já tinha um admin criado e mudou a senha em `appsettings.Local.json`, isso **não** atualiza a senha de uma conta já existente (o bootstrap só cria a conta na primeira vez). Use `Resetar-TRAT.ps1` se precisar recomeçar, ou troque a senha pela própria tela do painel (se existir essa opção) ou diretamente no banco.
+## Relação com a VM
 
-**Windows SmartScreen bloqueia o `TRAT.Agent.Setup.exe` ou o `ControlPlane.Api.exe` no servidor de teste**
-Esperado — os executáveis não são assinados digitalmente. Clique em "Mais informações" → "Executar assim mesmo". Isso é só um aviso, não indica problema real.
-
-**`Iniciar-TRAT.ps1` no servidor de teste não sobe como serviço, só como processo**
-Precisa rodar o PowerShell **como Administrador** pra instalar como Windows Service automaticamente. Sem privilégio de admin, ele ainda funciona, só fica rodando como processo comum (fecha se você fechar a janela/sessão).
-
----
-
-## 10. Próximos Passos
-
-Depois da validação local, gere o pacote central, instale-o no servidor de homologação e conecte um Agent real seguindo `ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md`.
-
-Para regras de desenvolvimento/liberação (o que precisa ser validado antes de considerar algo "pronto"), veja [CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md](CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md).
+O `compose.yml` da raiz é somente local. A Contabo usa `deploy/portainer/compose.yml`. Nunca copie o `.env` local para a VM e nunca compartilhe volumes entre esses ambientes.

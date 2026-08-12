@@ -20,7 +20,8 @@
         "minimumSupportedMajor": 2012,
         "supportedMajors": [2012, 2016, 2019, 2022, 2025],
         "unsupportedMajors": [2008],
-        "controlPlaneRecommendedMajor": 2022,
+        "controlPlanePrimaryPlatform": "Linux container on Contabo",
+        "controlPlaneWindowsAlternativeRecommendedMajor": 2022,
         "controlPlaneCentralOnly": true,
         "agentSupport": {
           "primary": [2016, 2019, 2022, 2025],
@@ -29,7 +30,7 @@
           "unsupported": ["2008 sem R2"]
         },
         "notes": [
-          "O ControlPlane e central e deve rodar preferencialmente em Windows Server 2022 x64.",
+          "O ControlPlane e central e roda prioritariamente em container Linux na Contabo; Windows Server 2022 x64 permanece alternativa.",
           "Windows Server 2012 e 2012 R2 fazem parte do piloto do Agent e exigem .NET Framework 4.8, TLS 1.2 e validacao real.",
           "Windows Server 2008 R2 SP1 e melhor esforco apenas para o Agent. Windows Server 2008 sem R2 fica fora do suporte padrao."
         ]

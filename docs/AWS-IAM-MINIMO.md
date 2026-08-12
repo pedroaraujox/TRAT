@@ -1,36 +1,25 @@
-# AWS - IAM minimo para o piloto do TRAT (1 mes)
+# AWS — IAM mínimo para o Agent
 
-Este documento define um baseline de permissao para o `TRAT Agent` gravar backups em um bucket S3, com minimo privilegio.
+## Princípio
 
-## Premissas
+O Agent pode gravar e verificar backups, mas nunca excluir objetos. Cada cliente ou host deve usar credencial e prefixo próprios sempre que possível.
 
-- O Agent precisa:
-  - descobrir identidade (STS) para validar AccountId;
-  - enviar objetos (PutObject) para um prefixo especifico;
-  - opcionalmente listar o bucket/prefixo para checagens e compatibilidade operacional.
-- O ControlPlane (painel) pode fazer descoberta de buckets/prefixos via AWS SDK **apenas** se houver credenciais AWS na maquina do painel. Se nao houver, o painel continua funcional para operar hosts/politicas; apenas a descoberta automatica de buckets/prefixos nao funciona.
+## Política base
 
-## Politica recomendada (exemplo)
-
-Substitua:
-- `<ACCOUNT_ID>` pela conta AWS do cliente;
-- `<BUCKET_NAME>` pelo bucket;
-- `<PREFIX>` pelo prefixo (sem barras iniciais), por exemplo `clientes/ep/trat-01/`.
+Substitua `<BUCKET_NAME>` e `<PREFIX>`:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "TrataIdentity",
+      "Sid": "TratIdentity",
       "Effect": "Allow",
-      "Action": [
-        "sts:GetCallerIdentity"
-      ],
+      "Action": "sts:GetCallerIdentity",
       "Resource": "*"
     },
     {
-      "Sid": "TrataWriteObjects",
+      "Sid": "TratWriteObjects",
       "Effect": "Allow",
       "Action": [
         "s3:PutObject",
@@ -40,17 +29,16 @@ Substitua:
       "Resource": "arn:aws:s3:::<BUCKET_NAME>/<PREFIX>*"
     },
     {
-      "Sid": "TrataListPrefixOptional",
+      "Sid": "TratReadMetadata",
       "Effect": "Allow",
       "Action": [
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
       ],
       "Resource": "arn:aws:s3:::<BUCKET_NAME>",
       "Condition": {
         "StringLike": {
-          "s3:prefix": [
-            "<PREFIX>*"
-          ]
+          "s3:prefix": ["<PREFIX>*"]
         }
       }
     }
@@ -58,15 +46,33 @@ Substitua:
 }
 ```
 
-## Checklist rapido de validacao
+`HeadObject` é autorizado por `s3:GetObject` no modelo de permissões do S3. Se a verificação do Agent exigir essa chamada, conceda `s3:GetObject` apenas ao mesmo prefixo, documentando a decisão.
 
-- No host do Agent:
-  - `sts:GetCallerIdentity` retorna o `Account` esperado do cliente.
-  - Upload de um arquivo pequeno funciona para `s3://<BUCKET_NAME>/<PREFIX>...`.
-- No painel:
-  - se for usar descoberta de buckets/prefixos, configure credenciais AWS na maquina do painel e valide que o `AccountId` exibido corresponde ao cliente.
+## Controles obrigatórios do bucket
 
-## Observacao de seguranca
+- Block Public Access;
+- versionamento;
+- criptografia em repouso;
+- Object Lock quando criado com esse recurso;
+- política explícita de negação de exclusão;
+- acesso administrativo separado da credencial do Agent.
 
-- Evite credenciais com permissao ampla (ex.: `s3:*`).
-- Use prefixo exclusivo por cliente/host para conter impacto em caso de comprometimento do host.
+## Proibições
+
+Não conceda ao Agent:
+
+- `s3:DeleteObject`;
+- `s3:DeleteObjectVersion`;
+- `s3:PutBucketPolicy`;
+- `s3:PutLifecycleConfiguration`;
+- `s3:*`.
+
+## Validação
+
+1. confirmar `sts:GetCallerIdentity`;
+2. enviar arquivo pequeno ao prefixo correto;
+3. confirmar leitura de metadados necessária;
+4. comprovar que uma tentativa de exclusão é negada;
+5. conferir que logs não exibem chaves AWS.
+
+Credenciais devem seguir [SEGURANCA-E-SEGREDOS.md](SEGURANCA-E-SEGREDOS.md).
