@@ -364,6 +364,12 @@ public sealed class AgentConfiguration
     [MaxLength(2000)]
     public string? LastPrecheckMessage { get; set; }
 
+    [MaxLength(32)]
+    public string? AwsAccountId { get; set; }
+
+    [MaxLength(8000)]
+    public string? AvailableBucketsCsv { get; set; }
+
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 

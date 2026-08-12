@@ -208,7 +208,6 @@ public sealed class CustomerDetailViewModel
 {
     public required CustomerFormViewModel Customer { get; init; }
     public string? EnrollmentTokenOneTime { get; init; }
-    public required AwsIntegrationViewModel AwsIntegration { get; init; }
     public required AlertAnalyticsSummaryViewModel AlertAnalytics { get; init; }
     public required IReadOnlyList<HostRowViewModel> Hosts { get; init; }
     public required IReadOnlyList<JobRowViewModel> Jobs { get; init; }

@@ -68,7 +68,9 @@ public sealed record AgentConfigurationReportRequest(
     string UploadMode,
     DateTimeOffset TimestampUtc,
     DateTimeOffset? PrecheckAtUtc,
-    string? PrecheckMessage
+    string? PrecheckMessage,
+    string? AwsAccountId = null,
+    IReadOnlyList<string>? AvailableBuckets = null
 );
 
 public sealed record AgentEffectivePolicyResponse(

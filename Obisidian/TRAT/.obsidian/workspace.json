@@ -1,0 +1,220 @@
+{
+  "main": {
+    "id": "f88ba56caad78134",
+    "type": "split",
+    "children": [
+      {
+        "id": "82e78fdf21f7a44b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f0c9ccca1ee99028",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Visualização em gráfico"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "93d303f863d019d7",
+    "type": "split",
+    "children": [
+      {
+        "id": "dde8076fd19bfc46",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ba3eb3b2272d283b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "221a0d4626aedb0f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "154ab3122dcd8dc5",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "d114047ae86a2a65",
+    "type": "split",
+    "children": [
+      {
+        "id": "95ecf72f175a3bb1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "646c39417415454d",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "07b96651aa8eddd7",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "5b119d4809179960",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "ddb17f13dd2cd062",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "e3362593a85d43a2",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "f0c9ccca1ee99028",
+  "lastOpenFiles": [
+    "deploy/agent/README.md",
+    "deploy/agent",
+    "README.md",
+    "deploy/controlplane/README.md",
+    "deploy/controlplane",
+    "SECURITY.md",
+    "docs/adr/README.md",
+    "docs/adr/0002-mvp-somente-development.md",
+    "docs/adr/0001-controlplane-central-docker-sqlite.md",
+    "docs/SEGURANCA-E-SEGREDOS.md",
+    "docs/RESPOSTA-A-INCIDENTES.md",
+    "docs/README.md",
+    "docs/OPERACAO-MVP.md",
+    "docs/OBSERVABILIDADE-E-SLO.md",
+    "docs/MVP-1-MES-PRONTIDAO.md",
+    "docs/MODELO-POSTMORTEM.md",
+    "docs/FLUXO-GIT-E-RELEASE.md",
+    "docs/COMPATIBILIDADE-WINDOWS.md",
+    "docs/COMO-RODAR-LOCALMENTE.md",
+    "docs/CHECKLIST-DESENVOLVIMENTO-E-LIBERACAO.md",
+    "docs/BACKUP-E-RESTAURACAO.md",
+    "docs/AWS-IAM-MINIMO.md",
+    "docs/ARQUITETURA-CENTRAL-E-HOMOLOGACAO.md",
+    "docs/adr",
+    "docs",
+    "deploy/portainer/README.md",
+    "deploy/portainer",
+    "deploy",
+    "CONTRIBUTING.md",
+    "CLAUDE.md",
+    "CHANGELOG.md",
+    "Bem-vindo.md",
+    "desktop.ini"
+  ]
+}

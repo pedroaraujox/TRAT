@@ -359,13 +359,6 @@ public sealed class HomeController(
             .Where(p => p.CustomerId == id)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
-        var selectedBucket = policies
-            .Where(p => !string.IsNullOrWhiteSpace(p.S3BucketName))
-            .OrderByDescending(p => p.LastChangedAtUtc ?? p.CreatedAtUtc)
-            .Select(p => p.S3BucketName!.Trim())
-            .FirstOrDefault();
-        var awsIntegration = await BuildAwsIntegrationViewModelAsync(customer.AwsAccountId, selectedBucket, ct);
-
         return View("CustomerDetail", new CustomerDetailViewModel
         {
             Customer = new CustomerFormViewModel
@@ -378,7 +371,6 @@ public sealed class HomeController(
                 IsEditMode = true
             },
             EnrollmentTokenOneTime = string.IsNullOrWhiteSpace(enrollmentToken) ? null : enrollmentToken,
-            AwsIntegration = awsIntegration,
             AlertAnalytics = BuildAlertAnalyticsSummary(allCustomerAlerts, customerMap, hostsById),
             Hosts = hosts.Select(h => MapHost(h, customerMap, configsByHostId, policyMap)).ToArray(),
             Jobs = jobs.Select(j => MapJob(j, customerMap, hostsById)).ToArray(),
@@ -2367,10 +2359,10 @@ public sealed class HomeController(
                 ? new Dictionary<string, BackupPolicy>(StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, BackupPolicy>(StringComparer.OrdinalIgnoreCase) { [policy.Id] = policy };
             var mappedConfiguration = MapAgentConfiguration(latestConfiguration, customerMap, hostMap, policyMap);
-            awsIntegration = await BuildAwsIntegrationViewModelAsync(
+            awsIntegration = BuildAwsIntegrationViewModelFromAgent(
                 customerMap.TryGetValue(host.CustomerId, out var customerForAws) ? customerForAws.AwsAccountId : null,
                 policy?.S3BucketName,
-                ct);
+                latestConfiguration);
             awsIntegration.CurrentPrefix = policy?.S3KeyPrefix;
             bootstrapPolicyDraft = BuildBootstrapPolicyDraft(latestConfiguration, host, mappedConfiguration, policy, awsIntegration);
         }
@@ -2429,10 +2421,10 @@ public sealed class HomeController(
         var mappedConfiguration = MapAgentConfiguration(configEntity, customers, hosts, policies);
         var boundPolicy = ResolveBoundPolicy(configEntity, policies);
         var latestJob = jobs.FirstOrDefault();
-        var awsIntegration = await BuildAwsIntegrationViewModelAsync(
+        var awsIntegration = BuildAwsIntegrationViewModelFromAgent(
             customers.TryGetValue(configEntity.CustomerId, out var customer) ? customer.AwsAccountId : null,
             boundPolicy?.S3BucketName,
-            ct);
+            configEntity);
         awsIntegration.CurrentPrefix = boundPolicy?.S3KeyPrefix;
 
         return new AgentConfigurationDetailViewModel
@@ -2834,6 +2826,39 @@ public sealed class HomeController(
             CurrentPrefix = null,
             Buckets = discovery.Buckets.Select(b => b.Name).ToArray(),
             Prefixes = discovery.Prefixes
+        };
+    }
+
+    private static AwsIntegrationViewModel BuildAwsIntegrationViewModelFromAgent(
+        string? expectedAccountId,
+        string? selectedBucket,
+        AgentConfiguration configuration)
+    {
+        var buckets = SplitCsvTokens(configuration.AvailableBucketsCsv);
+        var resolvedAccountId = string.IsNullOrWhiteSpace(configuration.AwsAccountId) ? null : configuration.AwsAccountId.Trim();
+        var expected = string.IsNullOrWhiteSpace(expectedAccountId) ? null : expectedAccountId.Trim();
+        var accountMatches = string.IsNullOrWhiteSpace(expected) ||
+            string.Equals(expected, resolvedAccountId, StringComparison.Ordinal);
+        var connected = configuration.PrecheckCredentialOk && accountMatches;
+        var message = !configuration.PrecheckCredentialOk
+            ? "O Agent ainda nao confirmou uma credencial AWS valida. Consulte o ultimo precheck do host."
+            : !accountMatches
+                ? $"O Agent reportou a conta AWS {resolvedAccountId ?? "nao identificada"}, mas o cliente espera {expected}."
+                : buckets.Length == 0
+                    ? "Credencial AWS validada pelo Agent, mas nenhum bucket foi reportado. Confirme a permissao s3:ListAllMyBuckets e aguarde o proximo sincronismo."
+                    : $"Credencial AWS validada pelo Agent e {buckets.Length} bucket(s) reportado(s).";
+
+        return new AwsIntegrationViewModel
+        {
+            IsConnected = connected,
+            ExpectedAccountId = expected,
+            ResolvedAccountId = resolvedAccountId,
+            Message = message,
+            SelectedBucket = string.IsNullOrWhiteSpace(selectedBucket) ? buckets.FirstOrDefault() : selectedBucket.Trim(),
+            SelectedBucketRegion = null,
+            CurrentPrefix = null,
+            Buckets = buckets,
+            Prefixes = Array.Empty<string>()
         };
     }
 

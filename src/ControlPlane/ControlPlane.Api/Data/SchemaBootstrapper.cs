@@ -24,6 +24,8 @@ public static class SchemaBootstrapper
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyKind", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicySource", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "EffectivePolicyLastChangedAtUtc", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "AwsAccountId", columnTypeSql: "TEXT");
+        await TryAddColumnAsync(db, tableName: "AgentConfigurations", columnName: "AvailableBucketsCsv", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "FailedLoginCount", columnTypeSql: "INTEGER");
         await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "LastFailedLoginAtUtc", columnTypeSql: "TEXT");
         await TryAddColumnAsync(db, tableName: "PanelUsers", columnName: "LockoutUntilUtc", columnTypeSql: "TEXT");
@@ -125,6 +127,8 @@ public static class SchemaBootstrapper
                 "LastConfigSyncAtUtc" TEXT NULL,
                 "LastPrecheckAtUtc" TEXT NULL,
                 "LastPrecheckMessage" TEXT NULL,
+                "AwsAccountId" TEXT NULL,
+                "AvailableBucketsCsv" TEXT NULL,
                 "CreatedAtUtc" TEXT NOT NULL
             );
             """);

@@ -110,7 +110,7 @@ if ($preservedSomething) {
     Write-Host "Dados locais preservados (data/, logs/, appsettings.Local.json) do pacote anterior." -ForegroundColor Green
 }
 
-Copy-Item -Path (Join-Path $deployRoot "README.md") -Destination (Join-Path $packageDir "README.md") -Force
+Copy-Item -Path (Join-Path $repoRoot "Obisidian\TRAT\deploy\controlplane\README.md") -Destination (Join-Path $packageDir "README.md") -Force
 Copy-Item -Path (Join-Path $deployRoot "Backup-Painel-Dados.ps1") -Destination (Join-Path $packageDir "Backup-Painel-Dados.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "Restaurar-Painel-Dados.ps1") -Destination (Join-Path $packageDir "Restaurar-Painel-Dados.ps1") -Force
 Copy-Item -Path (Join-Path $deployRoot "Coletar-Logs.ps1") -Destination (Join-Path $packageDir "Coletar-Logs.ps1") -Force

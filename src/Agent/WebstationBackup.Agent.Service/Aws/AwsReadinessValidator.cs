@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ internal sealed class AwsReadinessCheckResult
     public string? CredentialSource { get; init; }
     public string? AwsAccountId { get; init; }
     public string? BucketRegion { get; init; }
+    public IReadOnlyList<string> AvailableBuckets { get; init; } = Array.Empty<string>();
 }
 
 internal sealed class AwsReadinessValidator
@@ -68,6 +70,25 @@ internal sealed class AwsReadinessValidator
             var region = RegionEndpoint.GetBySystemName(regionName);
             using var sts = new AmazonSecurityTokenServiceClient(resolved.Credentials, region);
             var identity = await sts.GetCallerIdentityAsync(new GetCallerIdentityRequest(), ct);
+            IReadOnlyList<string> availableBuckets = Array.Empty<string>();
+            try
+            {
+                using var discoveryS3 = new AmazonS3Client(resolved.Credentials, region);
+                var bucketsResponse = await discoveryS3.ListBucketsAsync(ct);
+                availableBuckets = bucketsResponse.Buckets
+                    .Where(bucket => !string.IsNullOrWhiteSpace(bucket.BucketName))
+                    .Select(bucket => bucket.BucketName.Trim())
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+            }
+            catch (AmazonS3Exception ex)
+            {
+                logger.Warn("Nao foi possivel listar os buckets visiveis para a credencial do Agent.", new Dictionary<string, object?>
+                {
+                    ["statusCode"] = (int)ex.StatusCode,
+                    ["credentialSource"] = resolved.Source
+                });
+            }
 
             if (string.IsNullOrWhiteSpace(bucketName))
             {
@@ -84,6 +105,7 @@ internal sealed class AwsReadinessValidator
                     CredentialSource = resolved.Source,
                     AwsAccountId = identity.Account,
                     BucketRegion = null,
+                    AvailableBuckets = availableBuckets,
                     Message = $"AWS validado (identidade). Conta={identity.Account}. FonteCredencial={resolved.Source}."
                 };
             }
@@ -127,6 +149,7 @@ internal sealed class AwsReadinessValidator
                 CredentialSource = resolved.Source,
                 AwsAccountId = identity.Account,
                 BucketRegion = effectiveBucketRegion,
+                AvailableBuckets = availableBuckets,
                 Message = $"AWS validado em modo leitura. Conta={identity.Account}. Bucket={bucketName}. Regiao={effectiveBucketRegion}. Prefixo={prefix}. FonteCredencial={resolved.Source}."
             };
         }

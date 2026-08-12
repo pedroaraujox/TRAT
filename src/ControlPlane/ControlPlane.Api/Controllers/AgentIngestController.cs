@@ -539,6 +539,8 @@ public sealed class AgentIngestController(
                 LastConfigSyncAtUtc = report.TimestampUtc,
                 LastPrecheckAtUtc = report.PrecheckAtUtc,
                 LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000),
+                AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32),
+                AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets),
                 CreatedAtUtc = DateTimeOffset.UtcNow
             };
             db.AgentConfigurations.Add(existing);
@@ -562,6 +564,8 @@ public sealed class AgentIngestController(
             existing.LastConfigSyncAtUtc = report.TimestampUtc;
             existing.LastPrecheckAtUtc = report.PrecheckAtUtc;
             existing.LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000);
+            existing.AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32);
+            existing.AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets);
         }
 
         await db.SaveChangesAsync(ct);
@@ -578,6 +582,21 @@ public sealed class AgentIngestController(
             existing.PrecheckCredentialOk);
 
         return Ok(new { configurationId = configId });
+    }
+
+    private static string? NormalizeBucketList(IReadOnlyList<string>? buckets)
+    {
+        if (buckets is null || buckets.Count == 0)
+        {
+            return null;
+        }
+
+        var normalized = buckets
+            .Where(bucket => !string.IsNullOrWhiteSpace(bucket))
+            .Select(bucket => bucket.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(bucket => bucket, StringComparer.OrdinalIgnoreCase);
+        return TrimToMaxLengthOrNull(string.Join(',', normalized), 8000);
     }
 
     private string? GetAuthenticatedAgentCustomerId()

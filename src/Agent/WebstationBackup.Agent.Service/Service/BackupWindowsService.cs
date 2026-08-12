@@ -467,6 +467,7 @@ internal static class AgentWorker
         string? awsCredentialSource = null;
         string? awsAccountId = null;
         string? bucketRegion = null;
+        IReadOnlyList<string> availableBuckets = Array.Empty<string>();
         if (dryRun && IsPlaceholderAwsConfiguration(targetSettings))
         {
             credOk = false;
@@ -481,6 +482,7 @@ internal static class AgentWorker
             awsCredentialSource = awsReadiness.CredentialSource;
             awsAccountId = awsReadiness.AwsAccountId;
             bucketRegion = awsReadiness.BucketRegion;
+            availableBuckets = awsReadiness.AvailableBuckets;
 
             if (!credOk)
             {
@@ -515,7 +517,9 @@ internal static class AgentWorker
             uploadMode = dryRun ? "dry-run" : "direct-s3",
             timestampUtc = now,
             precheckAtUtc = now,
-            precheckMessage = message + " PolicySource=" + effectivePolicy.Source + (string.IsNullOrWhiteSpace(effectivePolicy.PolicyId) ? string.Empty : " PolicyId=" + effectivePolicy.PolicyId)
+            precheckMessage = message + " PolicySource=" + effectivePolicy.Source + (string.IsNullOrWhiteSpace(effectivePolicy.PolicyId) ? string.Empty : " PolicyId=" + effectivePolicy.PolicyId),
+            awsAccountId,
+            availableBuckets
         }, ct);
 
         logger.Info("Config report enviado", new Dictionary<string, object?>
@@ -527,6 +531,7 @@ internal static class AgentWorker
             ["awsCredentialSource"] = awsCredentialSource,
             ["awsAccountId"] = awsAccountId,
             ["bucketRegion"] = bucketRegion,
+            ["availableBucketCount"] = availableBuckets.Count,
             ["stagingPath"] = stagingPath,
             ["policySource"] = effectivePolicy.Source,
             ["policyId"] = effectivePolicy.PolicyId
