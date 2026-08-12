@@ -35,6 +35,23 @@ Stack Portainer: `deploy\portainer\compose.yml` e `deploy\portainer\README.md`. 
 
 ## Desenvolvimento local
 
+### Docker Compose
+
+Com o Docker Desktop instalado e iniciado:
+
+```powershell
+Copy-Item .env.example .env
+# Edite a senha em .env antes de iniciar.
+docker compose up --build -d
+docker compose ps
+```
+
+Abra `http://localhost:5080`. Para acompanhar a inicializacao, use `docker compose logs -f controlplane`; para parar sem apagar o banco, use `docker compose down`. Nao use `down --volumes` a menos que queira excluir deliberadamente todo o estado local.
+
+O Compose local e o arquivo `compose.yml` da raiz. A Contabo usa exclusivamente `deploy/portainer/compose.yml`; as duas configuracoes nao compartilham volumes nem segredos.
+
+### Execucao nativa no Windows
+
 ```powershell
 .\Liberar-TRAT.ps1
 .\Iniciar-TRAT.ps1

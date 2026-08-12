@@ -2,7 +2,8 @@ services:
   preparar-volumes:
     image: ${TRAT_IMAGE:?Informe TRAT_IMAGE}
     user: "0:0"
-    command: ["sh", "-c", "chown -R 1654:1654 /app/data /app/backups"]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown -R 1654:1654 /app/data /app/backups"]
     volumes:
       - data:/app/data
       - backups:/app/backups
