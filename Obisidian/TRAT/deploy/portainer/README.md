@@ -95,6 +95,8 @@ Solicite certificado Let's Encrypt, ative Force SSL e HTTP/2. Ative HSTS apenas 
 5. aguarde `healthy`;
 6. teste health, login e funcionalidade alterada.
 
+Antes de acionar **Pull and redeploy**, compare as variáveis obrigatórias `${VAR:?mensagem}` do compose com as variáveis cadastradas no stack. Cadastre e salve qualquer variável nova antes do redeploy; o Portainer pode remover o container anterior antes de detectar uma interpolação ausente.
+
 ```text
 https://trat-hml.outboxtech.com.br/api/v1/health
 ```
