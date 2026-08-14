@@ -22,6 +22,7 @@ internal sealed class AwsReadinessCheckResult
     public string? AwsAccountId { get; init; }
     public string? BucketRegion { get; init; }
     public IReadOnlyList<string> AvailableBuckets { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, string> AvailableBucketRegions { get; init; } = new Dictionary<string, string>();
 }
 
 internal sealed class AwsReadinessValidator
@@ -71,6 +72,7 @@ internal sealed class AwsReadinessValidator
             using var sts = new AmazonSecurityTokenServiceClient(resolved.Credentials, region);
             var identity = await sts.GetCallerIdentityAsync(new GetCallerIdentityRequest(), ct);
             IReadOnlyList<string> availableBuckets = Array.Empty<string>();
+            IReadOnlyDictionary<string, string> availableBucketRegions = new Dictionary<string, string>();
             try
             {
                 using var discoveryS3 = new AmazonS3Client(resolved.Credentials, region);
@@ -80,6 +82,28 @@ internal sealed class AwsReadinessValidator
                     .Select(bucket => bucket.BucketName.Trim())
                     .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+                var regions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var availableBucket in availableBuckets)
+                {
+                    try
+                    {
+                        var location = await discoveryS3.GetBucketLocationAsync(new GetBucketLocationRequest
+                        {
+                            BucketName = availableBucket
+                        }, ct);
+                        regions[availableBucket] = NormalizeRegion(location.Location?.Value, "us-east-1");
+                    }
+                    catch (AmazonS3Exception ex)
+                    {
+                        logger.Warn("Nao foi possivel descobrir a regiao de um bucket AWS.", new Dictionary<string, object?>
+                        {
+                            ["bucket"] = availableBucket,
+                            ["statusCode"] = (int)ex.StatusCode
+                        });
+                    }
+                }
+
+                availableBucketRegions = regions;
             }
             catch (AmazonS3Exception ex)
             {
@@ -106,6 +130,7 @@ internal sealed class AwsReadinessValidator
                     AwsAccountId = identity.Account,
                     BucketRegion = null,
                     AvailableBuckets = availableBuckets,
+                    AvailableBucketRegions = availableBucketRegions,
                     Message = $"AWS validado (identidade). Conta={identity.Account}. FonteCredencial={resolved.Source}."
                 };
             }
@@ -150,6 +175,7 @@ internal sealed class AwsReadinessValidator
                 AwsAccountId = identity.Account,
                 BucketRegion = effectiveBucketRegion,
                 AvailableBuckets = availableBuckets,
+                AvailableBucketRegions = availableBucketRegions,
                 Message = $"AWS validado em modo leitura. Conta={identity.Account}. Bucket={bucketName}. Regiao={effectiveBucketRegion}. Prefixo={prefix}. FonteCredencial={resolved.Source}."
             };
         }

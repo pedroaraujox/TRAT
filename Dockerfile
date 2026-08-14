@@ -6,6 +6,7 @@ COPY src/ControlPlane/ControlPlane.Api/ src/ControlPlane/ControlPlane.Api/
 RUN dotnet publish src/ControlPlane/ControlPlane.Api/ControlPlane.Api.csproj -c Release --no-restore -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim AS runtime
+ARG BUILD_REVISION=local
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -17,7 +18,8 @@ RUN mkdir -p /app/data/keys /app/backups /app/logs \
     && chown -R app:app /app
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
-    DOTNET_EnableDiagnostics=0
+    DOTNET_EnableDiagnostics=0 \
+    ControlPlane__Environment__Revision=${BUILD_REVISION}
 EXPOSE 8080
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

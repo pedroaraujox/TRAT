@@ -18,3 +18,13 @@ appsettings.Local.json
 artifacts/*
 !artifacts/agent-package/
 !artifacts/agent-package/**
+!artifacts/agent-package-local/
+!artifacts/agent-package-local/**
+!artifacts/agent-package-hml/
+!artifacts/agent-package-hml/**
+!artifacts/agent-package-production/
+!artifacts/agent-package-production/**
+!artifacts/agent-package-release/
+!artifacts/agent-package-release/**
+!artifacts/agent-package-check-local/
+!artifacts/agent-package-check-local/**

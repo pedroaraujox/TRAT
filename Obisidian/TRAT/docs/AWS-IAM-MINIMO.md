@@ -29,6 +29,12 @@ Substitua `<BUCKET_NAME>` e `<PREFIX>`:
       "Resource": "arn:aws:s3:::<BUCKET_NAME>/<PREFIX>*"
     },
     {
+      "Sid": "TratDiscoverBuckets",
+      "Effect": "Allow",
+      "Action": "s3:ListAllMyBuckets",
+      "Resource": "*"
+    },
+    {
       "Sid": "TratReadMetadata",
       "Effect": "Allow",
       "Action": [
@@ -70,9 +76,10 @@ Não conceda ao Agent:
 ## Validação
 
 1. confirmar `sts:GetCallerIdentity`;
-2. enviar arquivo pequeno ao prefixo correto;
-3. confirmar leitura de metadados necessária;
-4. comprovar que uma tentativa de exclusão é negada;
-5. conferir que logs não exibem chaves AWS.
+2. confirmar que `s3:ListAllMyBuckets` lista os buckets que devem aparecer no painel;
+3. enviar arquivo pequeno ao prefixo correto;
+4. confirmar leitura de metadados necessária;
+5. comprovar que uma tentativa de exclusão é negada;
+6. conferir que logs não exibem chaves AWS.
 
 Credenciais devem seguir [SEGURANCA-E-SEGREDOS.md](SEGURANCA-E-SEGREDOS.md).

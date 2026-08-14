@@ -53,6 +53,9 @@ $binDir = Join-Path $stagingDir "bin"
 $trayDir = Join-Path $stagingDir "tray"
 $installerDir = Join-Path $stagingDir "installer"
 $zipPath = Join-Path $outputRoot "TRAT.Agent.Package.zip"
+$serviceOutputDir = Join-Path $outputRoot "_service-build"
+$trayOutputDir = Join-Path $outputRoot "_tray-publish"
+$installerOutputDir = Join-Path $outputRoot "_installer-publish"
 
 if (Test-Path $outputRoot) {
     Remove-Item -Path $outputRoot -Recurse -Force
@@ -64,21 +67,19 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
 # Etapa 1: builda Service e Tray primeiro, pois o instalador precisa embutir esses
 # binarios como payload antes do proprio publish do instalador acontecer.
-dotnet build $projectPath -c $Configuration
+dotnet build $projectPath -c $Configuration -o $serviceOutputDir
 if ($LASTEXITCODE -ne 0) { throw "Build do Agent Service falhou com codigo $LASTEXITCODE." }
-dotnet publish $trayProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish $trayProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $trayOutputDir
 if ($LASTEXITCODE -ne 0) { throw "Publish do Agent Tray falhou com codigo $LASTEXITCODE." }
 
-$buildOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Service\bin\{0}\net48" -f $Configuration)
-$trayOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Tray\bin\{0}\net8.0-windows\{1}\publish" -f $Configuration, $WindowsRuntimeIdentifier)
-if (-not (Test-Path (Join-Path $buildOutputDir "WebstationBackup.Agent.Service.exe"))) {
-    throw "Build do Agent nao gerou o executavel esperado em: $buildOutputDir"
+if (-not (Test-Path (Join-Path $serviceOutputDir "WebstationBackup.Agent.Service.exe"))) {
+    throw "Build do Agent nao gerou o executavel esperado em: $serviceOutputDir"
 }
 if (-not (Test-Path (Join-Path $trayOutputDir "WebstationBackup.Agent.Tray.exe"))) {
     throw "Publish do Tray App nao gerou o executavel esperado em: $trayOutputDir"
 }
 
-Copy-Item -Path (Join-Path $buildOutputDir "*") -Destination $binDir -Recurse -Force
+Copy-Item -Path (Join-Path $serviceOutputDir "*") -Destination $binDir -Recurse -Force
 Copy-Item -Path (Join-Path $trayOutputDir "*") -Destination $trayDir -Recurse -Force
 Copy-Item -Path $rulesPath -Destination (Join-Path $stagingDir "project.rules.json") -Force
 Copy-Item -Path $settingsTemplatePath -Destination (Join-Path $stagingDir "agent.settings.template.json") -Force
@@ -107,10 +108,9 @@ Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $installerPa
 
 # Etapa 3: agora sim publica o instalador, que vai embutir o payload zipado acima
 # como recurso (EmbeddedResource condicional no csproj) dentro do proprio exe.
-dotnet publish $installerProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish $installerProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $installerOutputDir
 if ($LASTEXITCODE -ne 0) { throw "Publish do Agent Installer falhou com codigo $LASTEXITCODE." }
 
-$installerOutputDir = Join-Path $repoRoot ("src\Agent\WebstationBackup.Agent.Installer\bin\{0}\net8.0-windows\{1}\publish" -f $Configuration, $WindowsRuntimeIdentifier)
 if (-not (Test-Path (Join-Path $installerOutputDir "WebstationBackup.Agent.Installer.exe"))) {
     throw "Publish do Installer GUI nao gerou o executavel esperado em: $installerOutputDir"
 }
@@ -126,14 +126,37 @@ $standaloneDir = Join-Path $outputRoot "TRAT.Agent.Standalone"
 New-Item -ItemType Directory -Force -Path $standaloneDir | Out-Null
 Copy-Item -Path (Join-Path $stagingDir "TRAT.Agent.Setup.exe") -Destination (Join-Path $standaloneDir "TRAT.Agent.Setup.exe") -Force
 Copy-Item -Path (Join-Path $stagingDir "agent-package.manifest.json") -Destination (Join-Path $standaloneDir "agent-package.manifest.json") -Force
+$environmentSetupName = "TRAT.Agent.Setup.{0}.exe" -f $EnvironmentProfile
+Copy-Item -Path (Join-Path $stagingDir "TRAT.Agent.Setup.exe") -Destination (Join-Path $standaloneDir $environmentSetupName) -Force
 
 if (-not $SkipZip) {
     Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
 }
 
+$requiredOutputs = @(
+    (Join-Path $stagingDir "bin\WebstationBackup.Agent.Service.exe"),
+    (Join-Path $stagingDir "tray\WebstationBackup.Agent.Tray.exe"),
+    (Join-Path $stagingDir "TRAT.Agent.Setup.exe"),
+    (Join-Path $standaloneDir "TRAT.Agent.Setup.exe"),
+    (Join-Path $standaloneDir "agent-package.manifest.json"),
+    (Join-Path $standaloneDir $environmentSetupName)
+)
+foreach ($requiredOutput in $requiredOutputs) {
+    if (-not (Test-Path -LiteralPath $requiredOutput -PathType Leaf)) {
+        throw "Pacote incompleto: arquivo obrigatorio ausente em $requiredOutput"
+    }
+}
+$validatedManifest = Get-Content -LiteralPath (Join-Path $standaloneDir "agent-package.manifest.json") -Raw | ConvertFrom-Json
+if ($validatedManifest.environment -ne $EnvironmentProfile -or
+    $validatedManifest.controlPlaneBaseUrl.TrimEnd('/') -ne $normalizedControlPlaneUrl) {
+    throw "Pacote invalido: manifesto nao corresponde ao perfil $EnvironmentProfile ($normalizedControlPlaneUrl)."
+}
+
 Write-Host ("Pacote do Agent gerado em: {0}" -f $stagingDir)
 Write-Host ("Ambiente do Agent: {0} ({1})" -f $EnvironmentProfile, $normalizedControlPlaneUrl)
 Write-Host ("Executavel autonomo (recomendado para download) gerado em: {0}" -f (Join-Path $standaloneDir "TRAT.Agent.Setup.exe"))
+Write-Host ("Executavel identificado por ambiente: {0}" -f (Join-Path $standaloneDir $environmentSetupName))
+Write-Host "Validacao estrutural e de ambiente do pacote: OK"
 if (-not $SkipZip) {
     Write-Host ("Arquivo ZIP (avancado/opcional) gerado em: {0}" -f $zipPath)
 }

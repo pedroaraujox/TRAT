@@ -6,6 +6,7 @@ using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Linq;
@@ -541,6 +542,7 @@ public sealed class AgentIngestController(
                 LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000),
                 AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32),
                 AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets),
+                AvailableBucketRegionsJson = NormalizeBucketRegions(report.AvailableBucketRegions),
                 CreatedAtUtc = DateTimeOffset.UtcNow
             };
             db.AgentConfigurations.Add(existing);
@@ -566,6 +568,7 @@ public sealed class AgentIngestController(
             existing.LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000);
             existing.AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32);
             existing.AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets);
+            existing.AvailableBucketRegionsJson = NormalizeBucketRegions(report.AvailableBucketRegions);
         }
 
         await db.SaveChangesAsync(ct);
@@ -597,6 +600,23 @@ public sealed class AgentIngestController(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(bucket => bucket, StringComparer.OrdinalIgnoreCase);
         return TrimToMaxLengthOrNull(string.Join(',', normalized), 8000);
+    }
+
+    private static string? NormalizeBucketRegions(IReadOnlyDictionary<string, string>? bucketRegions)
+    {
+        if (bucketRegions is null || bucketRegions.Count == 0)
+        {
+            return null;
+        }
+
+        var normalized = bucketRegions
+            .Where(item => !string.IsNullOrWhiteSpace(item.Key) && !string.IsNullOrWhiteSpace(item.Value))
+            .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                item => item.Key.Trim(),
+                item => item.Value.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+        return TrimToMaxLengthOrNull(JsonSerializer.Serialize(normalized), 16000);
     }
 
     private string? GetAuthenticatedAgentCustomerId()

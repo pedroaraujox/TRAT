@@ -18,19 +18,21 @@ internal static class PowerShellInstallRunner
         string settingsOutputPath,
         string installDirectory,
         string stateDirectory,
+        string configuratorExecutablePath,
         bool startService)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(settingsOutputPath);
         ArgumentNullException.ThrowIfNull(installDirectory);
         ArgumentNullException.ThrowIfNull(stateDirectory);
+        ArgumentNullException.ThrowIfNull(configuratorExecutablePath);
 
         var logFilePath = Path.Combine(Path.GetTempPath(), $"webstation-agent-install-{Guid.NewGuid():N}.log");
         var wrapperScriptPath = Path.Combine(Path.GetTempPath(), $"webstation-agent-install-{Guid.NewGuid():N}.ps1");
 
         try
         {
-            File.WriteAllText(wrapperScriptPath, BuildWrapperScript(layout, settingsOutputPath, installDirectory, stateDirectory, logFilePath, startService), Encoding.UTF8);
+            File.WriteAllText(wrapperScriptPath, BuildWrapperScript(layout, settingsOutputPath, installDirectory, stateDirectory, configuratorExecutablePath, logFilePath, startService), Encoding.UTF8);
 
             using var process = Process.Start(new ProcessStartInfo
             {
@@ -64,6 +66,7 @@ internal static class PowerShellInstallRunner
         string settingsOutputPath,
         string installDirectory,
         string stateDirectory,
+        string configuratorExecutablePath,
         string logFilePath,
         bool startService)
     {
@@ -76,6 +79,7 @@ internal static class PowerShellInstallRunner
         builder.AppendLine($"$settingsPath = '{EscapePowerShellLiteral(settingsOutputPath)}'");
         builder.AppendLine($"$installDir = '{EscapePowerShellLiteral(installDirectory)}'");
         builder.AppendLine($"$stateDir = '{EscapePowerShellLiteral(stateDirectory)}'");
+        builder.AppendLine($"$configuratorSource = '{EscapePowerShellLiteral(configuratorExecutablePath)}'");
         builder.AppendLine("try {");
         builder.AppendLine("  $installArgs = @{");
         builder.AppendLine("    PackageRoot = $packageRoot");
@@ -88,6 +92,14 @@ internal static class PowerShellInstallRunner
             builder.AppendLine("  $installArgs['StartService'] = $true");
         }
         builder.AppendLine("  & $scriptPath @installArgs *>&1 | Tee-Object -FilePath $logFile");
+        builder.AppendLine("  if (-not (Test-Path -LiteralPath $configuratorSource)) { throw 'Executavel do configurador nao encontrado.' }");
+        builder.AppendLine("  $configuratorDir = Join-Path $installDir 'installer'");
+        builder.AppendLine("  $configuratorTarget = Join-Path $configuratorDir 'WebstationBackup.Agent.Installer.exe'");
+        builder.AppendLine("  if (-not [string]::Equals([IO.Path]::GetFullPath($configuratorSource), [IO.Path]::GetFullPath($configuratorTarget), [StringComparison]::OrdinalIgnoreCase)) {");
+        builder.AppendLine("    New-Item -ItemType Directory -Path $configuratorDir -Force | Out-Null");
+        builder.AppendLine("    Copy-Item -LiteralPath $configuratorSource -Destination $configuratorTarget -Force");
+        builder.AppendLine("  }");
+        builder.AppendLine("  Write-Output ('Configurador local instalado em: ' + $configuratorTarget) | Tee-Object -FilePath $logFile -Append");
         builder.AppendLine("  exit 0");
         builder.AppendLine("} catch {");
         builder.AppendLine("  $_ | Out-String | Tee-Object -FilePath $logFile");

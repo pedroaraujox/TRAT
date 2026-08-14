@@ -17,5 +17,17 @@ internal static class DpapiSecretProtector
         var protectedBytes = ProtectedData.Protect(bytes, optionalEntropy: null, scope: DataProtectionScope.LocalMachine);
         return Convert.ToBase64String(protectedBytes);
     }
+
+    public static string UnprotectBase64OrThrow(string protectedBase64)
+    {
+        if (string.IsNullOrWhiteSpace(protectedBase64))
+        {
+            throw new ArgumentException("Segredo protegido e obrigatorio.", nameof(protectedBase64));
+        }
+
+        var protectedBytes = Convert.FromBase64String(protectedBase64.Trim());
+        var bytes = ProtectedData.Unprotect(protectedBytes, optionalEntropy: null, scope: DataProtectionScope.LocalMachine);
+        return Encoding.UTF8.GetString(bytes);
+    }
 }
 

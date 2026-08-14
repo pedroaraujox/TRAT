@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace ControlPlane.Api.Controllers;
 
@@ -1130,15 +1131,30 @@ public sealed class HomeController(
     }
 
     [HttpGet("/admin/aws/prefix-options")]
-    public async Task<IActionResult> AwsPrefixOptions([FromQuery] string? expectedAccountId, [FromQuery] string? bucketName, CancellationToken ct)
+    public async Task<IActionResult> AwsPrefixOptions([FromQuery] string? configurationId, [FromQuery] string? expectedAccountId, [FromQuery] string? bucketName, CancellationToken ct)
     {
-        var result = await awsDiscoveryService.ListPrefixesForBucketAsync(expectedAccountId, bucketName, ct);
+        var configuration = string.IsNullOrWhiteSpace(configurationId)
+            ? null
+            : await db.AgentConfigurations.AsNoTracking().FirstOrDefaultAsync(item => item.Id == configurationId, ct);
+        var customer = configuration is null
+            ? null
+            : await db.Customers.AsNoTracking().FirstOrDefaultAsync(item => item.Id == configuration.CustomerId, ct);
+        var accountMatches = customer is not null &&
+            (string.IsNullOrWhiteSpace(expectedAccountId) || string.Equals(customer.AwsAccountId, expectedAccountId.Trim(), StringComparison.Ordinal)) &&
+            string.Equals(configuration!.AwsAccountId, customer.AwsAccountId, StringComparison.Ordinal);
+        var bucketRegions = ParseBucketRegions(configuration?.AvailableBucketRegionsJson);
+        var normalizedBucket = string.IsNullOrWhiteSpace(bucketName) ? null : bucketName.Trim();
+        var bucketIsReported = normalizedBucket is not null &&
+            SplitCsvTokens(configuration?.AvailableBucketsCsv).Contains(normalizedBucket, StringComparer.OrdinalIgnoreCase);
+        bucketRegions.TryGetValue(normalizedBucket ?? string.Empty, out var bucketRegion);
         return Json(new
         {
-            success = result.Success,
-            bucketRegion = result.BucketRegion,
-            prefixes = result.Prefixes,
-            message = result.Message
+            success = accountMatches && bucketIsReported,
+            bucketRegion,
+            prefixes = Array.Empty<string>(),
+            message = accountMatches && bucketIsReported
+                ? "Bucket confirmado pelo Agent. Use a raiz ou mantenha o prefixo configurado."
+                : "O bucket ainda nao foi confirmado por este Agent."
         });
     }
 
@@ -2848,18 +2864,41 @@ public sealed class HomeController(
                     ? "Credencial AWS validada pelo Agent, mas nenhum bucket foi reportado. Confirme a permissao s3:ListAllMyBuckets e aguarde o proximo sincronismo."
                     : $"Credencial AWS validada pelo Agent e {buckets.Length} bucket(s) reportado(s).";
 
+        var bucketRegions = ParseBucketRegions(configuration.AvailableBucketRegionsJson);
+        var effectiveBucket = string.IsNullOrWhiteSpace(selectedBucket) ? buckets.FirstOrDefault() : selectedBucket.Trim();
+        bucketRegions.TryGetValue(effectiveBucket ?? string.Empty, out var selectedBucketRegion);
         return new AwsIntegrationViewModel
         {
             IsConnected = connected,
             ExpectedAccountId = expected,
             ResolvedAccountId = resolvedAccountId,
             Message = message,
-            SelectedBucket = string.IsNullOrWhiteSpace(selectedBucket) ? buckets.FirstOrDefault() : selectedBucket.Trim(),
-            SelectedBucketRegion = null,
+            SelectedBucket = effectiveBucket,
+            SelectedBucketRegion = selectedBucketRegion,
             CurrentPrefix = null,
             Buckets = buckets,
             Prefixes = Array.Empty<string>()
         };
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseBucketRegions(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(value);
+            return parsed is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(parsed, StringComparer.OrdinalIgnoreCase);
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private static HostRunRequestViewModel? BuildLatestRunViewModel(AgentRunRequest? latestRunRequest, Job? latestJob)

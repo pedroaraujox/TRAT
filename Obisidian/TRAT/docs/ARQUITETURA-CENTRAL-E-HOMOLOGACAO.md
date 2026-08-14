@@ -68,7 +68,7 @@ Alta disponibilidade e múltiplas réplicas exigirão reavaliar a persistência 
 
 ## Produção
 
-A branch `production`, a tag `:production` e o hostname `trat.outboxtech.com.br` estão reservados. Nenhuma stack `trat-prod` está autorizada durante o MVP atual. A decisão futura exige aceite formal dos gates em [MVP-1-MES-PRONTIDAO.md](MVP-1-MES-PRONTIDAO.md).
+A branch `production`, a tag `:production`, a stack `trat-prod` e o hostname `trat.outboxtech.com.br` formam o ambiente de produção. Ele só pode receber o mesmo commit aprovado em `trat-dev`, após os gates de [MVP-1-MES-PRONTIDAO.md](MVP-1-MES-PRONTIDAO.md), backup e plano de rollback.
 
 ## Alternativa Windows
 
@@ -77,4 +77,4 @@ Os scripts em `deploy/controlplane` continuam disponíveis para desenvolvimento 
 ## Decisões relacionadas
 
 - [ADR-0001: ControlPlane central em Docker com SQLite](adr/0001-controlplane-central-docker-sqlite.md)
-- [ADR-0002: MVP somente em development](adr/0002-mvp-somente-development.md)
+- [ADR-0003: promoção local, homologação e produção](adr/0003-promocao-local-hml-production.md)

@@ -370,6 +370,9 @@ public sealed class AgentConfiguration
     [MaxLength(8000)]
     public string? AvailableBucketsCsv { get; set; }
 
+    [MaxLength(16000)]
+    public string? AvailableBucketRegionsJson { get; set; }
+
     public required DateTimeOffset CreatedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 

@@ -12,6 +12,7 @@
 | Proteger segredos | [Segurança e segredos](SEGURANCA-E-SEGREDOS.md) |
 | Recuperar dados | [Backup e restauração](BACKUP-E-RESTAURACAO.md) |
 | Tratar falhas | [Resposta a incidentes](RESPOSTA-A-INCIDENTES.md) |
+| Pesquisar bug, erro ou alarme conhecido | [Catálogo de incidentes](incidentes/README.md) |
 | Monitorar o serviço | [Observabilidade e SLO](OBSERVABILIDADE-E-SLO.md) |
 | Preparar o piloto | [Prontidão do MVP](MVP-1-MES-PRONTIDAO.md) |
 | Instalar Agent | [Manual do Agent](../deploy/agent/README.md) |
@@ -27,10 +28,11 @@
 
 ## Fonte de verdade
 
-O estado atual é:
+O fluxo oficial é:
 
-- `development` e `trat-dev` são o único fluxo remoto ativo;
-- `production` está reservada e não implantada;
+- local para desenvolvimento e validação inicial;
+- `development` → `trat-dev` → `trat-hml.outboxtech.com.br` para homologação;
+- `production` → `trat-prod` → `trat.outboxtech.com.br` somente após aprovação dos gates;
 - Docker/Portainer/Nginx Proxy Manager são a arquitetura principal;
 - Windows/Cloudflare não é a arquitetura da Contabo;
 - SQLite permanece durante o piloto, com uma única réplica.
@@ -39,4 +41,4 @@ Se um documento divergir desses pontos, deve ser corrigido antes de orientar uma
 
 ## Manutenção documental
 
-Toda mudança que altere comportamento, configuração, deploy, segurança ou recuperação deve atualizar o documento correspondente no mesmo commit. Use datas absolutas para fatos operacionais e não registre segredos.
+Toda mudança que altere comportamento, configuração, deploy, segurança ou recuperação deve atualizar o documento correspondente no mesmo commit. Antes de corrigir um problema, pesquise e registre o caso no [catálogo de incidentes](incidentes/README.md). Use datas absolutas para fatos operacionais e não registre segredos.

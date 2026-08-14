@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Windows.Forms;
 
 namespace WebstationBackup.Agent.Installer;
@@ -38,7 +39,6 @@ internal sealed class InstallerForm : Form
 
     public InstallerForm()
     {
-        Text = InstallerDisplayName;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(760, 560);
         Size = new Size(820, 640);
@@ -52,6 +52,12 @@ internal sealed class InstallerForm : Form
 
         var packageRoot = InstallerPackagePaths.ResolveInitialPackageRoot();
         var packageLayout = InstallerPackagePaths.Resolve(packageRoot);
+        var packageManifest = InstallerPackagePaths.ReadManifest(packageRoot);
+        var environmentName = string.IsNullOrWhiteSpace(packageManifest?.Environment)
+            ? "NAO IDENTIFICADO"
+            : packageManifest!.Environment!.Trim().ToUpperInvariant();
+        var controlPlaneUrl = InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot);
+        Text = $"{InstallerDisplayName} - {environmentName}";
 
         var root = new TableLayoutPanel
         {
@@ -68,7 +74,7 @@ internal sealed class InstallerForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Text = "Informe o token do cliente e as chaves AWS, selecione o que deseja fazer backup e clique em Instalar.",
+            Text = $"Ambiente: {environmentName} | Painel: {controlPlaneUrl}{Environment.NewLine}Informe o token do cliente e as chaves AWS, selecione o que deseja fazer backup e clique em Instalar.",
             Font = new Font(SystemFonts.MessageBoxFont ?? Control.DefaultFont, FontStyle.Bold)
         };
 
@@ -90,7 +96,7 @@ internal sealed class InstallerForm : Form
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
 
-        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 0, "Destino do painel", InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot), CreateSpacerButton(configurationPanel));
+        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 0, "Destino do painel", controlPlaneUrl, CreateSpacerButton(configurationPanel));
         _agentTokenTextBox = AddTextRow(configurationPanel, 1, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
         _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 2, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
         _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 3, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
@@ -189,6 +195,7 @@ internal sealed class InstallerForm : Form
             Dock = DockStyle.Fill,
             Font = new Font(FontFamily.GenericMonospace, 9f)
         };
+        TryLoadInstalledSettings();
 
         root.Controls.Add(header, 0, 0);
         root.Controls.Add(content, 0, 1);
@@ -197,11 +204,70 @@ internal sealed class InstallerForm : Form
 
         AppendOutput("Instalador GUI inicializado.");
         AppendOutput($"Pasta inicial do pacote: {packageLayout.PackageRoot}");
+        AppendOutput($"Ambiente do pacote: {environmentName}");
         AppendOutput($"Destino do painel: {_controlPlaneUrlTextBox.Text}");
         _controlPlaneUrlTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _agentTokenTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _hostIdTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         SetAdvancedVisibility(show: false);
+    }
+
+    private void TryLoadInstalledSettings()
+    {
+        try
+        {
+            var settingsPath = Path.Combine(InstallerPackagePaths.DefaultStateDirectory, "agent.settings.json");
+            if (!File.Exists(settingsPath))
+            {
+                return;
+            }
+
+            var settings = JsonSerializer.Deserialize<InstallerSettingsModel>(File.ReadAllText(settingsPath), new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+            if (settings is null)
+            {
+                return;
+            }
+
+            var installedControlPlaneUrl = settings.ControlPlaneBaseUrl?.Trim().TrimEnd('/') ?? string.Empty;
+            var packageControlPlaneUrl = _controlPlaneUrlTextBox.Text.Trim().TrimEnd('/');
+            if (!string.IsNullOrWhiteSpace(installedControlPlaneUrl) &&
+                !string.Equals(installedControlPlaneUrl, packageControlPlaneUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                AppendOutput($"A URL instalada ({installedControlPlaneUrl}) pertence a outro destino e nao sera reutilizada. O pacote atual usara {packageControlPlaneUrl}.");
+            }
+            _customerIdTextBox.Text = settings.CustomerId?.Trim() ?? string.Empty;
+            _hostIdTextBox.Text = string.IsNullOrWhiteSpace(settings.HostId) ? Environment.MachineName : settings.HostId.Trim();
+            _includePathsTextBox.Text = string.Join(Environment.NewLine, settings.IncludePaths ?? Array.Empty<string>());
+            _excludePathsTextBox.Text = string.Join(Environment.NewLine, settings.ExcludePaths ?? Array.Empty<string>());
+
+            if (!string.IsNullOrWhiteSpace(settings.AgentTokenDpapiProtected))
+            {
+                _agentTokenTextBox.Text = DpapiSecretProtector.UnprotectBase64OrThrow(settings.AgentTokenDpapiProtected);
+            }
+            else
+            {
+                _agentTokenTextBox.Text = settings.AgentToken?.Trim() ?? string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(settings.AwsCredentialDpapiProtected))
+            {
+                var credentials = DpapiSecretProtector.UnprotectBase64OrThrow(settings.AwsCredentialDpapiProtected).Split(new[] { '\n' }, 2);
+                if (credentials.Length == 2)
+                {
+                    _awsAccessKeyIdTextBox.Text = credentials[0];
+                    _awsSecretAccessKeyTextBox.Text = credentials[1];
+                }
+            }
+
+            AppendOutput("Identidade, credenciais e pastas da configuracao existente foram carregadas. O destino do painel permanece definido pelo ambiente do pacote.");
+        }
+        catch (Exception ex)
+        {
+            AppendOutput("Nao foi possivel carregar a configuracao local existente: " + ex.Message);
+        }
     }
 
     private void SetAdvancedVisibility(bool show)
@@ -316,6 +382,7 @@ internal sealed class InstallerForm : Form
                     settingsPath,
                     _installDirectoryTextBox.Text.Trim(),
                     _stateDirectoryTextBox.Text.Trim(),
+                    Application.ExecutablePath,
                     startService: true));
 
             AppendOutput($"Install log: {result.LogFilePath}");

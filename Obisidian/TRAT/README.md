@@ -17,7 +17,7 @@ O MVP está ativo exclusivamente no ambiente de desenvolvimento:
 | Banco | SQLite em volume Docker persistente |
 | Réplicas | 1 |
 
-A branch `production` está reservada, mas nenhum ambiente de produção deve ser criado durante a fase atual do MVP.
+A branch `production` publica somente versões que concluíram todos os gates em homologação. Local, homologação e produção usam configurações, volumes e credenciais isolados.
 
 ## Arquitetura
 

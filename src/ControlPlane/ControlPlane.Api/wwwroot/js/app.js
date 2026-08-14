@@ -99,6 +99,7 @@
   if (bucketSelect && prefixSelect) {
     var endpoint = bucketSelect.getAttribute('data-prefix-endpoint') || '';
     var expectedAccountId = bucketSelect.getAttribute('data-expected-account-id') || '';
+    var configurationId = bucketSelect.getAttribute('data-configuration-id') || '';
     var regionTargetSelector = bucketSelect.getAttribute('data-region-target') || '';
     var regionTarget = regionTargetSelector ? document.querySelector(regionTargetSelector) : null;
 
@@ -109,7 +110,8 @@
 
       var separator = endpoint.indexOf('?') >= 0 ? '&' : '?';
       var requestUrl = endpoint + separator +
-        'expectedAccountId=' + encodeURIComponent(expectedAccountId) +
+        'configurationId=' + encodeURIComponent(configurationId) +
+        '&expectedAccountId=' + encodeURIComponent(expectedAccountId) +
         '&bucketName=' + encodeURIComponent(bucketName);
       var request = new XMLHttpRequest();
       request.open('GET', requestUrl, true);

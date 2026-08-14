@@ -114,7 +114,7 @@ Não faça downgrade de aplicação sobre banco migrado sem avaliar compatibilid
 
 ## Produção
 
-Não criar `trat-prod` durante o MVP. O arquivo `production.env.example` é apenas uma referência futura e não constitui autorização de implantação.
+`trat-prod` usa o mesmo Compose com `production.env.example` como referência, mas volumes, nome do container, hostname, senha e imagem próprios. Só faça o primeiro deploy ou atualização após a homologação do mesmo SHA, backup confirmado e aprovação da promoção `development -> production`.
 
 ## Runbooks relacionados
 

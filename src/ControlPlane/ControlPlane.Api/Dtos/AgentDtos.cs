@@ -70,7 +70,8 @@ public sealed record AgentConfigurationReportRequest(
     DateTimeOffset? PrecheckAtUtc,
     string? PrecheckMessage,
     string? AwsAccountId = null,
-    IReadOnlyList<string>? AvailableBuckets = null
+    IReadOnlyList<string>? AvailableBuckets = null,
+    IReadOnlyDictionary<string, string>? AvailableBucketRegions = null
 );
 
 public sealed record AgentEffectivePolicyResponse(

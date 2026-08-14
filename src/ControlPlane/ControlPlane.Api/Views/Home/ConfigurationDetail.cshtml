@@ -278,6 +278,7 @@
                             data-aws-bucket-select
                             data-expected-account-id="@Model.AwsIntegration.ExpectedAccountId"
                             data-prefix-endpoint="/admin/aws/prefix-options"
+                            data-configuration-id="@Model.Configuration.Id"
                             data-region-target="#AwsRegion"
                             data-prefix-target="#S3KeyPrefix">
                         @if (string.IsNullOrWhiteSpace(Model.BootstrapPolicyDraft.S3BucketName))

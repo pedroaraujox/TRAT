@@ -23,4 +23,4 @@ Considere o segredo comprometido mesmo após apagar o arquivo. Revogue-o imediat
 
 ## Versões suportadas
 
-Durante o MVP, somente o commit atualmente implantado em `development` recebe correções operacionais. Não há versão de produção suportada.
+Correções são desenvolvidas localmente, publicadas em `development` e validadas em homologação. Produção recebe apenas o mesmo commit aprovado, por merge revisado, com credenciais e dados isolados.

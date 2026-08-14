@@ -9,11 +9,30 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: publish-controlplane-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: ghcr.io/pedroaraujox/trat-controlplane
 
 jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restaurar dependencias
+        run: dotnet restore .\WebstationBackup.sln
+      - name: Testar solucao
+        run: dotnet test .\tests\ControlPlane.Api.Tests\ControlPlane.Api.Tests.csproj -c Release --no-restore
+      - name: Compilar solucao
+        run: dotnet build .\WebstationBackup.sln -c Release --no-restore
+
   agent:
+    needs: validate
     runs-on: windows-2022
     outputs:
       tag: ${{ steps.ambiente.outputs.tag }}
@@ -51,7 +70,7 @@ jobs:
           if-no-files-found: error
 
   container:
-    needs: agent
+    needs: [validate, agent]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -73,4 +92,6 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ needs.agent.outputs.tag }}
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          build-args: AGENT_PACKAGE_PATH=artifacts/agent-package-release/
+          build-args: |
+            AGENT_PACKAGE_PATH=artifacts/agent-package-release/
+            BUILD_REVISION=${{ github.sha }}

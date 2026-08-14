@@ -115,10 +115,18 @@ Altere `TRAT_LOCAL_PORT` no `.env` ou encerre conscientemente o processo conflit
 
 ### Downloads do Agent indisponíveis
 
-O instalador precisa existir em `artifacts/agent-package` antes do build local:
+O instalador precisa existir em `artifacts/agent-package-local` antes do build local:
 
 ```powershell
-scripts\agent\Publish-Agent.ps1 -ControlPlaneBaseUrl "http://localhost:5080"
+.\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile local
+docker compose up --build -d
+```
+
+Se o diretório canônico estiver temporariamente bloqueado por sincronização, gere em outro diretório e informe-o somente nessa sessão:
+
+```powershell
+.\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile local -PackageOutputDir artifacts\agent-package-check-local
+$env:TRAT_AGENT_PACKAGE_PATH = "artifacts/agent-package-check-local/TRAT.Agent.Standalone/"
 docker compose up --build -d
 ```
 

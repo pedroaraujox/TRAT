@@ -43,7 +43,12 @@ public sealed class AgentIngestControllerConfigurationReportTests
                 PrecheckAtUtc: timestamp,
                 PrecheckMessage: "Prechecks OK. PolicySource=configuration_assignment PolicyId=policy-bootstrap-01",
                 AwsAccountId: "123456789012",
-                AvailableBuckets: ["bucket-b", "bucket-a", "bucket-a"]),
+                AvailableBuckets: ["bucket-b", "bucket-a", "bucket-a"],
+                AvailableBucketRegions: new Dictionary<string, string>
+                {
+                    ["bucket-b"] = "sa-east-1",
+                    ["bucket-a"] = "us-east-1"
+                }),
             CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
@@ -57,6 +62,7 @@ public sealed class AgentIngestControllerConfigurationReportTests
         Assert.Equal(timestamp.AddMinutes(-15), persisted.EffectivePolicyLastChangedAtUtc);
         Assert.Equal("123456789012", persisted.AwsAccountId);
         Assert.Equal("bucket-a,bucket-b", persisted.AvailableBucketsCsv);
+        Assert.Equal("{\"bucket-a\":\"us-east-1\",\"bucket-b\":\"sa-east-1\"}", persisted.AvailableBucketRegionsJson);
     }
 
     [Fact]

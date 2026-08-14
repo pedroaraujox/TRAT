@@ -10,13 +10,15 @@
 
 ## Primeiros passos
 
-1. registrar horário, impacto e primeiro sintoma;
-2. evitar redeploys repetidos e ações destrutivas;
-3. preservar logs, versão da imagem e estado dos containers;
-4. verificar health público e interno;
-5. verificar Nginx, DNS, stack, volumes e espaço em disco;
-6. identificar última mudança;
-7. comunicar status sem expor segredos.
+1. pesquisar o sintoma no [catálogo de incidentes](incidentes/README.md);
+2. criar ou atualizar o registro do incidente antes da correção;
+3. registrar horário, impacto e primeiro sintoma;
+4. evitar redeploys repetidos e ações destrutivas;
+5. preservar logs, versão da imagem e estado dos containers;
+6. verificar health público e interno;
+7. verificar Nginx, DNS, stack, volumes e espaço em disco;
+8. identificar última mudança;
+9. comunicar status sem expor segredos.
 
 ## Serviço indisponível
 

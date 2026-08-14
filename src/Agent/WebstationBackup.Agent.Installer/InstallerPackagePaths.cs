@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace WebstationBackup.Agent.Installer;
 
@@ -12,6 +14,8 @@ internal sealed record PackageLayout(
     string TrayExecutablePath,
     string SettingsTemplatePath,
     string RulesPath);
+
+internal sealed record InstallerPackageManifest(string? Environment, string? ControlPlaneBaseUrl, string? GeneratedAtUtc);
 
 internal static class InstallerPackagePaths
 {
@@ -47,6 +51,27 @@ internal static class InstallerPackagePaths
         }
 
         return "https://trat-hml.outboxtech.com.br";
+    }
+
+    public static InstallerPackageManifest? ReadManifest(string packageRoot)
+    {
+        try
+        {
+            var path = Path.Combine(packageRoot, "agent-package.manifest.json");
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            return JsonSerializer.Deserialize<InstallerPackageManifest>(File.ReadAllText(path), new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsLoopbackHttp(Uri uri)
@@ -88,8 +113,9 @@ internal static class InstallerPackagePaths
                 "TRAT",
                 "AgentSetupPayload");
 
-            var markerPath = Path.Combine(targetDir, ".payload-size");
-            var expectedMarker = resourceStream.Length.ToString();
+            var markerPath = Path.Combine(targetDir, ".payload-sha256");
+            var expectedMarker = ComputeSha256(resourceStream);
+            resourceStream.Position = 0;
             if (Directory.Exists(targetDir) &&
                 File.Exists(markerPath) &&
                 File.ReadAllText(markerPath).Trim() == expectedMarker &&
@@ -117,6 +143,13 @@ internal static class InstallerPackagePaths
         {
             return null;
         }
+    }
+
+    private static string ComputeSha256(Stream input)
+    {
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(input);
+        return Convert.ToBase64String(hash);
     }
 
     public static PackageLayout Resolve(string packageRoot)

@@ -56,6 +56,8 @@ dotnet test tests\ControlPlane.Api.Tests\ControlPlane.Api.Tests.csproj -c Releas
 git status
 ```
 
+Execute build e testes em sequência quando ambos usam as mesmas pastas `obj`; execução paralela pode gerar falso erro de arquivo bloqueado.
+
 Confirme que não existem no diff:
 
 - `.env`;
@@ -84,8 +86,17 @@ Não liberar quando:
 - rollback não está definido para mudança relevante;
 - healthcheck permanece `unhealthy`;
 - logs contêm dados sensíveis;
-- mudança depende de uma stack de produção inexistente.
+- revisão implantada não corresponde ao SHA esperado.
 
 ## Produção
 
-Promoção para `production` está suspensa durante o MVP. Consulte [FLUXO-GIT-E-RELEASE.md](FLUXO-GIT-E-RELEASE.md) antes de qualquer mudança nessa decisão.
+Depois de todos os gates de homologação:
+
+1. registrar o SHA aprovado e as evidências;
+2. confirmar backup e restauração testável;
+3. abrir e revisar o merge `development -> production`;
+4. aguardar a publicação de `:production` e `:<SHA>`;
+5. fazer backup antes do redeploy de `trat-prod`;
+6. redeploy sem remover volumes;
+7. validar ambiente, revisão, health, login, download do Agent, heartbeat e job real;
+8. executar rollback imediato se qualquer gate falhar.

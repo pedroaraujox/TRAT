@@ -4,11 +4,11 @@
 
 | Branch | Uso atual |
 | --- | --- |
-| `development` | fonte de verdade do MVP e da stack `trat-dev` |
-| `production` | reservada; sem stack ativa |
+| `development` | integração contínua e fonte da homologação `trat-dev` |
+| `production` | versão aprovada para a stack `trat-prod` |
 | `main` | histórico/base do repositório; não publica o MVP |
 
-Toda implementação do MVP deve terminar em `development`. Não faça merge em `production` durante esta fase.
+Toda implementação começa localmente e segue para `development`. O merge `development -> production` só ocorre depois da homologação completa do mesmo commit e de uma decisão explícita de liberação.
 
 ## Commits
 
@@ -21,10 +21,18 @@ Toda implementação do MVP deve terminar em `development`. Não faça merge em 
 
 Push em `development`:
 
-1. gera o Agent Windows apontando para o ambiente MVP;
-2. incorpora o Setup na imagem;
-3. constrói a imagem Linux;
-4. publica `:development` e `:<SHA>` no GHCR.
+1. executa testes e build em Release;
+2. gera o Agent Windows apontando para homologação;
+3. incorpora o Setup na imagem;
+4. constrói a imagem Linux;
+5. publica `:development` e `:<SHA>` no GHCR.
+
+Push em `production` após merge aprovado:
+
+1. repete testes e build em Release;
+2. gera o Agent apontando para produção;
+3. publica `:production` e `:<SHA>`;
+4. permite o redeploy controlado de `trat-prod`.
 
 A tag por SHA é a referência de auditoria e rollback. A tag `:development` é móvel.
 
@@ -44,6 +52,6 @@ Enquanto não houver releases semânticos, registre cada implantação pelo SHA 
 - preserve volumes;
 - registre motivo, período e resultado.
 
-## Produção futura
+## Gate de produção
 
-A futura promoção exigirá pull request `development -> production`, revisão, gates do piloto, backup comprovado e plano de rollback. A existência da branch ou tag não autoriza criar a stack.
+A promoção exige pull request `development -> production`, revisão, checklist de homologação assinado, backup/restauração comprovados, imagem por SHA conhecida e plano de rollback. Nunca promova um commit diferente daquele validado em homologação.

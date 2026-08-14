@@ -46,6 +46,7 @@
         "UploadPart",
         "CompleteMultipartUpload",
         "AbortMultipartUpload",
+        "ListAllMyBuckets",
         "ListBucket",
         "GetBucketLocation",
         "HeadObject"
@@ -80,6 +81,26 @@
       "agentMustNotExfiltrateSecretsInLogs": true,
       "logsMustAvoidPIIWherePossible": true
     }
+  },
+  "environments": {
+    "promotionOrder": ["local", "hml", "production"],
+    "local": {
+      "branch": "development",
+      "controlPlaneUrl": "http://localhost:5080",
+      "agentProfile": "local"
+    },
+    "hml": {
+      "branch": "development",
+      "controlPlaneUrl": "https://trat-hml.outboxtech.com.br",
+      "agentProfile": "hml"
+    },
+    "production": {
+      "branch": "production",
+      "controlPlaneUrl": "https://trat.outboxtech.com.br",
+      "agentProfile": "production",
+      "requiresApprovedHmlRevision": true
+    },
+    "isolateDatabasesVolumesSecretsAndTokens": true
   },
   "jobDefinition": {
     "okCriteria": {

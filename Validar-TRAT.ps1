@@ -54,6 +54,25 @@ function Get-AntiForgeryToken {
     return $match.Groups[1].Value
 }
 
+function Get-ResponsePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Response
+    )
+
+    if ($null -ne $Response.BaseResponse.RequestMessage -and
+        $null -ne $Response.BaseResponse.RequestMessage.RequestUri) {
+        return $Response.BaseResponse.RequestMessage.RequestUri.AbsolutePath
+    }
+
+    $responseUriProperty = $Response.BaseResponse.PSObject.Properties["ResponseUri"]
+    if ($null -ne $responseUriProperty -and $null -ne $responseUriProperty.Value) {
+        return $responseUriProperty.Value.AbsolutePath
+    }
+
+    return [string]::Empty
+}
+
 $email = $null
 $password = $null
 
@@ -86,10 +105,10 @@ elseif ($packageRootProvided) {
     throw "PackageRoot nao encontrado: $PackageRoot"
 }
 
-if ([string]::IsNullOrWhiteSpace([string]$email)) {
+if (-not [string]::IsNullOrWhiteSpace($AdminEmail)) {
     $email = $AdminEmail
 }
-if ([string]::IsNullOrWhiteSpace([string]$password)) {
+if (-not [string]::IsNullOrWhiteSpace($AdminPassword)) {
     $password = $AdminPassword
 }
 
@@ -116,15 +135,24 @@ $form = @{
     password = $password
 }
 
-$null = Invoke-WebRequest -Uri ($baseUrl + "/login") -Method POST -Body $form -WebSession $session -UseBasicParsing
+$loginResult = Invoke-WebRequest -Uri ($baseUrl + "/login") -Method POST -Body $form -WebSession $session -UseBasicParsing
+if ((Get-ResponsePath -Response $loginResult) -eq "/login" -or
+    $loginResult.Content -match 'name="email"' -or
+    $loginResult.Content -match 'name="password"') {
+    throw "Autenticacao falhou para $email em $baseUrl."
+}
 
 $adminPage = Invoke-WebRequest -Uri ($baseUrl + "/admin") -WebSession $session -UseBasicParsing
-if ($adminPage.StatusCode -ne 200 -or $adminPage.Content -notmatch 'TRAT') {
+if ($adminPage.StatusCode -ne 200 -or
+    (Get-ResponsePath -Response $adminPage) -eq "/login" -or
+    $adminPage.Content -match 'name="password"') {
     throw "Dashboard do painel nao respondeu corretamente apos autenticacao."
 }
 
 $downloadsPage = Invoke-WebRequest -Uri ($baseUrl + "/admin/downloads") -WebSession $session -UseBasicParsing
-if ($downloadsPage.StatusCode -ne 200 -or $downloadsPage.Content -notmatch 'TRAT Agent') {
+if ($downloadsPage.StatusCode -ne 200 -or
+    (Get-ResponsePath -Response $downloadsPage) -eq "/login" -or
+    $downloadsPage.Content -notmatch '/admin/downloads/agent/setup') {
     throw "Pagina de downloads nao respondeu corretamente apos autenticacao."
 }
 
