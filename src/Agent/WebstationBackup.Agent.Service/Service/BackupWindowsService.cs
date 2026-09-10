@@ -1014,6 +1014,29 @@ internal static class AgentWorker
             return;
         }
 
+        if (!dryRun)
+        {
+            var awsValidator = new AwsReadinessValidator();
+            var awsReadiness = await awsValidator.ValidateAsync(
+                BuildAgentSettingsForAwsValidation(settings, targetSettings),
+                logger,
+                ct);
+            if (!awsReadiness.CredentialOk)
+            {
+                var blockedMessage = string.IsNullOrWhiteSpace(awsReadiness.Message)
+                    ? "O destino AWS configurado na politica nao esta disponivel."
+                    : awsReadiness.Message;
+                logger.Warn("Job bloqueado: destino AWS indisponivel no precheck.", new Dictionary<string, object?>
+                {
+                    ["bucket"] = targetSettings.S3BucketName,
+                    ["region"] = targetSettings.AwsRegion,
+                    ["reason"] = blockedMessage
+                });
+                await ReportBlockedJobAsync(runtime, manualRun, "AWS_DESTINATION_UNAVAILABLE", blockedMessage, ct);
+                return;
+            }
+        }
+
         var jobId = Guid.NewGuid().ToString("N");
         BackupManifest? manifest = null;
         string? manifestPath = null;
@@ -1382,7 +1405,7 @@ internal static class AgentWorker
 
         var sample = materialized
             .Take(3)
-            .Select(i => $"[{i.Code}] {i.Path}")
+            .Select(i => $"[{i.Code}] {i.Path}: {i.Message}")
             .ToArray();
 
         return $"Foram detectados {materialized.Length} problema(s) que podem comprometer a integridade do backup. Exemplos: {string.Join("; ", sample)}.";

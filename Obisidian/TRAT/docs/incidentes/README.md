@@ -26,6 +26,7 @@ Consulte este índice antes de iniciar qualquer correção. Procure pelo sintoma
 | [INC-2026-09-10-001](INC-2026-09-10-001-buckets-aws-nao-reportados.md) | 2026-09-10 | hml | credencial AWS valida, mas conta e buckets não aparecem no painel | correção local; validação real pendente |
 | [INC-2026-09-10-002](INC-2026-09-10-002-execucao-manual-presa-em-claimed.md) | 2026-09-10 | Agent/ControlPlane | execução manual sem política completa permanece em `CLAIMED` | correção local; validação real pendente |
 | [INC-2026-09-10-003](INC-2026-09-10-003-tray-check-aws-e-paths-mvp.md) | 2026-09-10 | hml/Agent | Tray invisível, AWS sem atualização sob demanda e paths bloqueados | correção local; validação real pendente |
+| [INC-2026-09-10-004](INC-2026-09-10-004-backup-para-bucket-excluido.md) | 2026-09-10 | hml/Agent | job tenta cada arquivo contra bucket S3 excluído e retorna falhas repetidas | correção local; validação real pendente |
 
 ## Modelo mínimo
 
