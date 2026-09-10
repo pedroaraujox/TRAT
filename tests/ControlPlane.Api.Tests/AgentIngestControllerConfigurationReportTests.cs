@@ -1,6 +1,7 @@
 using ControlPlane.Api.Controllers;
 using ControlPlane.Api.Data;
 using ControlPlane.Api.Dtos;
+using ControlPlane.Api.Domain;
 using ControlPlane.Api.Email;
 using ControlPlane.Api.Services;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +15,36 @@ namespace ControlPlane.Api.Tests;
 
 public sealed class AgentIngestControllerConfigurationReportTests
 {
+    [Fact]
+    public async Task CompleteRunRequest_CompletesAwsCheckWithoutCreatingJob()
+    {
+        using var database = CreateDatabase();
+        database.Context.AgentRunRequests.Add(new AgentRunRequest
+        {
+            Id = "aws-check-01",
+            CustomerId = "customer-01",
+            HostId = "host-01",
+            TriggerType = "aws_check",
+            State = "CLAIMED",
+            RequestedBy = "admin@example.invalid",
+            RequestedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            ClaimedAtUtc = DateTimeOffset.UtcNow
+        });
+        await database.Context.SaveChangesAsync();
+        var controller = CreateController(database.Context);
+
+        var result = await controller.CompleteRunRequest(
+            new AgentIngestController.CompleteRunRequestRequest("customer-01", "host-01", "aws-check-01", true, "ok"),
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        var request = await database.Context.AgentRunRequests.AsNoTracking().SingleAsync();
+        Assert.Equal("COMPLETED", request.State);
+        Assert.NotNull(request.CompletedAtUtc);
+        Assert.Null(request.FailureMessage);
+        Assert.Empty(await database.Context.Jobs.AsNoTracking().ToListAsync());
+    }
+
     [Fact]
     public async Task ConfigurationReport_PersistsEffectivePolicyMetadata()
     {

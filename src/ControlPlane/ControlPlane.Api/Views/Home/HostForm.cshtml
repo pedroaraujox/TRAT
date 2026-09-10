@@ -125,6 +125,11 @@
         <section class="panel">
             <div class="panel-header">
                 <h2>Backup do host</h2>
+                <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId!)/check-aws">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="returnUrl" value="@postUrl" />
+                    <button class="button secondary" type="submit">Checar AWS</button>
+                </form>
             </div>
             <form method="post" action="/admin/configurations/@Uri.EscapeDataString(Model.ConfigurationId!)/bootstrap-policy" class="form-grid compact-form">
                 @Html.AntiForgeryToken()

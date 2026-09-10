@@ -403,6 +403,12 @@ Write-InstallationMetadata -InstallDir $InstallDir -StateDir $StateDir -DisplayV
 
 if ($StartService.IsPresent) {
     Start-Service -Name $ServiceName
+    $service = Get-Service -Name $ServiceName
+    $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
+    $service.Refresh()
+    if ($service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+        throw "O servico '$ServiceName' nao atingiu o estado Running apos a instalacao."
+    }
 }
 
 Write-Host "Agent instalado com sucesso."

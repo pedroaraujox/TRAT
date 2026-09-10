@@ -1263,9 +1263,9 @@ public sealed class HomeController(
         }
 
         var bootstrapForm = NormalizeBootstrapPolicyDraft(form, configuration, host);
-        if (!bootstrapForm.HasBootstrapPaths)
+        if (string.IsNullOrWhiteSpace(bootstrapForm.IncludePathsCsv))
         {
-            TempData["ErrorMessage"] = "Este host ainda nao reportou paths iniciais do Agent.";
+            TempData["ErrorMessage"] = "Informe ao menos uma pasta para backup no ControlPlane.";
             return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
         }
 
@@ -1443,6 +1443,56 @@ public sealed class HomeController(
                 ["runRequestId"] = runRequest.Id
             });
         TempData["StatusMessage"] = "Execucao manual enfileirada. O Agent vai consumir a requisicao no proximo ciclo.";
+        return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+    }
+
+    [HttpPost("/admin/configurations/{id}/check-aws")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> QueueAwsCheck(string id, [FromForm] string? returnUrl, CancellationToken ct)
+    {
+        var configuration = await db.AgentConfigurations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (configuration is null)
+        {
+            TempData["ErrorMessage"] = "Configuracao nao encontrada.";
+            return RedirectToLocalOrDefault(returnUrl, "/admin/configurations");
+        }
+
+        var alreadyPending = await db.AgentRunRequests.AsNoTracking().AnyAsync(
+            r => r.CustomerId == configuration.CustomerId &&
+                 r.HostId == configuration.HostId &&
+                 r.TriggerType == "aws_check" &&
+                 (r.State == "QUEUED" || r.State == "CLAIMED"),
+            ct);
+        if (alreadyPending)
+        {
+            TempData["ErrorMessage"] = "Ja existe uma checagem AWS pendente para este host.";
+            return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
+        }
+
+        var runRequest = new AgentRunRequest
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            CustomerId = configuration.CustomerId,
+            HostId = configuration.HostId,
+            TriggerType = "aws_check",
+            State = "QUEUED",
+            RequestedBy = HttpContext.GetCurrentPanelUser()?.Email ?? "controlplane-user",
+            RequestedAtUtc = DateTimeOffset.UtcNow
+        };
+        db.AgentRunRequests.Add(runRequest);
+        await db.SaveChangesAsync(ct);
+        await RecordAuditAsync(
+            category: "operation",
+            action: "check_aws",
+            entityType: "agent_configuration",
+            entityId: id,
+            message: $"Checagem AWS solicitada para o host {configuration.HostId}.",
+            customerId: configuration.CustomerId,
+            hostId: configuration.HostId,
+            ct,
+            metadata: new Dictionary<string, string?> { ["runRequestId"] = runRequest.Id });
+
+        TempData["StatusMessage"] = "Checagem AWS enfileirada. O Agent atualizara conta, buckets e regioes no proximo ciclo.";
         return RedirectToLocalOrDefault(returnUrl, $"/admin/configurations/{Uri.EscapeDataString(id)}");
     }
 

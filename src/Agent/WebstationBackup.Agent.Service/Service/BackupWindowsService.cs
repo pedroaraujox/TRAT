@@ -173,6 +173,13 @@ internal static class AgentWorker
                 var manualRun = await TryGetManualRunAsync(runtime, ct);
                 if (manualRun is not null)
                 {
+                    if (string.Equals(manualRun.TriggerType, "aws_check", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProcessAwsCheckAsync(runtime, options.DryRun, effectivePolicy, manualRun, ct);
+                        await Task.Delay(nextRunDelay, ct);
+                        continue;
+                    }
+
                     await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct, manualRun);
                     await Task.Delay(nextRunDelay, ct);
                     continue;
@@ -1216,6 +1223,45 @@ internal static class AgentWorker
         state.LastJobId = jobId;
         state.LastFinalState = finalState;
         stateStore.Save(state);
+    }
+
+    private static async Task ProcessAwsCheckAsync(Runtime runtime, bool dryRun, EffectiveRuntimePolicy effectivePolicy, ManualRunContext request, CancellationToken ct)
+    {
+        try
+        {
+            await ReportConfigurationAsync(runtime, dryRun, effectivePolicy, ct);
+            var state = runtime.StateStore.Load();
+            state.LastConfigReportAtUtc = DateTimeOffset.UtcNow;
+            runtime.StateStore.Save(state);
+            await runtime.ControlPlane.CompleteRunRequestAsync(new
+            {
+                customerId = runtime.Settings.CustomerId,
+                hostId = runtime.Settings.HostId,
+                runRequestId = request.RunRequestId,
+                succeeded = true,
+                message = "Descoberta AWS atualizada pelo Agent."
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            runtime.Logger.Error("Checagem AWS solicitada pelo ControlPlane falhou.", ex);
+            try
+            {
+                await runtime.ControlPlane.CompleteRunRequestAsync(new
+                {
+                    customerId = runtime.Settings.CustomerId,
+                    hostId = runtime.Settings.HostId,
+                    runRequestId = request.RunRequestId,
+                    succeeded = false,
+                    message = "Falha ao atualizar descoberta AWS. Consulte o log local do Agent."
+                }, ct);
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
     }
 
     private static async Task ReportBlockedJobAsync(

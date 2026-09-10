@@ -99,6 +99,39 @@ public sealed class HomeControllerPolicyAssignmentTests
     }
 
     [Fact]
+    public async Task CreateBootstrapPolicy_UsesPathsEnteredInControlPlaneWithoutAgentBootstrapFlag()
+    {
+        using var database = CreateDatabase();
+        await SeedScenarioAsync(database.Context, precheckCredentialOk: true);
+        var controller = CreateController(database.Context);
+
+        await controller.CreateBootstrapPolicy(
+            "cfg-01",
+            new BootstrapPolicyDraftViewModel
+            {
+                SuggestedPolicyId = "policy-central-paths",
+                Name = "Politica Central",
+                ScopeType = "host",
+                CustomerId = "customer-01",
+                HostId = "host-01",
+                IncludePathsCsv = @"C:\Dados",
+                ScheduleDaysCsv = "MON",
+                StartTimeLocal = "22:00",
+                MaxRuntimeMinutes = 120,
+                CpuLimitPercent = 20,
+                NetworkLimitMbit = 40,
+                Enabled = true,
+                HasBootstrapPaths = false
+            },
+            returnUrl: null,
+            CancellationToken.None);
+
+        var policy = await database.Context.BackupPolicies.AsNoTracking().SingleAsync(p => p.Id == "policy-central-paths");
+        Assert.Equal(@"C:\Dados", policy.IncludePathsCsv);
+        Assert.Equal("policy-central-paths", (await database.Context.AgentConfigurations.AsNoTracking().SingleAsync()).PolicyId);
+    }
+
+    [Fact]
     public async Task CreateBootstrapPolicy_CreatesWithoutAssigning_WhenHostIsNotReady()
     {
         using var database = CreateDatabase();

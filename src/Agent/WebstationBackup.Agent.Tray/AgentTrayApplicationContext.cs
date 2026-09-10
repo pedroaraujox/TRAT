@@ -17,9 +17,12 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _refreshItem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly TrayStatusForm _statusForm;
+    private readonly EventWaitHandle _showStatusEvent;
+    private readonly RegisteredWaitHandle _showStatusWait;
 
-    public AgentTrayApplicationContext()
+    public AgentTrayApplicationContext(EventWaitHandle showStatusEvent)
     {
+        _showStatusEvent = showStatusEvent;
         _serviceStatusItem = new ToolStripMenuItem("Servico: carregando") { Enabled = false };
         _summaryItem = new ToolStripMenuItem("Status: carregando") { Enabled = false };
         _openPanelItem = new ToolStripMenuItem("Abrir painel");
@@ -62,6 +65,19 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
 
         _startupItem.Checked = StartupRegistration.IsEnabled();
         RefreshStatus();
+        _showStatusWait = ThreadPool.RegisterWaitForSingleObject(
+            _showStatusEvent,
+            (_, _) =>
+            {
+                if (!_statusForm.IsDisposed && _statusForm.IsHandleCreated)
+                {
+                    _statusForm.BeginInvoke(new Action(ShowStatusForm));
+                }
+            },
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+        ShowStatusForm();
         _notifyIcon.ShowBalloonTip(2000, ProductDisplayName, "Agent monitorado em segundo plano pela bandeja do Windows.", ToolTipIcon.Info);
     }
 
@@ -228,6 +244,8 @@ internal sealed class AgentTrayApplicationContext : ApplicationContext
     {
         if (disposing)
         {
+            _showStatusWait.Unregister(null);
+            _showStatusEvent.Dispose();
             _refreshTimer.Dispose();
             _notifyIcon.Dispose();
             _statusForm.Dispose();

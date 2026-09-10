@@ -25,6 +25,7 @@ public sealed class AgentIngestController(
     public sealed record AgentEnrollRequest(string HostId, string Hostname, string OsVersion);
     public sealed record AgentEnrollResponse(string CustomerId, string HostId, string ExpectedAwsAccountId);
     public sealed record PendingRunRequestResponse(string RunRequestId, string TriggerType, DateTimeOffset RequestedAtUtc);
+    public sealed record CompleteRunRequestRequest(string CustomerId, string HostId, string RunRequestId, bool Succeeded, string? Message);
 
     public sealed record AgentBootstrapPathsRequest(string HostId, string[] IncludePaths, string[] ExcludePaths);
 
@@ -229,6 +230,46 @@ public sealed class AgentIngestController(
             request.Id);
 
         return Ok(new PendingRunRequestResponse(request.Id, request.TriggerType, request.RequestedAtUtc));
+    }
+
+    [HttpPost("run-request/complete")]
+    public async Task<IActionResult> CompleteRunRequest([FromBody] CompleteRunRequestRequest request, CancellationToken ct)
+    {
+        var authCustomerId = GetAuthenticatedAgentCustomerId();
+        if (authCustomerId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CustomerId) ||
+            string.IsNullOrWhiteSpace(request.HostId) ||
+            string.IsNullOrWhiteSpace(request.RunRequestId))
+        {
+            return BadRequest("CustomerId, HostId e RunRequestId sao obrigatorios.");
+        }
+
+        var customerId = request.CustomerId.Trim();
+        var hostId = request.HostId.Trim();
+        if (!string.Equals(customerId, authCustomerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Forbid();
+        }
+
+        var runRequest = await db.AgentRunRequests.FirstOrDefaultAsync(
+            r => r.Id == request.RunRequestId.Trim() && r.CustomerId == customerId && r.HostId == hostId,
+            ct);
+        if (runRequest is null)
+        {
+            return NotFound();
+        }
+
+        runRequest.State = request.Succeeded ? "COMPLETED" : "FAILED";
+        runRequest.CompletedAtUtc = DateTimeOffset.UtcNow;
+        runRequest.FailureMessage = request.Succeeded || string.IsNullOrWhiteSpace(request.Message)
+            ? null
+            : request.Message.Trim();
+        await db.SaveChangesAsync(ct);
+        return Ok(new { ok = true });
     }
 
     [HttpPost("heartbeat")]

@@ -402,11 +402,23 @@ internal sealed class InstallerForm : Form
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            var trayProcess = Process.Start(new ProcessStartInfo
             {
                 FileName = trayExe,
                 UseShellExecute = true
             });
+            if (trayProcess is null)
+            {
+                throw new InvalidOperationException("O Windows nao retornou o processo do Tray App.");
+            }
+
+            if (trayProcess.WaitForExit(3000))
+            {
+                var trayErrorLog = Path.Combine(_stateDirectoryTextBox.Text.Trim(), "tray-error.log");
+                throw new InvalidOperationException(
+                    $"O Tray App encerrou logo apos iniciar (codigo {trayProcess.ExitCode}). " +
+                    $"Consulte {trayErrorLog}.");
+            }
             AppendOutput("Tray App iniciado.");
         }
         catch (Exception ex)

@@ -41,6 +41,7 @@ internal sealed class ControlPlaneClient
     public Task ReportProgressAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/progress", payload, ct);
     public Task ReportFinalAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/jobs/final", payload, ct);
     public Task ReportConfigurationAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/configuration/report", payload, ct);
+    public Task CompleteRunRequestAsync(object payload, CancellationToken ct) => PostJsonAsync("api/v1/agents/run-request/complete", payload, ct);
     public async Task<RemoteRunRequestResponse?> TryGetPendingRunRequestAsync(string customerId, string hostId, CancellationToken ct)
     {
         var path = "api/v1/agents/run-request/next?customerId=" + Uri.EscapeDataString(customerId) + "&hostId=" + Uri.EscapeDataString(hostId);
