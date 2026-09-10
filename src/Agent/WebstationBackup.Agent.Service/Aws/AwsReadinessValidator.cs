@@ -21,6 +21,8 @@ internal sealed class AwsReadinessCheckResult
     public string? CredentialSource { get; init; }
     public string? AwsAccountId { get; init; }
     public string? BucketRegion { get; init; }
+    public bool? BucketDiscoveryOk { get; init; }
+    public string? BucketDiscoveryMessage { get; init; }
     public IReadOnlyList<string> AvailableBuckets { get; init; } = Array.Empty<string>();
     public IReadOnlyDictionary<string, string> AvailableBucketRegions { get; init; } = new Dictionary<string, string>();
 }
@@ -73,6 +75,8 @@ internal sealed class AwsReadinessValidator
             var identity = await sts.GetCallerIdentityAsync(new GetCallerIdentityRequest(), ct);
             IReadOnlyList<string> availableBuckets = Array.Empty<string>();
             IReadOnlyDictionary<string, string> availableBucketRegions = new Dictionary<string, string>();
+            var bucketDiscoveryOk = false;
+            var bucketDiscoveryMessage = "A descoberta de buckets AWS ainda nao foi concluida.";
             try
             {
                 using var discoveryS3 = new AmazonS3Client(resolved.Credentials, region);
@@ -104,9 +108,16 @@ internal sealed class AwsReadinessValidator
                 }
 
                 availableBucketRegions = regions;
+                bucketDiscoveryOk = true;
+                bucketDiscoveryMessage = availableBuckets.Count == 0
+                    ? "A credencial AWS pode listar buckets, mas a conta nao retornou buckets visiveis."
+                    : $"A credencial AWS reportou {availableBuckets.Count} bucket(s) visivel(is).";
             }
             catch (AmazonS3Exception ex)
             {
+                bucketDiscoveryMessage = ex.StatusCode == HttpStatusCode.Forbidden || ex.StatusCode == HttpStatusCode.Unauthorized
+                    ? "A AWS negou a listagem de buckets. Confirme a permissao s3:ListAllMyBuckets."
+                    : $"A AWS nao concluiu a listagem de buckets (HTTP {(int)ex.StatusCode}).";
                 logger.Warn("Nao foi possivel listar os buckets visiveis para a credencial do Agent.", new Dictionary<string, object?>
                 {
                     ["statusCode"] = (int)ex.StatusCode,
@@ -129,6 +140,8 @@ internal sealed class AwsReadinessValidator
                     CredentialSource = resolved.Source,
                     AwsAccountId = identity.Account,
                     BucketRegion = null,
+                    BucketDiscoveryOk = bucketDiscoveryOk,
+                    BucketDiscoveryMessage = bucketDiscoveryMessage,
                     AvailableBuckets = availableBuckets,
                     AvailableBucketRegions = availableBucketRegions,
                     Message = $"AWS validado (identidade). Conta={identity.Account}. FonteCredencial={resolved.Source}."
@@ -174,6 +187,8 @@ internal sealed class AwsReadinessValidator
                 CredentialSource = resolved.Source,
                 AwsAccountId = identity.Account,
                 BucketRegion = effectiveBucketRegion,
+                BucketDiscoveryOk = bucketDiscoveryOk,
+                BucketDiscoveryMessage = bucketDiscoveryMessage,
                 AvailableBuckets = availableBuckets,
                 AvailableBucketRegions = availableBucketRegions,
                 Message = $"AWS validado em modo leitura. Conta={identity.Account}. Bucket={bucketName}. Regiao={effectiveBucketRegion}. Prefixo={prefix}. FonteCredencial={resolved.Source}."

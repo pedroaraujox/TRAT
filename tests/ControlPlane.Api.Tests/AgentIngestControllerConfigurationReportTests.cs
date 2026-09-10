@@ -43,6 +43,8 @@ public sealed class AgentIngestControllerConfigurationReportTests
                 PrecheckAtUtc: timestamp,
                 PrecheckMessage: "Prechecks OK. PolicySource=configuration_assignment PolicyId=policy-bootstrap-01",
                 AwsAccountId: "123456789012",
+                BucketDiscoveryOk: true,
+                BucketDiscoveryMessage: "A credencial AWS reportou 2 bucket(s) visivel(is).",
                 AvailableBuckets: ["bucket-b", "bucket-a", "bucket-a"],
                 AvailableBucketRegions: new Dictionary<string, string>
                 {
@@ -61,6 +63,8 @@ public sealed class AgentIngestControllerConfigurationReportTests
         Assert.Equal("configuration_assignment", persisted.EffectivePolicySource);
         Assert.Equal(timestamp.AddMinutes(-15), persisted.EffectivePolicyLastChangedAtUtc);
         Assert.Equal("123456789012", persisted.AwsAccountId);
+        Assert.True(persisted.BucketDiscoveryOk);
+        Assert.Equal("A credencial AWS reportou 2 bucket(s) visivel(is).", persisted.BucketDiscoveryMessage);
         Assert.Equal("bucket-a,bucket-b", persisted.AvailableBucketsCsv);
         Assert.Equal("{\"bucket-a\":\"us-east-1\",\"bucket-b\":\"sa-east-1\"}", persisted.AvailableBucketRegionsJson);
     }
@@ -128,6 +132,48 @@ public sealed class AgentIngestControllerConfigurationReportTests
         Assert.Equal("1.0.1", persisted.AgentVersion);
         Assert.Equal("DryRun", persisted.ServiceStatus);
         Assert.False(persisted.PrecheckCredentialOk);
+    }
+
+    [Fact]
+    public async Task ConfigurationReport_PersistsBucketDiscoveryFailureWithoutExposingCredentials()
+    {
+        using var database = CreateDatabase();
+        var controller = CreateController(database.Context);
+        var timestamp = DateTimeOffset.UtcNow;
+
+        await controller.ConfigurationReport(
+            new AgentConfigurationReportRequest(
+                CustomerId: "customer-01",
+                HostId: "host-01",
+                EffectivePolicyId: null,
+                EffectivePolicyName: null,
+                EffectivePolicyKind: "local_fallback",
+                EffectivePolicySource: "local_fallback",
+                EffectivePolicyLastChangedAtUtc: null,
+                AgentVersion: "1.0.0",
+                ServiceStatus: "Running",
+                TlsMode: "TLS1.2",
+                PrecheckTlsOk: true,
+                PrecheckDiskOk: true,
+                PrecheckCredentialOk: true,
+                StagingPath: "N/A",
+                CredentialTargetName: "DPAPI:LocalMachine",
+                UploadMode: "direct-s3",
+                TimestampUtc: timestamp,
+                PrecheckAtUtc: timestamp,
+                PrecheckMessage: "AWS validado (identidade).",
+                AwsAccountId: "123456789012",
+                BucketDiscoveryOk: false,
+                BucketDiscoveryMessage: "A AWS negou a listagem de buckets. Confirme a permissao s3:ListAllMyBuckets."),
+            CancellationToken.None);
+
+        var persisted = await database.Context.AgentConfigurations.AsNoTracking().SingleAsync();
+        Assert.Equal("123456789012", persisted.AwsAccountId);
+        Assert.False(persisted.BucketDiscoveryOk);
+        Assert.Equal(
+            "A AWS negou a listagem de buckets. Confirme a permissao s3:ListAllMyBuckets.",
+            persisted.BucketDiscoveryMessage);
+        Assert.Null(persisted.AvailableBucketsCsv);
     }
 
     private static AgentIngestController CreateController(AppDbContext db)

@@ -541,6 +541,8 @@ public sealed class AgentIngestController(
                 LastPrecheckAtUtc = report.PrecheckAtUtc,
                 LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000),
                 AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32),
+                BucketDiscoveryOk = report.BucketDiscoveryOk,
+                BucketDiscoveryMessage = TrimToMaxLengthOrNull(report.BucketDiscoveryMessage, 1000),
                 AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets),
                 AvailableBucketRegionsJson = NormalizeBucketRegions(report.AvailableBucketRegions),
                 CreatedAtUtc = DateTimeOffset.UtcNow
@@ -567,6 +569,8 @@ public sealed class AgentIngestController(
             existing.LastPrecheckAtUtc = report.PrecheckAtUtc;
             existing.LastPrecheckMessage = TrimToMaxLengthOrNull(report.PrecheckMessage, 2000);
             existing.AwsAccountId = TrimToMaxLengthOrNull(report.AwsAccountId, 32);
+            existing.BucketDiscoveryOk = report.BucketDiscoveryOk;
+            existing.BucketDiscoveryMessage = TrimToMaxLengthOrNull(report.BucketDiscoveryMessage, 1000);
             existing.AvailableBucketsCsv = NormalizeBucketList(report.AvailableBuckets);
             existing.AvailableBucketRegionsJson = NormalizeBucketRegions(report.AvailableBucketRegions);
         }

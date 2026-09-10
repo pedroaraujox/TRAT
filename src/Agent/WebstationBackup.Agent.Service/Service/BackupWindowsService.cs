@@ -481,6 +481,8 @@ internal static class AgentWorker
         string? bucketRegion = null;
         IReadOnlyList<string> availableBuckets = Array.Empty<string>();
         IReadOnlyDictionary<string, string> availableBucketRegions = new Dictionary<string, string>();
+        bool? bucketDiscoveryOk = null;
+        string? bucketDiscoveryMessage = null;
         if (dryRun && IsPlaceholderAwsConfiguration(targetSettings))
         {
             credOk = false;
@@ -497,6 +499,8 @@ internal static class AgentWorker
             bucketRegion = awsReadiness.BucketRegion;
             availableBuckets = awsReadiness.AvailableBuckets;
             availableBucketRegions = awsReadiness.AvailableBucketRegions;
+            bucketDiscoveryOk = awsReadiness.BucketDiscoveryOk;
+            bucketDiscoveryMessage = awsReadiness.BucketDiscoveryMessage;
 
             if (!credOk)
             {
@@ -533,6 +537,8 @@ internal static class AgentWorker
             precheckAtUtc = now,
             precheckMessage = message + " PolicySource=" + effectivePolicy.Source + (string.IsNullOrWhiteSpace(effectivePolicy.PolicyId) ? string.Empty : " PolicyId=" + effectivePolicy.PolicyId),
             awsAccountId,
+            bucketDiscoveryOk,
+            bucketDiscoveryMessage,
             availableBuckets,
             availableBucketRegions
         }, ct);

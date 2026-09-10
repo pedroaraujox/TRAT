@@ -367,6 +367,11 @@ public sealed class AgentConfiguration
     [MaxLength(32)]
     public string? AwsAccountId { get; set; }
 
+    public bool? BucketDiscoveryOk { get; set; }
+
+    [MaxLength(1000)]
+    public string? BucketDiscoveryMessage { get; set; }
+
     [MaxLength(8000)]
     public string? AvailableBucketsCsv { get; set; }
 

@@ -2860,8 +2860,12 @@ public sealed class HomeController(
             ? "O Agent ainda nao confirmou uma credencial AWS valida. Consulte o ultimo precheck do host."
             : !accountMatches
                 ? $"O Agent reportou a conta AWS {resolvedAccountId ?? "nao identificada"}, mas o cliente espera {expected}."
+                : configuration.BucketDiscoveryOk == false
+                    ? configuration.BucketDiscoveryMessage ?? "O Agent nao conseguiu descobrir os buckets AWS. Consulte o log local do Agent."
                 : buckets.Length == 0
-                    ? "Credencial AWS validada pelo Agent, mas nenhum bucket foi reportado. Confirme a permissao s3:ListAllMyBuckets e aguarde o proximo sincronismo."
+                    ? configuration.BucketDiscoveryOk is null
+                        ? "O Agent nao enviou o resultado da descoberta de buckets. Reinstale o pacote atual de homologacao e aguarde o proximo sincronismo."
+                        : "A credencial AWS pode listar buckets, mas a conta nao retornou buckets visiveis."
                     : $"Credencial AWS validada pelo Agent e {buckets.Length} bucket(s) reportado(s).";
 
         var bucketRegions = ParseBucketRegions(configuration.AvailableBucketRegionsJson);

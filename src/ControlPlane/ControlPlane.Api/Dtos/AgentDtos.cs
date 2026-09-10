@@ -70,6 +70,8 @@ public sealed record AgentConfigurationReportRequest(
     DateTimeOffset? PrecheckAtUtc,
     string? PrecheckMessage,
     string? AwsAccountId = null,
+    bool? BucketDiscoveryOk = null,
+    string? BucketDiscoveryMessage = null,
     IReadOnlyList<string>? AvailableBuckets = null,
     IReadOnlyDictionary<string, string>? AvailableBucketRegions = null
 );
