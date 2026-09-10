@@ -4,7 +4,8 @@ param(
     [string]$PackageRoot = "",
     [string]$AdminEmail = "",
     [string]$AdminPassword = "",
-    [switch]$SkipSetupDownload
+    [switch]$SkipSetupDownload,
+    [switch]$IncludeZip
 )
 
 $ErrorActionPreference = "Stop"
@@ -121,6 +122,9 @@ if ([string]::IsNullOrWhiteSpace([string]$email) -or [string]::IsNullOrWhiteSpac
 }
 
 $baseUrl = $PanelUrl.TrimEnd('/')
+$identity = Invoke-RestMethod -Uri ($baseUrl + '/api/v1/environment') -TimeoutSec 20
+$readiness = Invoke-RestMethod -Uri ($baseUrl + '/api/v1/readiness') -TimeoutSec 20
+if ($readiness.status -ne 'ready' -or -not $readiness.agentPackageReady) { throw 'Painel ou pacote indisponivel.' }
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
 $loginPage = Invoke-WebRequest -Uri ($baseUrl + "/login") -WebSession $session -UseBasicParsing
@@ -165,6 +169,7 @@ $validationRoot = Join-Path $PSScriptRoot "artifacts\tmp-download-verify"
 New-Item -ItemType Directory -Force -Path $validationRoot | Out-Null
 
 $zipPath = Join-Path $validationRoot "TRAT.Agent.Package.zip"
+if ($IncludeZip) {
 Invoke-WebRequest -Uri ($baseUrl + "/admin/downloads/agent/zip") -WebSession $session -UseBasicParsing -OutFile $zipPath | Out-Null
 if (-not (Test-Path $zipPath)) {
     throw "Download do pacote ZIP do agent nao gerou arquivo local."
@@ -174,6 +179,11 @@ $zipFile = Get-Item $zipPath
 if ($zipFile.Length -le 0) {
     throw "Download do pacote ZIP do agent retornou arquivo vazio."
 }
+}
+
+$manifest = Invoke-RestMethod -Uri ($baseUrl + '/admin/downloads/agent/manifest') -WebSession $session
+if ($manifest.environment -ne $identity.name -or $manifest.controlPlaneBaseUrl.TrimEnd('/') -ne $baseUrl -or
+    ($identity.name -ne 'local' -and $manifest.revision -ne $identity.revision)) { throw 'Manifesto diverge do ambiente publicado.' }
 
 $setupBytes = $null
 if (-not $SkipSetupDownload) {
@@ -189,6 +199,7 @@ if (-not $SkipSetupDownload) {
     }
 
     $setupBytes = $setupFile.Length
+    if ((Get-FileHash -LiteralPath $setupPath -Algorithm SHA256).Hash -ne $manifest.setupSha256) { throw 'SHA-256 do download diverge do manifesto.' }
 }
 
 Write-Host "Validacao do TRAT concluida com sucesso." -ForegroundColor Green
@@ -197,7 +208,7 @@ Write-Host ("- Login: OK ({0})" -f $email)
 Write-Host ("- Dashboard: OK")
 Write-Host ("- Downloads: OK")
 Write-Host ("- Logo: OK")
-Write-Host ("- ZIP do Agent: {0} bytes" -f $zipFile.Length)
+if ($IncludeZip) { Write-Host ("- ZIP do Agent: {0} bytes" -f $zipFile.Length) }
 if ($null -ne $setupBytes) {
     Write-Host ("- Setup do Agent: {0} bytes" -f $setupBytes)
 }

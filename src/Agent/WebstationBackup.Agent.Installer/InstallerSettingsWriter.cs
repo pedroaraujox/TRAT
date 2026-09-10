@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -42,7 +44,20 @@ internal static class InstallerSettingsWriter
 
         Directory.CreateDirectory(directory);
         var json = JsonSerializer.Serialize(normalized, JsonOptions);
-        File.WriteAllText(outputPath, json + Environment.NewLine);
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(true, false);
+        foreach (var sid in new[] { new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), WindowsIdentity.GetCurrent().User! })
+            security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+        if (File.Exists(outputPath)) new FileInfo(outputPath).SetAccessControl(security);
+        using var stream = new FileInfo(outputPath).Create(FileMode.Create, FileSystemRights.FullControl,
+            FileShare.None, 4096, FileOptions.None, security);
+        using var writer = new StreamWriter(stream);
+        writer.WriteLine(json);
+        File.WriteAllText(Path.Combine(directory, "agent.public.json"), JsonSerializer.Serialize(new {
+            normalized.ControlPlaneBaseUrl, normalized.CustomerId, normalized.HostId,
+            normalized.AwsRegion, normalized.S3BucketName, normalized.S3KeyPrefix
+        }, JsonOptions));
     }
 
     private static string NormalizePrefix(string prefix)

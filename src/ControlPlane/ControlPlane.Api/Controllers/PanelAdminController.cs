@@ -209,7 +209,7 @@ public sealed class PanelAdminController(
 
         if (string.Equals(currentUser!.UserId, user.Id, StringComparison.Ordinal))
         {
-            HttpContext.Session.SignInPanelUser(user.Id, user.Email, user.DisplayName, user.Role);
+            HttpContext.Session.SignInPanelUser(user.Id, user.Email, user.DisplayName, user.Role, user.PasswordSalt);
         }
 
         TempData["StatusMessage"] = "Usuario atualizado com sucesso.";
@@ -310,6 +310,16 @@ public sealed class PanelAdminController(
             });
 
         return PhysicalFile(package.SetupExePath, "application/octet-stream", "TRAT.Agent.Setup.exe");
+    }
+
+    [HttpGet("/admin/downloads/agent/manifest")]
+    public IActionResult DownloadAgentManifest()
+    {
+        var guard = RequirePanelUser(out _);
+        if (guard is not null) return guard;
+        var package = agentPackageCatalogService.GetLatestPackage();
+        if (!package.IsAvailable || package.SetupExePath is null) return NotFound();
+        return PhysicalFile(Path.Combine(Path.GetDirectoryName(package.SetupExePath)!, "agent-package.manifest.json"), "application/json");
     }
 
     [HttpGet("/admin/downloads/agent/zip")]

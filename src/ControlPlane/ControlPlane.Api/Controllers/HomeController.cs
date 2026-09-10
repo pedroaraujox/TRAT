@@ -61,7 +61,8 @@ public sealed class HomeController(
             result.Session.UserId,
             result.Session.Email,
             result.Session.DisplayName,
-            result.Session.Role);
+            result.Session.Role,
+            result.Session.CredentialStamp);
         await auditTrailService.RecordAsync(
             HttpContext,
             category: "auth",

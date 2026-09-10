@@ -63,6 +63,26 @@ public sealed class ApiTokenAuthMiddleware(RequestDelegate next, IConfiguration 
             }
         }
 
+        if (path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+        {
+            var sessionUserId = ctx.Session.GetString(PanelSecurityConstants.SessionUserId);
+            if (!string.IsNullOrWhiteSpace(sessionUserId))
+            {
+                using var scope = scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var user = await db.PanelUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == sessionUserId, ctx.RequestAborted);
+                if (user is null || !user.IsActive ||
+                    !string.Equals(ctx.Session.GetString(PanelSessionExtensions.CredentialStampKey), user.PasswordSalt, StringComparison.Ordinal))
+                {
+                    ctx.Session.SignOutPanelUser();
+                }
+                else
+                {
+                    ctx.Session.SignInPanelUser(user.Id, user.Email, user.DisplayName, user.Role, user.PasswordSalt);
+                }
+            }
+        }
+
         if (path.StartsWith("/admin", StringComparison.OrdinalIgnoreCase))
         {
             var userId = ctx.Session.GetString(PanelSecurityConstants.SessionUserId);

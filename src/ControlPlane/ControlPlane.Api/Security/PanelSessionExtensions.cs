@@ -5,16 +5,20 @@ namespace ControlPlane.Api.Security;
 
 public static class PanelSessionExtensions
 {
-    public static void SignInPanelUser(this ISession session, string userId, string email, string displayName, string role)
+    public const string CredentialStampKey = "panel-credential-stamp";
+
+    public static void SignInPanelUser(this ISession session, string userId, string email, string displayName, string role, string? credentialStamp = null)
     {
         session.SetString(PanelSecurityConstants.SessionUserId, userId);
         session.SetString(PanelSecurityConstants.SessionUserEmail, email);
         session.SetString(PanelSecurityConstants.SessionUserDisplayName, displayName);
         session.SetString(PanelSecurityConstants.SessionUserRole, PanelSecurityConstants.NormalizeRole(role));
+        if (credentialStamp is not null) session.SetString(CredentialStampKey, credentialStamp);
     }
 
     public static void SignOutPanelUser(this ISession session)
     {
+        session.Clear();
         session.Remove(PanelSecurityConstants.SessionUserId);
         session.Remove(PanelSecurityConstants.SessionUserEmail);
         session.Remove(PanelSecurityConstants.SessionUserDisplayName);

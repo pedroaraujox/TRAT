@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon;
@@ -12,7 +13,7 @@ using WebstationBackup.Agent.Service.Logging;
 
 namespace WebstationBackup.Agent.Service.Aws;
 
-internal sealed class S3Uploader
+internal sealed class S3Uploader : IDisposable
 {
     private readonly IAmazonS3 _s3;
     private readonly ILogger _logger;
@@ -25,7 +26,7 @@ internal sealed class S3Uploader
     public S3Uploader(string region, string bucket, string keyPrefix, AWSCredentials credentials, ILogger logger, int maxAttempts, TimeSpan initialDelay, TimeSpan maxDelay)
     {
         _bucket = bucket;
-        _keyPrefix = keyPrefix.Trim().TrimEnd('/') + "/";
+        _keyPrefix = string.IsNullOrWhiteSpace(keyPrefix) ? string.Empty : keyPrefix.Trim().Trim('/') + "/";
         _logger = logger;
         _maxAttempts = Math.Max(1, maxAttempts);
         _initialDelay = initialDelay < TimeSpan.Zero ? TimeSpan.Zero : initialDelay;
@@ -48,10 +49,11 @@ internal sealed class S3Uploader
             var head = await _s3.GetObjectMetadataAsync(new GetObjectMetadataRequest
             {
                 BucketName = _bucket,
-                Key = key
+                Key = key,
+                ChecksumMode = ChecksumMode.ENABLED
             }, ct);
 
-            var remoteSha = head.Metadata["x-amz-meta-sha256b64"];
+            var remoteSha = head.ChecksumSHA256;
             return !string.IsNullOrWhiteSpace(remoteSha) && string.Equals(remoteSha, sha256Base64, StringComparison.Ordinal);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -77,12 +79,19 @@ internal sealed class S3Uploader
         try
         {
             using var stream = await OpenReadableStreamWithRetryAsync(absolutePath, ct);
+            using var sha = SHA256.Create();
+            var streamHash = Convert.ToBase64String(sha.ComputeHash(stream));
+            if (!string.IsNullOrWhiteSpace(sha256Base64) && !string.Equals(streamHash, sha256Base64, StringComparison.Ordinal))
+                throw new IOException("O arquivo mudou apos a criacao do manifesto; upload cancelado.");
+            sha256Base64 = streamHash;
+            stream.Position = 0;
             var put = new PutObjectRequest
             {
                 BucketName = _bucket,
                 Key = key,
                 InputStream = stream,
-                AutoCloseStream = false
+                AutoCloseStream = false,
+                ChecksumSHA256 = streamHash
             };
 
             if (!string.IsNullOrWhiteSpace(sha256Base64))
@@ -106,7 +115,8 @@ internal sealed class S3Uploader
         var head = await _s3.GetObjectMetadataAsync(new GetObjectMetadataRequest
         {
             BucketName = _bucket,
-            Key = key
+            Key = key,
+            ChecksumMode = ChecksumMode.ENABLED
         }, ct);
 
         if (head.ContentLength != fi.Length)
@@ -116,7 +126,7 @@ internal sealed class S3Uploader
 
         if (!string.IsNullOrWhiteSpace(sha256Base64))
         {
-            var remoteSha = head.Metadata["x-amz-meta-sha256b64"];
+            var remoteSha = head.ChecksumSHA256;
             if (string.IsNullOrWhiteSpace(remoteSha) || !string.Equals(remoteSha, sha256Base64, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException("Falha de verificação: metadata sha256b64 no S3 não confere.");
@@ -134,7 +144,7 @@ internal sealed class S3Uploader
 
             try
             {
-                return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                return new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             }
             catch (Exception ex) when (attempt < _maxAttempts && IsRetryableReadException(ex))
             {
@@ -190,4 +200,6 @@ internal sealed class S3Uploader
         var win32Code = ex.HResult & 0xFFFF;
         return win32Code == 32 || win32Code == 33;
     }
+
+    public void Dispose() => _s3.Dispose();
 }

@@ -10,7 +10,7 @@ namespace WebstationBackup.Agent.Service.Backup;
 
 internal sealed class ManifestBuilder
 {
-    public ManifestBuildResult Build(string jobId, AgentSettings settings, ProjectRules rules, IReadOnlyList<string> files)
+    public ManifestBuildResult Build(string jobId, AgentSettings settings, ProjectRules rules, IReadOnlyList<string> files, string[]? effectiveIncludePaths = null)
     {
         var items = new List<ManifestItem>(files.Count);
         var issues = new List<BackupProcessingIssue>();
@@ -56,7 +56,7 @@ internal sealed class ManifestBuilder
             string rel;
             try
             {
-                rel = MakeRelativePathForKey(settings.IncludePaths, file);
+                rel = MakeRelativePathForKey(effectiveIncludePaths ?? settings.IncludePaths, file);
             }
             catch (Exception ex)
             {
@@ -150,7 +150,7 @@ internal sealed class ManifestBuilder
         };
     }
 
-    private static string MakeRelativePathForKey(string[] includePaths, string fullPath)
+    internal static string MakeRelativePathForKey(string[] includePaths, string fullPath)
     {
         foreach (var root in includePaths)
         {
@@ -164,11 +164,15 @@ internal sealed class ManifestBuilder
 
             if (normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
             {
-                return normalizedPath.Substring(normalizedRoot.Length).Replace('\\', '/');
+                var relative = normalizedPath.Substring(normalizedRoot.Length).Replace('\\', '/');
+                if (includePaths.Length <= 1) return relative;
+                using var sha = SHA256.Create();
+                var rootId = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(normalizedRoot.ToUpperInvariant()))).Replace("-", "").Substring(0, 16).ToLowerInvariant();
+                return "root-" + rootId + "/" + relative;
             }
         }
 
-        return Path.GetFileName(fullPath);
+        throw new InvalidOperationException("Arquivo fora das pastas autorizadas pela politica.");
     }
 
     private sealed class HashComputationResult

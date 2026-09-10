@@ -60,6 +60,14 @@ $installScriptPath = Join-Path $repoRoot "scripts\agent\Install-Agent.ps1"
 $uninstallScriptPath = Join-Path $repoRoot "scripts\agent\Uninstall-Agent.ps1"
 $updateScriptPath = Join-Path $repoRoot "scripts\agent\Update-Agent.ps1"
 $outputRoot = Join-Path $repoRoot $PackageOutputDir
+$outputRoot = [IO.Path]::GetFullPath($outputRoot)
+$allowedOutputRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts')) + [IO.Path]::DirectorySeparatorChar
+if (-not $outputRoot.StartsWith($allowedOutputRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'A saida do pacote deve ser uma subpasta de artifacts.'
+}
+if ((Test-Path -LiteralPath $outputRoot) -and ((Get-Item -LiteralPath $outputRoot).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'A saida do pacote nao pode ser um link/reparse point.'
+}
 $packageDir = Join-Path $outputRoot "TRAT.Agent.Package"
 $stagingDir = $packageDir
 $binDir = Join-Path $stagingDir "bin"
@@ -71,7 +79,7 @@ $trayOutputDir = Join-Path $outputRoot "_tray-publish"
 $installerOutputDir = Join-Path $outputRoot "_installer-publish"
 
 if (Test-Path $outputRoot) {
-    Remove-Item -Path $outputRoot -Recurse -Force
+    Remove-Item -LiteralPath $outputRoot -Recurse -Force
 }
 
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
@@ -116,7 +124,9 @@ Copy-Item -Path $updateScriptPath -Destination (Join-Path $stagingDir "Update-Ag
 # Etapa 2: monta o payload (tudo que o instalador precisa para rodar sozinho, sem a
 # pasta do pacote ao lado) e zipa para ser embutido como recurso no Setup.exe.
 if (Test-Path $installerPayloadDir) {
-    Remove-Item -Path $installerPayloadDir -Recurse -Force
+    if ([IO.Path]::GetFullPath($installerPayloadDir) -ne [IO.Path]::GetFullPath((Join-Path $repoRoot 'src\Agent\WebstationBackup.Agent.Installer\Payload')) -or
+        ((Get-Item -LiteralPath $installerPayloadDir).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Diretorio de payload inseguro.' }
+    Remove-Item -LiteralPath $installerPayloadDir -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $installerPayloadDir | Out-Null
 Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $installerPayloadZip -CompressionLevel Optimal
@@ -147,6 +157,11 @@ Copy-Item -Path (Join-Path $stagingDir "TRAT.Agent.Setup.exe") -Destination (Joi
 if (-not $SkipZip) {
     Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipPath -CompressionLevel Optimal
 }
+
+# The release manifest is outside the embedded payload to avoid a circular digest.
+$packageManifest['setupSha256'] = (Get-FileHash -LiteralPath (Join-Path $standaloneDir 'TRAT.Agent.Setup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageManifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $standaloneDir 'agent-package.manifest.json') -Encoding UTF8
+$packageManifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stagingDir 'agent-package.manifest.json') -Encoding UTF8
 
 $requiredOutputs = @(
     (Join-Path $stagingDir "bin\WebstationBackup.Agent.Service.exe"),

@@ -22,14 +22,17 @@ internal sealed class BackupWindowsService : ServiceBase
     private readonly CancellationTokenSource _cts = new();
     private Task? _mainLoop;
 
-    public BackupWindowsService()
+    private readonly AgentWorkerOptions _options;
+
+    public BackupWindowsService(AgentWorkerOptions? options = null)
     {
+        _options = options ?? new AgentWorkerOptions();
         ServiceName = "WebstationBackupAgent";
     }
 
     protected override void OnStart(string[] args)
     {
-        _mainLoop = Task.Run(() => AgentWorker.RunLoopAsync(new AgentWorkerOptions(), _cts.Token));
+        _mainLoop = Task.Run(() => AgentWorker.RunLoopAsync(_options, _cts.Token));
     }
 
     protected override void OnStop()
@@ -238,6 +241,9 @@ internal static class AgentWorker
         await ReportConfigurationAsync(runtime, options.DryRun, effectivePolicy, ct);
         var manualRun = await TryGetManualRunAsync(runtime, ct);
         await ExecuteOneJobAsync(runtime, effectivePolicy, options.DryRun, ct, manualRun);
+        var finalState = runtime.StateStore.Load().LastFinalState;
+        if (!string.Equals(finalState, "SUCCEEDED", StringComparison.Ordinal))
+            throw new InvalidOperationException("Execucao do Agent nao foi concluida com sucesso. Consulte o estado e o relatorio final.");
     }
 
     private sealed class Runtime
@@ -1070,7 +1076,7 @@ internal static class AgentWorker
             processingIssues.AddRange(scanResult.Issues);
 
             var builder = new ManifestBuilder();
-            var buildResult = builder.Build(jobId, settings, rules, scanResult.Files);
+            var buildResult = builder.Build(jobId, settings, rules, scanResult.Files, effectivePolicy.IncludePaths);
             manifest = buildResult.Manifest;
             processingIssues.AddRange(buildResult.Issues);
 
@@ -1120,7 +1126,7 @@ internal static class AgentWorker
                     ["credentialSource"] = resolvedCredentials.Source,
                     ["credentialReference"] = resolvedCredentials.Reference
                 });
-                var uploader = new S3Uploader(
+                using var uploader = new S3Uploader(
                     targetSettings.AwsRegion!,
                     targetSettings.S3BucketName!,
                     targetSettings.S3KeyPrefix!,

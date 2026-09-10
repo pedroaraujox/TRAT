@@ -55,7 +55,7 @@ public sealed class PanelAuthenticationService(
             user.Id,
             user.Email,
             user.DisplayName,
-            PanelSecurityConstants.NormalizeRole(user.Role)));
+            PanelSecurityConstants.NormalizeRole(user.Role), user.PasswordSalt));
     }
 
     private async Task RegisterFailedLoginAsync(PanelUser user, DateTimeOffset nowUtc, CancellationToken ct)
@@ -94,7 +94,7 @@ public sealed class PanelAuthenticationService(
     }
 }
 
-public sealed record PanelUserSessionInfo(string UserId, string Email, string DisplayName, string Role);
+public sealed record PanelUserSessionInfo(string UserId, string Email, string DisplayName, string Role, string CredentialStamp);
 
 public sealed record AuthenticatePanelUserResult(bool Success, string? ErrorMessage, PanelUserSessionInfo? Session)
 {

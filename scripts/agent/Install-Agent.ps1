@@ -255,16 +255,19 @@ function Ensure-ServiceInstalled {
         [string]$Name,
         [string]$DisplayName,
         [string]$BinaryPath,
+        [string]$ServiceStateDir,
         [pscredential]$Credential
     )
 
+    if ($BinaryPath.Contains('"') -or $ServiceStateDir.Contains('"')) { throw 'Caminho de servico invalido.' }
+    $commandLine = '"{0}" --state-dir "{1}"' -f $BinaryPath, $ServiceStateDir
     $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if ($null -eq $service) {
         if ($null -ne $Credential) {
             New-Service `
                 -Name $Name `
                 -DisplayName $DisplayName `
-                -BinaryPathName ('"{0}"' -f $BinaryPath) `
+                -BinaryPathName $commandLine `
                 -StartupType Automatic `
                 -Description "TRAT Agent" `
                 -Credential $Credential
@@ -272,7 +275,7 @@ function Ensure-ServiceInstalled {
             New-Service `
                 -Name $Name `
                 -DisplayName $DisplayName `
-                -BinaryPathName ('"{0}"' -f $BinaryPath) `
+                -BinaryPathName $commandLine `
                 -StartupType Automatic `
                 -Description "TRAT Agent"
         }
@@ -281,6 +284,8 @@ function Ensure-ServiceInstalled {
     }
 
     Set-Service -Name $Name -DisplayName $DisplayName -StartupType Automatic
+    sc.exe config $Name binPath= $commandLine | Out-Null
+    if ($LASTEXITCODE) { throw 'Falha ao atualizar caminho do servico.' }
     sc.exe description $Name "TRAT Agent" | Out-Null
 
     if ($null -ne $Credential) {
@@ -330,6 +335,22 @@ if (-not (Test-Path $agentExeSource)) {
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 
+# DPAPI LocalMachine relies on filesystem permissions for confidentiality.
+# Protect the secret file before copying any credential-bearing contents.
+$settingsDestination = Join-Path $StateDir 'agent.settings.json'
+if (-not (Test-Path -LiteralPath $settingsDestination)) { New-Item -ItemType File -Path $settingsDestination | Out-Null }
+$secretAcl = New-Object System.Security.AccessControl.FileSecurity
+$secretAcl.SetAccessRuleProtection($true, $false)
+foreach ($sidText in @('S-1-5-18', 'S-1-5-32-544')) {
+    $sid = New-Object System.Security.Principal.SecurityIdentifier($sidText)
+    $secretAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'Allow')))
+}
+if ($null -ne $ServiceCredential) {
+    $serviceIdentity = New-Object System.Security.Principal.NTAccount($ServiceCredential.UserName)
+    $secretAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($serviceIdentity, 'Read', 'Allow')))
+}
+Set-Acl -LiteralPath $settingsDestination -AclObject $secretAcl
+
 Stop-ServiceIfExists -Name $ServiceName
 Stop-TrayProcessIfExists -InstallDir $InstallDir
 
@@ -378,8 +399,10 @@ Copy-Item -Path $resolvedRulesSource -Destination (Join-Path $StateDir "project.
 
 if (-not [string]::IsNullOrWhiteSpace($SettingsSourcePath)) {
     $resolvedSettingsSource = (Resolve-Path $SettingsSourcePath).Path
-    Copy-Item -Path $resolvedSettingsSource -Destination (Join-Path $StateDir "agent.settings.json") -Force
-} elseif (-not (Test-Path (Join-Path $StateDir "agent.settings.json"))) {
+    if (-not [string]::Equals([IO.Path]::GetFullPath($resolvedSettingsSource), [IO.Path]::GetFullPath($settingsDestination), [StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $resolvedSettingsSource -Destination $settingsDestination -Force
+    }
+} elseif ((Get-Item -LiteralPath $settingsDestination).Length -eq 0) {
     $templateSource = Join-Path $resolvedPackageRoot "agent.settings.template.json"
     if (-not (Test-Path $templateSource)) {
         throw "Template de configuracao nao encontrado: $templateSource"
@@ -387,13 +410,18 @@ if (-not [string]::IsNullOrWhiteSpace($SettingsSourcePath)) {
 
     Copy-Item -Path $templateSource -Destination (Join-Path $StateDir "agent.settings.json") -Force
 }
+Set-Acl -LiteralPath $settingsDestination -AclObject $secretAcl
 
 $agentExeInstalled = Join-Path $InstallDir "WebstationBackup.Agent.Service.exe"
+$publicSettings = Get-Content -LiteralPath $settingsDestination -Raw | ConvertFrom-Json |
+    Select-Object ControlPlaneBaseUrl, CustomerId, HostId, AwsRegion, S3BucketName, S3KeyPrefix
+$publicSettings | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $StateDir 'agent.public.json') -Encoding UTF8
 $displayVersion = Get-AgentDisplayVersion -ExecutablePath $agentExeInstalled
 Ensure-ServiceInstalled `
     -Name $ServiceName `
     -DisplayName $ServiceDisplayName `
     -BinaryPath $agentExeInstalled `
+    -ServiceStateDir $StateDir `
     -Credential $ServiceCredential
 Ensure-ServiceRecovery -Name $ServiceName
 

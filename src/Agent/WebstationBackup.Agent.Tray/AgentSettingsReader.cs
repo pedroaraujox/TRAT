@@ -18,7 +18,9 @@ internal static class AgentSettingsReader
 {
     public static AgentSettingsSnapshot Read()
     {
-        if (!File.Exists(AgentPaths.SettingsFilePath))
+        var publicPath = Path.Combine(Path.GetDirectoryName(AgentPaths.SettingsFilePath)!, "agent.public.json");
+        var settingsPath = File.Exists(publicPath) ? publicPath : AgentPaths.SettingsFilePath;
+        if (!File.Exists(settingsPath))
         {
             return new AgentSettingsSnapshot(
                 Exists: false,
@@ -33,7 +35,7 @@ internal static class AgentSettingsReader
 
         try
         {
-            using var stream = File.OpenRead(AgentPaths.SettingsFilePath);
+            using var stream = File.OpenRead(settingsPath);
             using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
 

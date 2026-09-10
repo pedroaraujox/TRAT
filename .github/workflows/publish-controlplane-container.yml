@@ -3,6 +3,8 @@ name: Publicar ControlPlane
 on:
   push:
     branches: [development, production]
+  pull_request:
+    branches: [development, production]
   workflow_dispatch:
 
 permissions:
@@ -24,18 +26,32 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Restaurar dependencias
-        run: dotnet restore .\WebstationBackup.sln
-      - name: Testar solucao
-        run: dotnet test .\tests\ControlPlane.Api.Tests\ControlPlane.Api.Tests.csproj -c Release --no-restore
-      - name: Compilar solucao
-        run: dotnet build .\WebstationBackup.sln -c Release --no-restore
+      - name: Testes do painel, Agent e dependencias
+        shell: pwsh
+        run: ./scripts/ci/Test-System.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: system-test-results
+          path: artifacts/mvp-validation/
+      - name: Gate de producao
+        if: github.ref_name == 'production' && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          APPROVED: ${{ vars.HML_APPROVED_REVISION }}
+          REVISION: ${{ github.sha }}
+        run: |
+          if ($env:APPROVED -ne $env:REVISION) { throw 'Revisao ainda nao aprovada apos teste real do Agent em hml.' }
+          ./scripts/ci/Wait-Deployment.ps1 -PanelUrl 'https://trat-hml.outboxtech.com.br' -Environment hml -Revision $env:REVISION -TimeoutSeconds 30
 
   agent:
     needs: validate
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
     outputs:
       tag: ${{ steps.ambiente.outputs.tag }}
+      profile: ${{ steps.ambiente.outputs.profile }}
+      url: ${{ steps.ambiente.outputs.url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -62,7 +78,7 @@ jobs:
           }
       - name: Gerar instalador do Agent
         shell: pwsh
-        run: .\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile '${{ steps.ambiente.outputs.profile }}' -PackageOutputDir 'artifacts\agent-package-release' -BuildRevision '${{ github.sha }}'
+        run: .\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile '${{ steps.ambiente.outputs.profile }}' -PackageOutputDir 'artifacts\agent-package-release' -BuildRevision '${{ github.sha }}' -SkipZip
       - uses: actions/upload-artifact@v4
         with:
           name: agent-download
@@ -72,6 +88,8 @@ jobs:
   container:
     needs: [validate, agent]
     runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -85,6 +103,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
+        id: image
         with:
           context: .
           push: true
@@ -95,3 +114,26 @@ jobs:
           build-args: |
             AGENT_PACKAGE_PATH=artifacts/agent-package-release/
             BUILD_REVISION=${{ github.sha }}
+
+  deploy:
+    needs: [agent, container]
+    runs-on: ubuntu-24.04
+    environment: ${{ needs.agent.outputs.profile }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publicar compose imutavel apos imagem estar disponivel
+        shell: pwsh
+        env:
+          REVISION: ${{ github.sha }}
+          DIGEST: ${{ needs.container.outputs.digest }}
+          PROFILE: ${{ needs.agent.outputs.profile }}
+        run: ./scripts/ci/Publish-DeploymentBranch.ps1 -Environment $env:PROFILE -Revision $env:REVISION -ImageDigest $env:DIGEST
+      - name: Verificar deploy efetivo e pacote do Agent
+        shell: pwsh
+        env:
+          REVISION: ${{ github.sha }}
+          PROFILE: ${{ needs.agent.outputs.profile }}
+          PANEL_URL: ${{ needs.agent.outputs.url }}
+        run: ./scripts/ci/Wait-Deployment.ps1 -Environment $env:PROFILE -Revision $env:REVISION -PanelUrl $env:PANEL_URL

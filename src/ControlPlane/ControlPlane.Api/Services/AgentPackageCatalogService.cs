@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace ControlPlane.Api.Services;
@@ -25,12 +25,6 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
             return AgentPackageCatalogResult.NotAvailable(root, "Diretorio de artifacts do Agent nao encontrado.");
         }
 
-        var zipFiles = ZipFileNames
-            .SelectMany(fileName => Directory.GetFiles(root, fileName, SearchOption.AllDirectories))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(path => new FileInfo(path))
-            .OrderByDescending(f => f.LastWriteTimeUtc)
-            .ToArray();
         var setupFiles = SetupFileNames
             .SelectMany(fileName => Directory.GetFiles(root, fileName, SearchOption.AllDirectories))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -38,39 +32,42 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .ToArray();
 
-        var latestSetup = setupFiles.FirstOrDefault();
-        var latestZip = zipFiles.FirstOrDefault();
-        if (latestSetup is null && latestZip is null)
-        {
-            return AgentPackageCatalogResult.NotAvailable(root, "Nenhum pacote do Agent foi encontrado para download.");
-        }
-
-        var referenceFile = latestSetup ?? latestZip!;
-        var version = TryReadProductVersion(latestSetup?.FullName) ?? "indefinida";
-        var manifest = latestSetup is null ? null : TryReadManifest(latestSetup.DirectoryName);
         var expectedEnvironment = Normalize(config["ControlPlane:Environment:Name"]);
         var expectedUrl = NormalizeUrl(config["ControlPlane:Environment:PublicUrl"]);
-        if (manifest is null)
+        var expectedRevision = Normalize(config["ControlPlane:Environment:Revision"]);
+        var candidates = setupFiles.Select(file => new { File = file, Manifest = TryReadManifest(file.DirectoryName) })
+            .Where(candidate => candidate.Manifest is not null &&
+                !string.IsNullOrWhiteSpace(expectedEnvironment) && !string.IsNullOrWhiteSpace(expectedUrl) &&
+                string.Equals(Normalize(candidate.Manifest.Environment), expectedEnvironment, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(NormalizeUrl(candidate.Manifest.ControlPlaneBaseUrl), expectedUrl, StringComparison.OrdinalIgnoreCase) &&
+                (expectedEnvironment == "local" || string.Equals(candidate.Manifest.Revision, expectedRevision, StringComparison.Ordinal)))
+            .OrderByDescending(candidate => candidate.Manifest!.GeneratedAtUtc)
+            .ThenBy(candidate => candidate.File.FullName, StringComparer.Ordinal)
+            .ToArray();
+        var selected = candidates.FirstOrDefault();
+        if (selected is null)
         {
-            return AgentPackageCatalogResult.NotAvailable(root, "Pacote bloqueado: manifesto de ambiente do Agent nao encontrado.");
+            return AgentPackageCatalogResult.NotAvailable(root, "Pacote bloqueado: nenhum manifesto corresponde ao ambiente, URL e revisao do painel.");
         }
-
-        if (!string.Equals(Normalize(manifest.Environment), expectedEnvironment, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(NormalizeUrl(manifest.ControlPlaneBaseUrl), expectedUrl, StringComparison.OrdinalIgnoreCase))
+        var latestSetup = selected.File;
+        var manifest = selected.Manifest!;
+        if (string.IsNullOrWhiteSpace(manifest.Version) || string.IsNullOrWhiteSpace(manifest.Revision) ||
+            !VerifyHash(latestSetup.FullName, manifest.SetupSha256))
         {
-            return AgentPackageCatalogResult.NotAvailable(
-                root,
-                $"Pacote bloqueado: Agent={manifest.Environment}/{manifest.ControlPlaneBaseUrl}; painel={expectedEnvironment}/{expectedUrl}.");
+            return AgentPackageCatalogResult.NotAvailable(root, "Pacote bloqueado: versao, revisao ou integridade SHA-256 invalida.");
         }
+        // Only offer a ZIP from the same release directory with its own verified digest.
+        var latestZip = ZipFileNames.Select(name => Path.Combine(latestSetup.DirectoryName!, name))
+            .FirstOrDefault(path => File.Exists(path) && VerifyHash(path, manifest.ZipSha256));
 
         return new AgentPackageCatalogResult(
             IsAvailable: true,
             SearchRoot: root,
             Message: "Pacote do Agent localizado com sucesso.",
-            Version: version,
-            PublishedAtUtc: referenceFile.LastWriteTimeUtc,
+            Version: manifest.Version,
+            PublishedAtUtc: manifest.GeneratedAtUtc,
             SetupExePath: latestSetup?.FullName,
-            ZipPath: latestZip?.FullName,
+            ZipPath: latestZip,
             EnvironmentName: manifest.Environment,
             ControlPlaneBaseUrl: manifest.ControlPlaneBaseUrl);
     }
@@ -88,21 +85,21 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
         return Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "..", "artifacts"));
     }
 
-    private static string? TryReadProductVersion(string? filePath)
+    private static bool VerifyHash(string filePath, string? expected)
     {
-        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(expected) || expected.Length != 64)
         {
-            return null;
+            return false;
         }
 
         try
         {
-            var version = FileVersionInfo.GetVersionInfo(filePath).ProductVersion;
-            return string.IsNullOrWhiteSpace(version) ? null : version.Trim();
+            using var stream = File.OpenRead(filePath);
+            return string.Equals(Convert.ToHexString(SHA256.HashData(stream)), expected, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
-            return null;
+            return false;
         }
     }
 
@@ -127,7 +124,8 @@ public sealed class AgentPackageCatalogService(IWebHostEnvironment env, IConfigu
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? NormalizeUrl(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().TrimEnd('/');
 
-    private sealed record AgentPackageManifest(string Environment, string ControlPlaneBaseUrl);
+    private sealed record AgentPackageManifest(string Environment, string ControlPlaneBaseUrl, string Revision,
+        string Version, DateTimeOffset GeneratedAtUtc, string? SetupSha256, string? ZipSha256);
 }
 
 public sealed record AgentPackageCatalogResult(

@@ -17,7 +17,11 @@ internal static class Program
         {
             ServiceBase.Run(new ServiceBase[]
             {
-                new BackupWindowsService()
+                new BackupWindowsService(new AgentWorkerOptions {
+                    StateDir = GetOptionValue(args, "--state-dir"),
+                    SettingsPath = GetOptionValue(args, "--settings"),
+                    RulesPath = GetOptionValue(args, "--rules")
+                })
             });
             return 0;
         }

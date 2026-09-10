@@ -51,7 +51,7 @@ services:
       ControlPlane__Backup__InitialDelaySeconds: "60"
       ControlPlane__Backup__RetentionDays: "7"
     ports:
-      - "${TRAT_LOCAL_PORT:-5080}:8080"
+      - "127.0.0.1:${TRAT_LOCAL_PORT:-5080}:8080"
     volumes:
       - trat_local_data:/app/data
       - trat_local_backups:/app/backups
