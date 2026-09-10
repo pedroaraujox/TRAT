@@ -1,6 +1,6 @@
 services:
   preparar-volumes:
-    image: ghcr.io/pedroaraujox/trat-controlplane@sha256:f7971c9034914964d40dde4dc957642e133fb588a1de5b7e5f2480e17ae7c941
+    image: ghcr.io/pedroaraujox/trat-controlplane@sha256:a5d66856261d0b4eb37236cc44a3b8ad3f9802a672d89d20eb6bb6240280fc09
     pull_policy: always
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
@@ -17,7 +17,7 @@ services:
       - FOWNER
 
   controlplane:
-    image: ghcr.io/pedroaraujox/trat-controlplane@sha256:f7971c9034914964d40dde4dc957642e133fb588a1de5b7e5f2480e17ae7c941
+    image: ghcr.io/pedroaraujox/trat-controlplane@sha256:a5d66856261d0b4eb37236cc44a3b8ad3f9802a672d89d20eb6bb6240280fc09
     pull_policy: always
     container_name: ${TRAT_CONTAINER_NAME:?Informe TRAT_CONTAINER_NAME}
     restart: unless-stopped
