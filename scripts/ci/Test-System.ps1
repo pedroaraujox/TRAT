@@ -5,6 +5,11 @@ Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Push-Location $repo
 try {
+    foreach ($script in Get-ChildItem scripts -Filter '*.ps1' -Recurse) {
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$parseErrors) | Out-Null
+        if ($parseErrors) { throw "PowerShell invalido: $($script.Name): $($parseErrors.Message -join '; ')" }
+    }
     dotnet restore WebstationBackup.sln
     if ($LASTEXITCODE) { throw 'Restore falhou.' }
     dotnet build WebstationBackup.sln -c Release --no-restore

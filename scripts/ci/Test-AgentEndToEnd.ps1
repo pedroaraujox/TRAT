@@ -68,7 +68,7 @@ foreach ($mode in @('dry-run','real')) {
     if ($jobState.LastFinalState -ne 'SUCCEEDED') { throw "Job $mode nao concluiu." }
     $job = Invoke-WebRequest "$base/admin/jobs/$($jobState.LastJobId)" -WebSession $session
     if ($job.Content -notmatch 'SUCCEEDED') { throw 'Relatorio final nao confirmado no painel.' }
-    Write-Host "OK $mode: job $($jobState.LastJobId) confirmado no painel."
+    Write-Host "OK ${mode}: job $($jobState.LastJobId) confirmado no painel."
 }
 $manifest = Get-Content (Join-Path $state "manifest.$($jobState.LastJobId).json") -Raw|ConvertFrom-Json
 if ($manifest.PlannedItems -ne 2) { throw 'Manifesto nao contem os dois arquivos sinteticos.' }

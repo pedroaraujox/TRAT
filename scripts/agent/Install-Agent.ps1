@@ -348,6 +348,13 @@ foreach ($sidText in @('S-1-5-18', 'S-1-5-32-544')) {
 if ($null -ne $ServiceCredential) {
     $serviceIdentity = New-Object System.Security.Principal.NTAccount($ServiceCredential.UserName)
     $secretAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($serviceIdentity, 'Read', 'Allow')))
+} else {
+    $existingService = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+    $existingIdentity = if ($null -ne $existingService) { $existingService.StartName } else { $null }
+    if (-not [string]::IsNullOrWhiteSpace($existingIdentity) -and $existingIdentity -ne 'LocalSystem') {
+        $serviceIdentity = New-Object System.Security.Principal.NTAccount($existingIdentity)
+        $secretAcl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($serviceIdentity, 'Read', 'Allow')))
+    }
 }
 Set-Acl -LiteralPath $settingsDestination -AclObject $secretAcl
 
