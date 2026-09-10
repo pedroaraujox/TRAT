@@ -1,6 +1,7 @@
 services:
   preparar-volumes:
     image: ${TRAT_IMAGE:?Informe TRAT_IMAGE}
+    pull_policy: always
     user: "0:0"
     entrypoint: ["/bin/sh", "-c"]
     command: ["chown -R 1654:1654 /app/data /app/backups"]
@@ -17,6 +18,7 @@ services:
 
   controlplane:
     image: ${TRAT_IMAGE:?Informe TRAT_IMAGE}
+    pull_policy: always
     container_name: ${TRAT_CONTAINER_NAME:?Informe TRAT_CONTAINER_NAME}
     restart: unless-stopped
     depends_on:
