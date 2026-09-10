@@ -35,6 +35,16 @@ foreach ($profile in $profiles) {
     if ($manifest.controlPlaneBaseUrl.TrimEnd('/') -ne $profile.Url) {
         throw "URL incorreta no manifesto de $($profile.Name): $($manifest.controlPlaneBaseUrl)"
     }
+    if ([string]::IsNullOrWhiteSpace([string]$manifest.revision) -or
+        [string]::IsNullOrWhiteSpace([string]$manifest.version)) {
+        throw "Pacote de $($profile.Name) nao identifica revisao e versao."
+    }
+
+    $setupVersion = (Get-Item -LiteralPath $setupPath).VersionInfo.ProductVersion
+    if ([string]::IsNullOrWhiteSpace($setupVersion) -or
+        -not $setupVersion.StartsWith([string]$manifest.version, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Versao do Setup de $($profile.Name) nao corresponde ao manifesto: $setupVersion."
+    }
 
     $packageUrlPath = Join-Path $root "TRAT.Agent.Package\controlplane.url"
     $packageUrl = (Get-Content -LiteralPath $packageUrlPath -Raw).Trim().TrimEnd('/')

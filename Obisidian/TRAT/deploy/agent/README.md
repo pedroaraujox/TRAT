@@ -2,6 +2,18 @@
 
 O Agent é instalado nos servidores dos clientes e se comunica por HTTPS com `https://trat-hml.outboxtech.com.br` durante o MVP.
 
+## Escopo mínimo do MVP
+
+O instalador solicita somente o token do ControlPlane, a AWS Access Key e a AWS Secret Key. Não informe localmente cliente, host, URL, pastas, bucket, região, prefixo ou agenda:
+
+- a URL é fixada pelo perfil do pacote (`local`, `hml` ou `production`);
+- cliente e host são resolvidos automaticamente no enrollment;
+- toda configuração de backup vem da política cadastrada no ControlPlane;
+- token e chaves são protegidos localmente por DPAPI;
+- a revisão exibida no instalador e no Agent deve corresponder ao pacote publicado.
+
+Para o piloto, use exclusivamente o pacote `hml`. Produção permanece bloqueada até a conclusão dos gates.
+
 ## Pacote oficial
 
 O GitHub Actions da branch `development` gera `TRAT.Agent.Setup.exe` com a URL do MVP e o incorpora na imagem do ControlPlane. O operador deve baixá-lo pela página `/admin/downloads` para garantir que está usando a versão publicada.

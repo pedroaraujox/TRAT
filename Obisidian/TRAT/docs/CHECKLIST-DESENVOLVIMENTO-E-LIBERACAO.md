@@ -68,6 +68,8 @@ Confirme que não existem no diff:
 
 ## Depois do push em development
 
+Antes de instalar ou atualizar o Agent, confirme que o instalador exibe apenas token do ControlPlane, AWS Access Key e AWS Secret Key, além da revisão esperada do pacote. Depois da instalação, confira a mesma revisão no Tray e no painel.
+
 1. aguardar o workflow **Publicar ControlPlane**;
 2. confirmar publicação da tag `:development`;
 3. atualizar `trat-dev` no Portainer;

@@ -57,7 +57,11 @@ internal sealed class InstallerForm : Form
             ? "NAO IDENTIFICADO"
             : packageManifest!.Environment!.Trim().ToUpperInvariant();
         var controlPlaneUrl = InstallerPackagePaths.ReadDefaultControlPlaneUrl(packageRoot);
-        Text = $"{InstallerDisplayName} - {environmentName}";
+        var packageRevision = string.IsNullOrWhiteSpace(packageManifest?.Revision)
+            ? "nao identificada"
+            : packageManifest!.Revision!.Trim();
+        var shortRevision = packageRevision.Length > 12 ? packageRevision.Substring(0, 12) : packageRevision;
+        Text = $"{InstallerDisplayName} - {environmentName} - {shortRevision}";
 
         var root = new TableLayoutPanel
         {
@@ -74,7 +78,7 @@ internal sealed class InstallerForm : Form
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            Text = $"Ambiente: {environmentName} | Painel: {controlPlaneUrl}{Environment.NewLine}Informe o token do cliente e as chaves AWS, selecione o que deseja fazer backup e clique em Instalar.",
+            Text = $"Ambiente: {environmentName} | Versao: {shortRevision}{Environment.NewLine}Informe somente o token do ControlPlane e as credenciais AWS para instalar.",
             Font = new Font(SystemFonts.MessageBoxFont ?? Control.DefaultFont, FontStyle.Bold)
         };
 
@@ -96,10 +100,13 @@ internal sealed class InstallerForm : Form
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         configurationPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
 
-        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 0, "Destino do painel", controlPlaneUrl, CreateSpacerButton(configurationPanel));
-        _agentTokenTextBox = AddTextRow(configurationPanel, 1, "Token do cliente", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
-        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 2, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
-        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 3, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _agentTokenTextBox = AddTextRow(configurationPanel, 0, "Token do ControlPlane", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+        _awsAccessKeyIdTextBox = AddTextRow(configurationPanel, 1, "AWS Access Key", string.Empty, CreateSpacerButton(configurationPanel));
+        _awsSecretAccessKeyTextBox = AddTextRow(configurationPanel, 2, "AWS Secret Key", string.Empty, CreateSpacerButton(configurationPanel), masked: true);
+
+        // Valores operacionais internos: nunca sao solicitados ao usuario. A URL vem
+        // do pacote e cliente/host sao resolvidos pelo enroll no ControlPlane.
+        _controlPlaneUrlTextBox = AddTextRow(configurationPanel, 3, "Destino do painel", controlPlaneUrl, CreateSpacerButton(configurationPanel));
 
         // Campos avancados (ocultos por padrao): destino do pacote, diretorios locais e
         // identificacao. O bucket/regiao S3 sao definidos no painel (politica do host), nao aqui.
@@ -148,42 +155,10 @@ internal sealed class InstallerForm : Form
         _openInstallDirButton.Click += (_, _) => OpenShell(_installDirectoryTextBox.Text);
 
         actionPanel.Controls.Add(_installButton);
-        actionPanel.Controls.Add(_showAdvancedCheckBox);
-        actionPanel.Controls.Add(_testControlPlaneButton);
-        actionPanel.Controls.Add(_validateButton);
-        actionPanel.Controls.Add(_saveSettingsButton);
-        actionPanel.Controls.Add(_testAwsButton);
-        actionPanel.Controls.Add(_openPackageButton);
-        actionPanel.Controls.Add(_openInstallDirButton);
+        _includePathsTextBox = new TextBox { Text = string.Empty, Visible = false };
+        _clearIncludePathsButton = new Button { Visible = false };
 
         content.Controls.Add(configurationPanel);
-
-        var includeActions = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0, 8, 0, 0)
-        };
-        var addFolderButton = new Button { Text = "Selecionar pasta", AutoSize = true };
-        var addFileButton = new Button { Text = "Selecionar arquivo", AutoSize = true };
-        _clearIncludePathsButton = new Button { Text = "Limpar lista", AutoSize = true };
-        addFolderButton.Click += (_, _) => AddIncludeFolder();
-        addFileButton.Click += (_, _) => AddIncludeFile();
-        includeActions.Controls.Add(addFolderButton);
-        includeActions.Controls.Add(addFileButton);
-        includeActions.Controls.Add(_clearIncludePathsButton);
-
-        var includeHintLabel = new Label
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(0, 6, 0, 0),
-            Text = "O que fazer backup:"
-        };
-
-        _includePathsTextBox = AddStandaloneMultiline(content, includeHintLabel, includeActions, string.Empty);
-        _clearIncludePathsButton.Click += (_, _) => _includePathsTextBox.Clear();
 
         content.Controls.Add(actionPanel);
 
@@ -195,8 +170,6 @@ internal sealed class InstallerForm : Form
             Dock = DockStyle.Fill,
             Font = new Font(FontFamily.GenericMonospace, 9f)
         };
-        TryLoadInstalledSettings();
-
         root.Controls.Add(header, 0, 0);
         root.Controls.Add(content, 0, 1);
         root.Controls.Add(_outputTextBox, 0, 2);
@@ -209,6 +182,7 @@ internal sealed class InstallerForm : Form
         _controlPlaneUrlTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _agentTokenTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
         _hostIdTextBox.TextChanged += (_, _) => ResetEnrollmentContext();
+        SetRowVisible(_controlPlaneUrlTextBox, visible: false);
         SetAdvancedVisibility(show: false);
     }
 
@@ -373,7 +347,6 @@ internal sealed class InstallerForm : Form
             }
 
             var settingsPath = SaveSettings(showSuccessMessage: false);
-            await TrySendBootstrapPathsAsync();
             var layout = InstallerPackagePaths.Resolve(_packageRootTextBox.Text);
 
             var result = await System.Threading.Tasks.Task.Run(() =>
@@ -615,7 +588,12 @@ internal sealed class InstallerForm : Form
         var hasSecretAccessKey = !string.IsNullOrWhiteSpace(secretAccessKey);
         if (hasAccessKeyId != hasSecretAccessKey)
         {
-            return "Informe AWS Access Key e AWS Secret Key juntos, ou deixe ambos vazios.";
+            return "Informe AWS Access Key e AWS Secret Key.";
+        }
+
+        if (!hasAccessKeyId)
+        {
+            return "AWS Access Key e AWS Secret Key sao obrigatorias para o MVP.";
         }
 
         return null;

@@ -24,6 +24,7 @@ Consulte este índice antes de iniciar qualquer correção. Procure pelo sintoma
 | [ALR-2026-08-14-002](ALR-2026-08-14-002-artefato-local-bloqueado.md) | 2026-08-14 | local | ZIP gerado está bloqueado por outro processo | aberto |
 | [INC-2026-08-14-007](INC-2026-08-14-007-variavel-de-ambiente-ausente-no-redeploy.md) | 2026-08-14 | hml | redeploy falha por variável obrigatória ausente e causa 502 | resolvido |
 | [INC-2026-09-10-001](INC-2026-09-10-001-buckets-aws-nao-reportados.md) | 2026-09-10 | hml | credencial AWS valida, mas conta e buckets não aparecem no painel | correção local; validação real pendente |
+| [INC-2026-09-10-002](INC-2026-09-10-002-execucao-manual-presa-em-claimed.md) | 2026-09-10 | Agent/ControlPlane | execução manual sem política completa permanece em `CLAIMED` | correção local; validação real pendente |
 
 ## Modelo mínimo
 

@@ -15,7 +15,7 @@ internal sealed record PackageLayout(
     string SettingsTemplatePath,
     string RulesPath);
 
-internal sealed record InstallerPackageManifest(string? Environment, string? ControlPlaneBaseUrl, string? GeneratedAtUtc);
+internal sealed record InstallerPackageManifest(string? Environment, string? ControlPlaneBaseUrl, string? GeneratedAtUtc, string? Revision);
 
 internal static class InstallerPackagePaths
 {

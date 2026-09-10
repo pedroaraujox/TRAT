@@ -15,6 +15,7 @@ internal sealed class TrayStatusForm : Form
     private readonly Label _awsValue;
     private readonly Label _lastLogValue;
     private readonly Label _rulesValue;
+    private readonly Label _versionValue;
     private readonly Button _openPanelButton;
     private readonly Action _openPanel;
     private readonly Action _openConfiguration;
@@ -32,7 +33,7 @@ internal sealed class TrayStatusForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(540, 360);
+        ClientSize = new Size(540, 392);
         try
         {
             Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -45,7 +46,7 @@ internal sealed class TrayStatusForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 10,
+            RowCount = 11,
             Padding = new Padding(16),
             AutoSize = false
         };
@@ -56,11 +57,12 @@ internal sealed class TrayStatusForm : Form
         _summaryValue = AddRow(layout, 1, "Resumo");
         _detailsValue = AddRow(layout, 2, "Detalhes");
         _settingsValue = AddRow(layout, 3, "Configuracao");
-        _customerValue = AddRow(layout, 4, "Cliente");
-        _hostValue = AddRow(layout, 5, "Host");
-        _awsValue = AddRow(layout, 6, "Destino AWS");
-        _lastLogValue = AddRow(layout, 7, "Ultimo log");
-        _rulesValue = AddRow(layout, 8, "Ultimas regras");
+        _versionValue = AddRow(layout, 4, "Versao");
+        _customerValue = AddRow(layout, 5, "Cliente");
+        _hostValue = AddRow(layout, 6, "Host");
+        _awsValue = AddRow(layout, 7, "Destino AWS");
+        _lastLogValue = AddRow(layout, 8, "Ultimo log");
+        _rulesValue = AddRow(layout, 9, "Ultimas regras");
 
         var buttonPanel = new FlowLayoutPanel
         {
@@ -95,7 +97,7 @@ internal sealed class TrayStatusForm : Form
         buttonPanel.Controls.Add(configButton);
         buttonPanel.Controls.Add(refreshButton);
 
-        layout.Controls.Add(buttonPanel, 0, 9);
+        layout.Controls.Add(buttonPanel, 0, 10);
         layout.SetColumnSpan(buttonPanel, 2);
 
         Controls.Add(layout);
@@ -107,6 +109,7 @@ internal sealed class TrayStatusForm : Form
         _summaryValue.Text = snapshot.Summary;
         _detailsValue.Text = snapshot.Details;
         _settingsValue.Text = snapshot.SettingsStatus;
+        _versionValue.Text = snapshot.AgentVersion;
         _customerValue.Text = snapshot.CustomerId;
         _hostValue.Text = snapshot.HostId;
         _awsValue.Text = snapshot.AwsTarget;

@@ -62,7 +62,7 @@ jobs:
           }
       - name: Gerar instalador do Agent
         shell: pwsh
-        run: .\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile '${{ steps.ambiente.outputs.profile }}' -PackageOutputDir 'artifacts\agent-package-release'
+        run: .\scripts\agent\Publish-Agent.ps1 -EnvironmentProfile '${{ steps.ambiente.outputs.profile }}' -PackageOutputDir 'artifacts\agent-package-release' -BuildRevision '${{ github.sha }}'
       - uses: actions/upload-artifact@v4
         with:
           name: agent-download

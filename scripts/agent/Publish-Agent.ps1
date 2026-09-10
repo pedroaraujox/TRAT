@@ -7,6 +7,7 @@ param(
     [string]$PackageOutputDir = "",
     [string]$WindowsRuntimeIdentifier = "win-x64",
     [string]$ControlPlaneBaseUrl = "",
+    [string]$BuildRevision = "",
     [switch]$SkipZip
 )
 
@@ -24,6 +25,18 @@ $profile = $profileDefaults[$EnvironmentProfile]
 if ([string]::IsNullOrWhiteSpace($ControlPlaneBaseUrl)) { $ControlPlaneBaseUrl = $profile.Url }
 if ([string]::IsNullOrWhiteSpace($PackageOutputDir)) { $PackageOutputDir = $profile.Output }
 $normalizedControlPlaneUrl = $ControlPlaneBaseUrl.Trim().TrimEnd('/')
+if ([string]::IsNullOrWhiteSpace($BuildRevision)) {
+    $BuildRevision = $env:GITHUB_SHA
+}
+if ([string]::IsNullOrWhiteSpace($BuildRevision)) {
+    $BuildRevision = (git -C $repoRoot rev-parse HEAD).Trim()
+}
+if ([string]::IsNullOrWhiteSpace($BuildRevision)) {
+    throw "Nao foi possivel determinar a revisao do Agent."
+}
+$normalizedRevision = $BuildRevision.Trim()
+$shortRevision = if ($normalizedRevision.Length -gt 12) { $normalizedRevision.Substring(0, 12) } else { $normalizedRevision }
+$agentVersion = "1.0.0+$shortRevision"
 if ($EnvironmentProfile -eq "local" -and $normalizedControlPlaneUrl -ne "http://localhost:5080") {
     throw "O perfil local deve apontar exatamente para http://localhost:5080."
 }
@@ -67,9 +80,9 @@ New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
 # Etapa 1: builda Service e Tray primeiro, pois o instalador precisa embutir esses
 # binarios como payload antes do proprio publish do instalador acontecer.
-dotnet build $projectPath -c $Configuration -o $serviceOutputDir
+dotnet build $projectPath -c $Configuration -o $serviceOutputDir -p:Version=$agentVersion -p:InformationalVersion=$agentVersion -p:SourceRevisionId=$normalizedRevision -p:IncludeSourceRevisionInInformationalVersion=false
 if ($LASTEXITCODE -ne 0) { throw "Build do Agent Service falhou com codigo $LASTEXITCODE." }
-dotnet publish $trayProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $trayOutputDir
+dotnet publish $trayProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$agentVersion -p:InformationalVersion=$agentVersion -p:SourceRevisionId=$normalizedRevision -p:IncludeSourceRevisionInInformationalVersion=false -o $trayOutputDir
 if ($LASTEXITCODE -ne 0) { throw "Publish do Agent Tray falhou com codigo $LASTEXITCODE." }
 
 if (-not (Test-Path (Join-Path $serviceOutputDir "WebstationBackup.Agent.Service.exe"))) {
@@ -89,6 +102,8 @@ $packageManifest = [ordered]@{
     environment = $EnvironmentProfile
     controlPlaneBaseUrl = $normalizedControlPlaneUrl
     generatedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+    revision = $normalizedRevision
+    version = $agentVersion
 }
 $packageManifest | ConvertTo-Json | Set-Content -Path (Join-Path $stagingDir "agent-package.manifest.json") -Encoding UTF8
 Copy-Item -Path $packageReadmePath -Destination (Join-Path $stagingDir "README.md") -Force
@@ -108,7 +123,7 @@ Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $installerPa
 
 # Etapa 3: agora sim publica o instalador, que vai embutir o payload zipado acima
 # como recurso (EmbeddedResource condicional no csproj) dentro do proprio exe.
-dotnet publish $installerProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $installerOutputDir
+dotnet publish $installerProjectPath -c $Configuration -r $WindowsRuntimeIdentifier --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=$agentVersion -p:InformationalVersion=$agentVersion -p:SourceRevisionId=$normalizedRevision -p:IncludeSourceRevisionInInformationalVersion=false -o $installerOutputDir
 if ($LASTEXITCODE -ne 0) { throw "Publish do Agent Installer falhou com codigo $LASTEXITCODE." }
 
 if (-not (Test-Path (Join-Path $installerOutputDir "WebstationBackup.Agent.Installer.exe"))) {
@@ -148,12 +163,14 @@ foreach ($requiredOutput in $requiredOutputs) {
 }
 $validatedManifest = Get-Content -LiteralPath (Join-Path $standaloneDir "agent-package.manifest.json") -Raw | ConvertFrom-Json
 if ($validatedManifest.environment -ne $EnvironmentProfile -or
-    $validatedManifest.controlPlaneBaseUrl.TrimEnd('/') -ne $normalizedControlPlaneUrl) {
+    $validatedManifest.controlPlaneBaseUrl.TrimEnd('/') -ne $normalizedControlPlaneUrl -or
+    $validatedManifest.revision -ne $normalizedRevision) {
     throw "Pacote invalido: manifesto nao corresponde ao perfil $EnvironmentProfile ($normalizedControlPlaneUrl)."
 }
 
 Write-Host ("Pacote do Agent gerado em: {0}" -f $stagingDir)
 Write-Host ("Ambiente do Agent: {0} ({1})" -f $EnvironmentProfile, $normalizedControlPlaneUrl)
+Write-Host ("Versao do Agent: {0} | Revisao: {1}" -f $agentVersion, $normalizedRevision)
 Write-Host ("Executavel autonomo (recomendado para download) gerado em: {0}" -f (Join-Path $standaloneDir "TRAT.Agent.Setup.exe"))
 Write-Host ("Executavel identificado por ambiente: {0}" -f (Join-Path $standaloneDir $environmentSetupName))
 Write-Host "Validacao estrutural e de ambiente do pacote: OK"

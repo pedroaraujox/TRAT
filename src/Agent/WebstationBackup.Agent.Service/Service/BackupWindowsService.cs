@@ -663,7 +663,17 @@ internal static class AgentWorker
     {
         try
         {
-            var v = Assembly.GetExecutingAssembly().GetName().Version;
+            var assembly = Assembly.GetExecutingAssembly();
+            var informational = assembly
+                .GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), inherit: false)
+                .OfType<AssemblyInformationalVersionAttribute>()
+                .FirstOrDefault()?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(informational))
+            {
+                return informational!;
+            }
+
+            var v = assembly.GetName().Version;
             return v is null ? "unknown" : v.ToString();
         }
         catch
@@ -973,6 +983,7 @@ internal static class AgentWorker
 
         if (!dryRun && !IsAwsConfigured(targetSettings))
         {
+            const string blockedMessage = "A politica recebida do ControlPlane nao possui regiao, bucket e prefixo S3 completos.";
             logger.Warn("Job bloqueado: configuracao AWS incompleta no host.", new Dictionary<string, object?>
             {
                 ["awsRegion"] = targetSettings.AwsRegion,
@@ -980,16 +991,19 @@ internal static class AgentWorker
                 ["prefix"] = targetSettings.S3KeyPrefix,
                 ["credentialTargetName"] = targetSettings.AwsCredentialTargetName
             });
+            await ReportBlockedJobAsync(runtime, manualRun, "AWS_POLICY_INCOMPLETE", blockedMessage, ct);
             return;
         }
 
         if (effectivePolicy.IncludePaths.Length == 0)
         {
+            const string blockedMessage = "A politica recebida do ControlPlane nao possui pastas para backup.";
             logger.Warn("Job bloqueado: nenhuma IncludePaths efetiva foi definida.", new Dictionary<string, object?>
             {
                 ["policySource"] = effectivePolicy.Source,
                 ["policyId"] = effectivePolicy.PolicyId
             });
+            await ReportBlockedJobAsync(runtime, manualRun, "BACKUP_PATHS_MISSING", blockedMessage, ct);
             return;
         }
 
@@ -1202,6 +1216,47 @@ internal static class AgentWorker
         state.LastJobId = jobId;
         state.LastFinalState = finalState;
         stateStore.Save(state);
+    }
+
+    private static async Task ReportBlockedJobAsync(
+        Runtime runtime,
+        ManualRunContext? manualRun,
+        string failureCode,
+        string failureMessage,
+        CancellationToken ct)
+    {
+        var jobId = Guid.NewGuid().ToString("N");
+        await runtime.ControlPlane.StartJobAsync(new
+        {
+            customerId = runtime.Settings.CustomerId,
+            hostId = runtime.Settings.HostId,
+            jobId,
+            startedAtUtc = DateTimeOffset.UtcNow,
+            runRequestId = manualRun?.RunRequestId
+        }, ct);
+
+        var finalReport = new FinalJobReportPayload
+        {
+            CustomerId = runtime.Settings.CustomerId,
+            HostId = runtime.Settings.HostId,
+            JobId = jobId,
+            FinalState = "FAILED",
+            PlannedBytes = 0,
+            PlannedItems = 0,
+            UploadedBytes = 0,
+            UploadedItems = 0,
+            FailureCode = failureCode,
+            FailureMessage = failureMessage,
+            FinishedAtUtc = DateTimeOffset.UtcNow,
+            Artifacts = Array.Empty<FinalJobArtifactPayload>(),
+            RunRequestId = manualRun?.RunRequestId
+        };
+        await TrySendOrPersistFinalReportAsync(runtime, finalReport, ct);
+
+        var state = runtime.StateStore.Load();
+        state.LastJobId = jobId;
+        state.LastFinalState = "FAILED";
+        runtime.StateStore.Save(state);
     }
 
     private static FinalJobArtifactPayload[] BuildArtifacts(string? manifestPath, string? issueReportPath, bool dryRun)

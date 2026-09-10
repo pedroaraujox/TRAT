@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.ServiceProcess;
 
 namespace WebstationBackup.Agent.Tray;
@@ -14,6 +15,7 @@ internal sealed record AgentStatusSnapshot(
     string SettingsStatus,
     string LastLogUpdate,
     string LastRulesUpdate,
+    string AgentVersion,
     string CustomerId,
     string HostId,
     string AwsTarget)
@@ -27,7 +29,7 @@ internal sealed record AgentStatusSnapshot(
 
         var settingsStatus = !settings.Exists
             ? "Arquivo de configuracao ainda nao encontrado."
-            : settings.ErrorMessage ?? "Configuracao local encontrada.";
+            : settings.ErrorMessage ?? "Identidade e credenciais locais encontradas.";
 
         var summary = serviceInfo.label switch
         {
@@ -41,8 +43,8 @@ internal sealed record AgentStatusSnapshot(
 
         var details = settings.ErrorMessage
             ?? (!settings.Exists
-                ? "Finalize a configuracao do agent para liberar a operacao assistida."
-                : "Configuracao local carregavel e pronta para uso.");
+                ? "Instale o Agent informando token do ControlPlane e credenciais AWS."
+                : "Politica de backup, destino e agenda sao definidos pelo ControlPlane.");
 
         var controlPlaneUrl = NormalizeUrl(settings.ControlPlaneBaseUrl);
         var awsTarget = BuildAwsTarget(settings);
@@ -57,6 +59,7 @@ internal sealed record AgentStatusSnapshot(
             SettingsStatus: settingsStatus,
             LastLogUpdate: lastLogUpdate,
             LastRulesUpdate: lastRulesUpdate,
+            AgentVersion: GetAgentVersion(),
             CustomerId: settings.CustomerId ?? "Nao configurado",
             HostId: settings.HostId ?? "Nao configurado",
             AwsTarget: awsTarget);
@@ -109,7 +112,7 @@ internal sealed record AgentStatusSnapshot(
     {
         if (string.IsNullOrWhiteSpace(settings.BucketName))
         {
-            return "Nao configurado";
+            return "Definido pelo ControlPlane";
         }
 
         var region = string.IsNullOrWhiteSpace(settings.AwsRegion)
@@ -121,5 +124,20 @@ internal sealed record AgentStatusSnapshot(
             : settings.BucketPrefix.Trim();
 
         return $"{settings.BucketName.Trim()} ({region}) - {prefix}";
+    }
+
+    private static string GetAgentVersion()
+    {
+        try
+        {
+            var informational = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+            return string.IsNullOrWhiteSpace(informational) ? "nao identificada" : informational;
+        }
+        catch
+        {
+            return "nao identificada";
+        }
     }
 }
