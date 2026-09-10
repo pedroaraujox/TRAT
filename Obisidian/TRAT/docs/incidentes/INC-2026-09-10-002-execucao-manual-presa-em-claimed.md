@@ -32,4 +32,3 @@ O resultado final mantém a correlação com a solicitação manual e usa a mesm
 ## Rollback
 
 Reinstalar o pacote anterior do Agent. Nenhum dado, credencial ou objeto S3 é removido pela correção.
-

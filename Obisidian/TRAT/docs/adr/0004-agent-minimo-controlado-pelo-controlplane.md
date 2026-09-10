@@ -29,4 +29,3 @@ Cada pacote deve carregar revisão e versão identificáveis. A mesma revisão d
 - reinstalação exige novamente as três informações sensíveis;
 - mudanças operacionais deixam de exigir acesso ao servidor do cliente;
 - homologação precisa validar o executável realmente distribuído, não apenas o código-fonte.
-
