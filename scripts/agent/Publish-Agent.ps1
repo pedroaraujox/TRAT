@@ -65,7 +65,7 @@ $allowedOutputRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts')) +
 if (-not $outputRoot.StartsWith($allowedOutputRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'A saida do pacote deve ser uma subpasta de artifacts.'
 }
-if ((Test-Path -LiteralPath $outputRoot) -and ((Get-Item -LiteralPath $outputRoot).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+if ((Test-Path -LiteralPath $outputRoot) -and -not [string]::IsNullOrWhiteSpace([string](Get-Item -LiteralPath $outputRoot).LinkType)) {
     throw 'A saida do pacote nao pode ser um link/reparse point.'
 }
 $packageDir = Join-Path $outputRoot "TRAT.Agent.Package"
@@ -125,7 +125,7 @@ Copy-Item -Path $updateScriptPath -Destination (Join-Path $stagingDir "Update-Ag
 # pasta do pacote ao lado) e zipa para ser embutido como recurso no Setup.exe.
 if (Test-Path $installerPayloadDir) {
     if ([IO.Path]::GetFullPath($installerPayloadDir) -ne [IO.Path]::GetFullPath((Join-Path $repoRoot 'src\Agent\WebstationBackup.Agent.Installer\Payload')) -or
-        ((Get-Item -LiteralPath $installerPayloadDir).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Diretorio de payload inseguro.' }
+        -not [string]::IsNullOrWhiteSpace([string](Get-Item -LiteralPath $installerPayloadDir).LinkType)) { throw 'Diretorio de payload inseguro.' }
     Remove-Item -LiteralPath $installerPayloadDir -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $installerPayloadDir | Out-Null

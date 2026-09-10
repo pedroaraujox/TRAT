@@ -28,3 +28,7 @@ artifacts/*
 !artifacts/agent-package-release/**
 !artifacts/agent-package-check-local/
 !artifacts/agent-package-check-local/**
+!artifacts/agent-mvp-local/
+artifacts/agent-mvp-local/**
+!artifacts/agent-mvp-local/TRAT.Agent.Standalone/
+!artifacts/agent-mvp-local/TRAT.Agent.Standalone/**
